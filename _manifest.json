@@ -1,0 +1,43 @@
+{
+  "manifest_version": 2,
+  "id": "meowyun.maimai-drawpic-plugin",
+  "version": "1.1.0",
+  "name": "麦麦绘图",
+  "description": "让麦麦拥有图片创建与图片编辑的能力，支持 OpenAI / Google 图片模型",
+  "author": {
+    "name": "清蒸云鸭",
+    "url": "https://github.com/WhiteCloudOL"
+  },
+  "license": "AGPL-3.0",
+  "urls": {
+    "repository": "https://github.com/WhiteCloudOL/maimai-drawpic-plugin",
+    "homepage": "https://github.com/WhiteCloudOL/maimai-drawpic-plugin",
+    "documentation": "https://github.com/WhiteCloudOL/maimai-drawpic-plugin/README.md",
+    "issues": "https://github.com/WhiteCloudOL/maimai-drawpic-plugin/issues"
+  },
+  "host_application": {
+    "min_version": "1.0.0",
+    "max_version": "1.99.99"
+  },
+  "sdk": {
+    "min_version": "2.0.0",
+    "max_version": "2.99.99"
+  },
+  "dependencies": [],
+  "capabilities": [
+    "send.text",
+    "send.image",
+    "chat.get_all_streams",
+    "chat.get_group_streams",
+    "chat.get_private_streams",
+    "chat.get_stream_by_group_id",
+    "chat.get_stream_by_user_id",
+    "message.get_recent",
+    "message.get_by_id"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN",
+    "locales_path": "i18n",
+    "supported_locales": ["zh-CN", "en-US"]
+  }
+}
