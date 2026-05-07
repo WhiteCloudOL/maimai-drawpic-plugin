@@ -58,7 +58,7 @@ class GeneralModelConfig(PluginConfigBase):
         description="单次图片请求超时时间（秒），用于后台图片任务",
         json_schema_extra={
             "label": "图片请求超时",
-            "hint": "单次图片请求超时时间（秒），建议设置为 30 到 180",
+            "hint": "单次图片请求超时时间（秒），建议设置为 120 到 300",
             "order": 2,
         },
     )
@@ -80,7 +80,7 @@ class OpenAIModelConfig(PluginConfigBase):
         },
     )
     api_key: str = Field(
-        default="your-api-key",
+        default="your-openai-api-key",
         description="OpenAI 或 OpenAI 兼容服务的 API 密钥",
         json_schema_extra={
             "label": "OpenAI API 密钥",
@@ -107,7 +107,7 @@ class GoogleModelConfig(PluginConfigBase):
     __ui_order__ = 3
 
     base_url: str = Field(
-        default="",
+        default="https://generativelanguage.googleapis.com",
         description="Google Gemini 服务基础 URL。使用官方服务时可留空，使用兼容网关时按网关要求填写。",
         json_schema_extra={
             "label": "Google 基础 URL",
