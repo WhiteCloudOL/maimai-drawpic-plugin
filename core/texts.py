@@ -24,7 +24,7 @@ def build_draw_help_text(router: ProviderRouter) -> str:
         "/绘图 帮助\n"
         "/绘图 状态\n"
         "/绘图 模型 模型名\n"
-        "/绘图 兼容模式 images_api|chat_completions\n"
+        "/绘图 兼容模式 auto|images_api|chat_completions|novelai_images_api\n"
         "/绘图 这里直接写提示词\n"
         f"OpenAI 模型：{openai_models}\n"
         f"Google 模型：{google_models}"

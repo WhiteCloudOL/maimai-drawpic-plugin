@@ -746,9 +746,9 @@ class DrawpicPlugin(MaiBotPlugin):
 
         if command_payload.startswith("兼容模式 "):
             compatibility_mode = command_payload[5:].strip()
-            if compatibility_mode not in {"images_api", "chat_completions"}:
+            if compatibility_mode not in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
                 await self._send_text_with_fallback(
-                    text="兼容模式仅支持：images_api 或 chat_completions",
+                    text="兼容模式仅支持：auto、images_api、chat_completions、novelai_images_api",
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
                     group_id=normalized_group_id,

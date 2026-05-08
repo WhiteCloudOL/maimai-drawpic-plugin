@@ -3,7 +3,7 @@ from typing import Literal
 from maibot_sdk import Field, PluginConfigBase
 
 
-OpenAICompatibilityMode = Literal["images_api", "chat_completions"]
+OpenAICompatibilityMode = Literal["auto", "images_api", "chat_completions", "novelai_images_api"]
 
 
 class PluginSectionConfig(PluginConfigBase):
@@ -45,11 +45,11 @@ class GeneralModelConfig(PluginConfigBase):
         },
     )
     default_openai_compatibility_mode: OpenAICompatibilityMode = Field(
-        default="chat_completions",
+        default="auto",
         description="默认 OpenAI 兼容模式。仅在当前会话使用 OpenAI 系模型时生效。",
         json_schema_extra={
             "label": "默认 OpenAI 兼容模式",
-            "hint": "如果你的 OpenAI 兼容网关只支持 /v1/chat/completions，请使用 chat_completions",
+            "hint": "支持 auto、images_api、chat_completions、novelai_images_api；通常建议使用 auto",
             "order": 1,
         },
     )

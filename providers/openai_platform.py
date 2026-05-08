@@ -31,68 +31,87 @@ class OpenaiImage:
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """手动调用 OpenAI 兼容文生图接口。"""
 
-        if self.compatibility_mode == "chat_completions":
-            response = await self._post_json(
-                url=f"{self.base_url}/v1/chat/completions",
-                payload=self._build_chat_completions_payload(prompt=prompt, model=model, n=n),
-            )
-            return await self._extract_chat_completion_images(response)
+        attempt_errors: list[str] = []
+        for mode in self._resolve_generation_modes(model):
+            try:
+                if mode == "chat_completions":
+                    response = await self._post_json(
+                        url=f"{self.base_url}/v1/chat/completions",
+                        payload=self._build_chat_completions_payload(prompt=prompt, model=model, n=n),
+                    )
+                    return await self._extract_chat_completion_images(response)
 
-        payload: dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
-            "n": n,
-        }
-        if self._is_gpt_image_model(model):
-            payload["size"] = "1024x1024"
-        else:
-            payload["size"] = "1024x1024"
-            payload["response_format"] = "b64_json"
+                payload: dict[str, Any] = {
+                    "model": model,
+                    "prompt": prompt,
+                    "n": n,
+                    "size": "1024x1024",
+                }
+                if mode == "images_api" and not self._is_gpt_image_model(model):
+                    payload["response_format"] = "b64_json"
 
-        response = await self._post_json(
-            url=f"{self.base_url}/v1/images/generations",
-            payload=payload,
-        )
-        return await self._extract_images(response)
+                response = await self._post_json(
+                    url=f"{self.base_url}/v1/images/generations",
+                    payload=payload,
+                )
+                return await self._extract_images_auto(response)
+            except Exception as exc:
+                attempt_errors.append(f"{mode}: {exc}")
+
+        raise RuntimeError("自动兼容模式全部尝试失败: " + " | ".join(attempt_errors))
 
     async def edit_images(self, prompt: str, model: str, image_bytes: bytes, n: int = 1) -> list[bytes]:
         """手动调用 OpenAI 兼容图生图接口。"""
 
-        if self.compatibility_mode == "chat_completions":
-            response = await self._post_json(
-                url=f"{self.base_url}/v1/chat/completions",
-                payload=self._build_chat_completions_edit_payload(
-                    prompt=prompt,
-                    model=model,
-                    image_bytes=image_bytes,
-                    n=n,
-                ),
-            )
-            return await self._extract_chat_completion_images(response)
+        attempt_errors: list[str] = []
+        for mode in self._resolve_edit_modes(model):
+            try:
+                if mode == "chat_completions":
+                    response = await self._post_json(
+                        url=f"{self.base_url}/v1/chat/completions",
+                        payload=self._build_chat_completions_edit_payload(
+                            prompt=prompt,
+                            model=model,
+                            image_bytes=image_bytes,
+                            n=n,
+                        ),
+                    )
+                    return await self._extract_chat_completion_images(response)
 
-        form = aiohttp.FormData()
-        form.add_field("model", model)
-        form.add_field("prompt", prompt)
-        form.add_field("n", str(n))
-        form.add_field("size", "1024x1024")
-        form.add_field(
-            "image[]",
-            image_bytes,
-            filename="source.png",
-            content_type=self._guess_mime_type("source.png"),
-        )
+                form = aiohttp.FormData()
+                form.add_field("model", model)
+                form.add_field("prompt", prompt)
+                form.add_field("n", str(n))
+                form.add_field("size", "1024x1024")
+                form.add_field(
+                    "image[]",
+                    image_bytes,
+                    filename="source.png",
+                    content_type=self._guess_mime_type("source.png"),
+                )
 
-        response = await self._post_form(
-            url=f"{self.base_url}/v1/images/edits",
-            form=form,
-        )
-        return await self._extract_images(response)
+                response = await self._post_form(
+                    url=f"{self.base_url}/v1/images/edits",
+                    form=form,
+                )
+                return await self._extract_images_auto(response)
+            except Exception as exc:
+                attempt_errors.append(f"{mode}: {exc}")
+
+        raise RuntimeError("自动兼容模式全部尝试失败: " + " | ".join(attempt_errors))
 
     @staticmethod
     def _is_gpt_image_model(model: str) -> bool:
         """判断是否为 GPT Image 系列模型。"""
 
         return "gpt-image" in model
+
+    @staticmethod
+    def _is_novelai_model(model: str) -> bool:
+        """判断是否为 NovelAI 风格模型。"""
+
+        normalized_model = model.strip().lower()
+        return normalized_model.startswith("nai-") or "diffusion" in normalized_model
 
     @staticmethod
     def _guess_mime_type(filename: str) -> str:
@@ -123,6 +142,28 @@ class OpenaiImage:
         if with_json_content_type:
             headers["Content-Type"] = "application/json"
         return headers
+
+    def _resolve_generation_modes(self, model: str) -> list[str]:
+        """解析文生图的自动兼容尝试顺序。"""
+
+        if self.compatibility_mode != "auto":
+            return [self.compatibility_mode]
+        if self._is_novelai_model(model):
+            return ["novelai_images_api", "images_api"]
+        if self._uses_google_image_chat_format(model) or self._is_gpt_image_model(model):
+            return ["chat_completions", "images_api", "novelai_images_api"]
+        return ["images_api", "novelai_images_api", "chat_completions"]
+
+    def _resolve_edit_modes(self, model: str) -> list[str]:
+        """解析图生图的自动兼容尝试顺序。"""
+
+        if self.compatibility_mode != "auto":
+            return [self.compatibility_mode]
+        if self._uses_google_image_chat_format(model) or self._is_gpt_image_model(model):
+            return ["chat_completions", "images_api"]
+        if self._is_novelai_model(model):
+            return ["images_api", "novelai_images_api"]
+        return ["images_api", "chat_completions"]
 
     def _build_chat_completions_payload(self, prompt: str, model: str, n: int) -> dict[str, Any]:
         """构建 chat completions 兼容模式的文生图请求体。"""
@@ -265,6 +306,39 @@ class OpenaiImage:
 
         if not image_bytes_list:
             raise RuntimeError("未找到有效的图片数据")
+        return image_bytes_list
+
+    async def _extract_images_auto(self, response: dict[str, Any]) -> list[bytes]:
+        """自动尝试多种图片响应格式。"""
+
+        parsers = (
+            self._extract_images,
+            self._extract_novelai_images,
+            self._extract_chat_completion_images,
+        )
+        errors: list[str] = []
+        for parser in parsers:
+            try:
+                return await parser(response)
+            except Exception as exc:
+                errors.append(f"{parser.__name__}: {exc}")
+        raise RuntimeError("未能从响应中解析图片数据: " + " | ".join(errors))
+
+    async def _extract_novelai_images(self, response: dict[str, Any]) -> list[bytes]:
+        """从 NovelAI 风格响应中提取图片。"""
+
+        images = response.get("images")
+        if not isinstance(images, list):
+            response_preview = str(response)[:1200]
+            raise RuntimeError(f"NovelAI 响应中未找到 images 字段，response_preview={response_preview}")
+
+        image_bytes_list: list[bytes] = []
+        for item in images:
+            if isinstance(item, str) and item:
+                image_bytes_list.append(base64.b64decode(item))
+
+        if not image_bytes_list:
+            raise RuntimeError("NovelAI 响应中没有可用图片数据")
         return image_bytes_list
 
     async def _extract_chat_completion_images(self, response: dict[str, Any]) -> list[bytes]:

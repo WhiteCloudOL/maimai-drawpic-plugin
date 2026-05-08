@@ -60,13 +60,13 @@ class ProviderRouter:
         """解析最终使用的 OpenAI 兼容模式。"""
 
         normalized_mode = mode.strip()
-        if normalized_mode in {"images_api", "chat_completions"}:
+        if normalized_mode in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
             return normalized_mode  # type: ignore[return-value]
 
         default_mode = self.config.general.default_openai_compatibility_mode
-        if default_mode in {"images_api", "chat_completions"}:
+        if default_mode in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
             return default_mode
-        return "chat_completions"
+        return "auto"
 
     def resolve_request_timeout_seconds(self) -> int:
         """解析最终使用的请求超时时间。"""
