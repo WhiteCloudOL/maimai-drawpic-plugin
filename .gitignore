@@ -219,3 +219,4 @@ __marimo__/
 !_manifest.json
 config.toml
 session_preferences.json
+config_back/
