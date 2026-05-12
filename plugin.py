@@ -614,9 +614,20 @@ class DrawpicPlugin(MaiBotPlugin):
                 source_message_id.strip(),
                 bool(source_image_base64.strip()),
             )
+            lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform=platform_name,
+            )
+            self.ctx.logger.info(
+                "图生图源消息查找使用聊天流: requested_stream_id=%s lookup_stream_id=%s",
+                normalized_stream_id,
+                lookup_stream_id,
+            )
             image_base64, matched_message_id = await find_source_image(
                 self.ctx,
-                normalized_stream_id,
+                lookup_stream_id,
                 source_message_id=source_message_id,
                 source_image_base64=source_image_base64,
             )

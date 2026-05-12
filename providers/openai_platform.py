@@ -64,6 +64,7 @@ class OpenaiImage:
         """手动调用 OpenAI 兼容图生图接口。"""
 
         attempt_errors: list[str] = []
+        mime_type = self._detect_mime_type(image_bytes)
         for mode in self._resolve_edit_modes(model):
             try:
                 if mode == "chat_completions":
@@ -78,21 +79,13 @@ class OpenaiImage:
                     )
                     return await self._extract_chat_completion_images(response)
 
-                form = aiohttp.FormData()
-                form.add_field("model", model)
-                form.add_field("prompt", prompt)
-                form.add_field("n", str(n))
-                form.add_field("size", "1024x1024")
-                form.add_field(
-                    "image[]",
-                    image_bytes,
-                    filename="source.png",
-                    content_type=self._guess_mime_type("source.png"),
-                )
-
-                response = await self._post_form(
+                response = await self._post_edit_form_with_fallback(
                     url=f"{self.base_url}/v1/images/edits",
-                    form=form,
+                    model=model,
+                    prompt=prompt,
+                    image_bytes=image_bytes,
+                    mime_type=mime_type,
+                    n=n,
                 )
                 return await self._extract_images_auto(response)
             except Exception as exc:
@@ -134,6 +127,18 @@ class OpenaiImage:
             "WEBP": "image/webp",
         }
         return mime_type_map.get(format_name, "image/png")
+
+    @staticmethod
+    def _guess_filename_by_mime_type(mime_type: str) -> str:
+        """根据 MIME 类型生成上传文件名。"""
+
+        extension_map = {
+            "image/jpeg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp",
+        }
+        extension = extension_map.get(mime_type, "png")
+        return f"source.{extension}"
 
     def _build_headers(self, with_json_content_type: bool = False) -> dict[str, str]:
         """构建请求头。"""
@@ -282,6 +287,38 @@ class OpenaiImage:
                         f"OpenAI 图片编辑接口错误 ({response.status}, 耗时: {duration:.2f}s): {error_text}"
                     )
                 return await response.json()
+
+    async def _post_edit_form_with_fallback(
+        self,
+        *,
+        url: str,
+        model: str,
+        prompt: str,
+        image_bytes: bytes,
+        mime_type: str,
+        n: int,
+    ) -> dict[str, Any]:
+        """发送图片编辑表单，并自动兼容 image / image[] 两种字段名。"""
+
+        attempt_errors: list[str] = []
+        filename = self._guess_filename_by_mime_type(mime_type)
+        for field_name in ("image", "image[]"):
+            try:
+                form = aiohttp.FormData()
+                form.add_field("model", model)
+                form.add_field("prompt", prompt)
+                form.add_field("n", str(n))
+                form.add_field("size", "1024x1024")
+                form.add_field(
+                    field_name,
+                    image_bytes,
+                    filename=filename,
+                    content_type=mime_type,
+                )
+                return await self._post_form(url=url, form=form)
+            except Exception as exc:
+                attempt_errors.append(f"{field_name}: {exc}")
+        raise RuntimeError("图片编辑表单提交失败: " + " | ".join(attempt_errors))
 
     async def _extract_images(self, response: dict[str, Any]) -> list[bytes]:
         """从接口响应中提取图片。"""

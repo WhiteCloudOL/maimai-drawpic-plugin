@@ -1,0 +1,24 @@
+[plugin]
+enabled = true
+config_version = "2.2.0"
+
+[general]
+default_model = "gpt-image-2"
+default_openai_compatibility_mode = "auto"
+request_timeout_seconds = 280
+
+[openai]
+base_url = "http://yunwu.ai"
+models = [
+    "gpt-image-2",
+    "gemini-3.0-pro-image",
+]
+api_key = "sk-gFmWWTdQfaAWEDyZHGUDuWUzQPRWqhdtTTPagp30h3xFL4E5"
+
+[google]
+base_url = ""
+models = [
+    "gemini-3.1-flash-image-preview",
+    "gemini-3-pro-image-preview",
+]
+api_key = "your-google-api-key"

@@ -1,23 +1,115 @@
 from typing import Any
 
 
+def _normalize_base64_value(value: Any) -> str:
+    """将候选值规范化为可用的 Base64 字符串。"""
+
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return ""
+
+
+def _extract_image_base64_from_segment(segment: dict[str, Any]) -> str:
+    """从单个消息段中提取图片 Base64。"""
+
+    segment_type = str(segment.get("type") or "").strip()
+    if segment_type != "image":
+        return ""
+
+    candidate_keys = (
+        "binary_data_base64",
+        "base64",
+        "image_base64",
+        "file_base64",
+    )
+    for key in candidate_keys:
+        image_base64 = _normalize_base64_value(segment.get(key))
+        if image_base64:
+            return image_base64
+
+    nested_data = segment.get("data")
+    if isinstance(nested_data, dict):
+        for key in candidate_keys:
+            image_base64 = _normalize_base64_value(nested_data.get(key))
+            if image_base64:
+                return image_base64
+
+    return ""
+
+
+def _extract_segments_from_message(message: dict[str, Any]) -> list[dict[str, Any]]:
+    """兼容不同消息格式，提取统一的消息段列表。"""
+
+    normalized_segments: list[dict[str, Any]] = []
+    candidate_segment_lists = (
+        message.get("message_segments"),
+        message.get("raw_message"),
+    )
+    for candidate_segments in candidate_segment_lists:
+        if not isinstance(candidate_segments, list):
+            continue
+        for segment in candidate_segments:
+            if not isinstance(segment, dict):
+                continue
+            normalized_segments.append(segment)
+    return normalized_segments
+
+
 def extract_image_base64_from_message(message: dict[str, Any]) -> str:
     """从消息结构中提取第一张图片的 Base64。"""
 
-    raw_message = message.get("raw_message", [])
-    if not isinstance(raw_message, list):
-        return ""
-
-    for segment in raw_message:
-        if not isinstance(segment, dict):
-            continue
-        if str(segment.get("type") or "").strip() != "image":
-            continue
-
-        image_base64 = segment.get("binary_data_base64")
-        if isinstance(image_base64, str) and image_base64.strip():
-            return image_base64.strip()
+    for segment in _extract_segments_from_message(message):
+        image_base64 = _extract_image_base64_from_segment(segment)
+        if image_base64:
+            return image_base64
     return ""
+
+
+def _unwrap_message_result(result: Any) -> dict[str, Any] | None:
+    """兼容运行时包装层，提取单条消息对象。"""
+
+    if isinstance(result, list):
+        for item in result:
+            if isinstance(item, dict):
+                return item
+        return None
+
+    if not isinstance(result, dict):
+        return None
+
+    direct_message = result.get("message")
+    if isinstance(direct_message, dict):
+        return direct_message
+
+    nested_result = result.get("result")
+    if isinstance(nested_result, dict):
+        nested_message = nested_result.get("message")
+        if isinstance(nested_message, dict):
+            return nested_message
+
+    return None
+
+
+def _unwrap_messages_result(result: Any) -> list[dict[str, Any]]:
+    """兼容运行时包装层，提取消息列表。"""
+
+    if isinstance(result, list):
+        return [message for message in result if isinstance(message, dict)]
+
+    if not isinstance(result, dict):
+        return []
+
+    direct_messages = result.get("messages")
+    if isinstance(direct_messages, list):
+        return [message for message in direct_messages if isinstance(message, dict)]
+
+    nested_result = result.get("result")
+    if isinstance(nested_result, dict):
+        nested_messages = nested_result.get("messages")
+        if isinstance(nested_messages, list):
+            return [message for message in nested_messages if isinstance(message, dict)]
+
+    return []
 
 
 async def find_source_image(
@@ -40,13 +132,11 @@ async def find_source_image(
             chat_id=stream_id,
             include_binary_data=True,
         )
-        if isinstance(result, dict) and result.get("success"):
-            message = result.get("message")
-            if isinstance(message, dict):
-                image_base64 = extract_image_base64_from_message(message)
-                if image_base64:
-                    return image_base64, normalized_message_id
-        raise ValueError("指定消息中没有可用图片，无法执行图片编辑")
+        message = _unwrap_message_result(result)
+        if isinstance(message, dict):
+            image_base64 = extract_image_base64_from_message(message)
+            if image_base64:
+                return image_base64, normalized_message_id
 
     recent_result = await ctx.call_capability(
         "message.get_recent",
@@ -54,15 +144,13 @@ async def find_source_image(
         limit=8,
         include_binary_data=True,
     )
-    if not isinstance(recent_result, dict) or not recent_result.get("success"):
+    if not isinstance(recent_result, (dict, list)):
         raise ValueError("无法读取最近消息，无法自动寻找待编辑图片")
-    recent_messages = recent_result.get("messages", [])
-    if not isinstance(recent_messages, list):
+    recent_messages = _unwrap_messages_result(recent_result)
+    if not recent_messages:
         raise ValueError("最近消息返回格式不正确，无法自动寻找待编辑图片")
 
     for message in reversed(recent_messages):
-        if not isinstance(message, dict):
-            continue
         image_base64 = extract_image_base64_from_message(message)
         if image_base64:
             return image_base64, str(message.get("message_id") or "").strip()
