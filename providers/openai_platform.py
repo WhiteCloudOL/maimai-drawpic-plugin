@@ -107,6 +107,18 @@ class OpenaiImage:
         return normalized_model.startswith("nai-") or "diffusion" in normalized_model
 
     @staticmethod
+    def _uses_google_image_chat_format(model: str) -> bool:
+        """判断当前模型是否更适合走 Gemini 风格的 chat 图片格式。"""
+
+        normalized_model = model.strip().lower()
+        return (
+            normalized_model.startswith("gemini-")
+            or "image-preview" in normalized_model
+            or "flash-image" in normalized_model
+            or "pro-image" in normalized_model
+        )
+
+    @staticmethod
     def _guess_mime_type(filename: str) -> str:
         """根据文件名猜测 MIME 类型。"""
 
@@ -155,7 +167,9 @@ class OpenaiImage:
             return [self.compatibility_mode]
         if self._is_novelai_model(model):
             return ["novelai_images_api", "images_api"]
-        if self._uses_google_image_chat_format(model) or self._is_gpt_image_model(model):
+        if self._is_gpt_image_model(model):
+            return ["images_api", "chat_completions", "novelai_images_api"]
+        if self._uses_google_image_chat_format(model):
             return ["chat_completions", "images_api", "novelai_images_api"]
         return ["images_api", "novelai_images_api", "chat_completions"]
 
@@ -164,7 +178,9 @@ class OpenaiImage:
 
         if self.compatibility_mode != "auto":
             return [self.compatibility_mode]
-        if self._uses_google_image_chat_format(model) or self._is_gpt_image_model(model):
+        if self._is_gpt_image_model(model):
+            return ["images_api", "chat_completions"]
+        if self._uses_google_image_chat_format(model):
             return ["chat_completions", "images_api"]
         if self._is_novelai_model(model):
             return ["images_api", "novelai_images_api"]

@@ -2,7 +2,7 @@ from io import BytesIO
 from typing import Any
 
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 from PIL import Image as PILImage
 
 
@@ -13,6 +13,7 @@ class GoogleImage:
         client_kwargs: dict[str, Any] = {"api_key": api_key}
         http_options: dict[str, Any] = {"timeout": request_timeout_seconds * 1000}
         normalized_base_url = base_url.strip()
+        self.base_url = normalized_base_url or "https://generativelanguage.googleapis.com"
         if normalized_base_url and normalized_base_url != "https://api.openai.com/v1":
             http_options["base_url"] = normalized_base_url
         client_kwargs["http_options"] = http_options
@@ -58,16 +59,35 @@ class GoogleImage:
                     image_bytes_list.append(data)
         return image_bytes_list
 
+    def _wrap_google_error(self, exc: Exception, model: str, operation: str) -> RuntimeError:
+        """将 Google SDK 异常整理为更容易排查的中文错误。"""
+
+        if isinstance(exc, errors.ServerError):
+            return RuntimeError(
+                f"Google 图片服务暂时不可用（{operation}，模型: {model}，网关: {self.base_url}，"
+                f"状态码: {exc.code}）。这通常是上游网关或模型服务异常，请稍后重试或切换模型。"
+            )
+        if isinstance(exc, errors.ClientError):
+            return RuntimeError(
+                f"Google 图片请求失败（{operation}，模型: {model}，网关: {self.base_url}，"
+                f"状态码: {exc.code}）：{exc}"
+            )
+        return RuntimeError(
+            f"Google 图片请求失败（{operation}，模型: {model}，网关: {self.base_url}）：{exc}"
+        )
+
     def _generate_images_with_generate_content(self, prompt: str, model: str) -> list[bytes]:
         """使用 Gemini generateContent 接口执行文生图。"""
-
-        response = self.client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"],
-            ),
-        )
+        try:
+            response = self.client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["TEXT", "IMAGE"],
+                ),
+            )
+        except Exception as exc:
+            raise self._wrap_google_error(exc, model, "文生图") from exc
         return self._extract_images_from_generate_content_response(response)
 
     def _edit_images_with_generate_content(
@@ -77,20 +97,22 @@ class GoogleImage:
         image_bytes: bytes,
     ) -> list[bytes]:
         """使用 Gemini generateContent 接口执行图生图。"""
-
-        response = self.client.models.generate_content(
-            model=model,
-            contents=[
-                types.Part.from_bytes(
-                    data=image_bytes,
-                    mime_type=self._detect_mime_type(image_bytes),
+        try:
+            response = self.client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type=self._detect_mime_type(image_bytes),
+                    ),
+                    prompt,
+                ],
+                config=types.GenerateContentConfig(
+                    response_modalities=["TEXT", "IMAGE"],
                 ),
-                prompt,
-            ],
-            config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"],
-            ),
-        )
+            )
+        except Exception as exc:
+            raise self._wrap_google_error(exc, model, "图生图") from exc
         return self._extract_images_from_generate_content_response(response)
 
     def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
@@ -99,14 +121,17 @@ class GoogleImage:
         if self._uses_generate_content_api(model):
             return self._generate_images_with_generate_content(prompt, model)
 
-        response = self.client.models.generate_images(
-            model=model,
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=n,
-                output_mime_type="image/png",
-            ),
-        )
+        try:
+            response = self.client.models.generate_images(
+                model=model,
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=n,
+                    output_mime_type="image/png",
+                ),
+            )
+        except Exception as exc:
+            raise self._wrap_google_error(exc, model, "文生图") from exc
 
         image_bytes_list: list[bytes] = []
         for generated_image in response.generated_images or []:
@@ -129,15 +154,18 @@ class GoogleImage:
                 mime_type=self._detect_mime_type(image_bytes),
             ),
         )
-        response = self.client.models.edit_image(
-            model=model,
-            prompt=prompt,
-            reference_images=[reference_image],
-            config=types.EditImageConfig(
-                number_of_images=n,
-                output_mime_type="image/png",
-            ),
-        )
+        try:
+            response = self.client.models.edit_image(
+                model=model,
+                prompt=prompt,
+                reference_images=[reference_image],
+                config=types.EditImageConfig(
+                    number_of_images=n,
+                    output_mime_type="image/png",
+                ),
+            )
+        except Exception as exc:
+            raise self._wrap_google_error(exc, model, "图生图") from exc
 
         image_bytes_list: list[bytes] = []
         for generated_image in response.generated_images or []:

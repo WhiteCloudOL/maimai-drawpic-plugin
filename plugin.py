@@ -1,18 +1,19 @@
 from pathlib import Path
 from typing import Any, ClassVar
 
-import asyncio
 import base64
-import inspect
 
 from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
 from maibot_sdk.types import ToolParameterInfo, ToolParamType
 
 from .core.config import DrawpicConfig
+from .core.draw_service import DrawService
 from .core.message_utils import find_source_image
+from .core.moderation import DrawpicModerationService
 from .core.provider_router import ProviderRouter
 from .core.session_preferences import SessionPreferenceStore
 from .core.stream_service import ChatStreamService
+from .core.task_store import DrawTaskStore
 from .core.texts import build_draw_help_text, build_session_status_text
 
 
@@ -24,11 +25,13 @@ class DrawpicPlugin(MaiBotPlugin):
 
     def __init__(self) -> None:
         super().__init__()
-        self._background_tasks: set[asyncio.Task[Any]] = set()
         self._session_preferences_path = Path(__file__).with_name("session_preferences.json")
         self._router: ProviderRouter | None = None
         self._session_store: SessionPreferenceStore | None = None
         self._stream_service: ChatStreamService | None = None
+        self._moderation_service: DrawpicModerationService | None = None
+        self._task_store = DrawTaskStore()
+        self._draw_service: DrawService | None = None
 
     def _refresh_services(self) -> None:
         """刷新内部服务对象。"""
@@ -46,6 +49,14 @@ class DrawpicPlugin(MaiBotPlugin):
         self._session_store.preferences = existing_preferences
         self._session_store.normalize_all()
         self._stream_service = ChatStreamService(self.ctx)
+        self._moderation_service = DrawpicModerationService(self.config)
+        self._draw_service = DrawService(
+            ctx=self.ctx,
+            router=self._router,
+            stream_service=self._stream_service,
+            moderation_service=self._moderation_service,
+            task_store=self._task_store,
+        )
 
     def _require_router(self) -> ProviderRouter:
         """返回当前 Provider 路由器。"""
@@ -68,15 +79,19 @@ class DrawpicPlugin(MaiBotPlugin):
             raise RuntimeError("插件服务尚未初始化，请等待插件完成加载")
         return self._stream_service
 
-    def _resolve_request_timeout_seconds(self) -> int:
-        """解析最终使用的请求超时时间。"""
+    def _require_moderation_service(self) -> DrawpicModerationService:
+        """返回审核服务。"""
 
-        return self._require_router().resolve_request_timeout_seconds()
+        if self._moderation_service is None:
+            raise RuntimeError("插件服务尚未初始化，请等待插件完成加载")
+        return self._moderation_service
 
-    def _resolve_model_name(self, model: str = "", allow_unknown_model: bool = False) -> str:
-        """解析最终使用的模型名。"""
+    def _require_draw_service(self) -> DrawService:
+        """返回绘图服务。"""
 
-        return self._require_router().resolve_model_name(model, allow_unknown_model)
+        if self._draw_service is None:
+            raise RuntimeError("插件服务尚未初始化，请等待插件完成加载")
+        return self._draw_service
 
     def _get_session_preference(
         self,
@@ -110,229 +125,51 @@ class DrawpicPlugin(MaiBotPlugin):
             openai_compatibility_mode=openai_compatibility_mode,
         )
 
-    async def _send_text_with_fallback(
-        self,
-        text: str,
-        stream_id: str,
-        user_id: str = "",
-        group_id: str = "",
-        platform: str = "qq",
-    ) -> bool:
-        """发送文本，并在必要时回退到真实聊天流。"""
+    async def on_load(self) -> None:
+        """插件加载时初始化平台。"""
 
-        return await self._require_stream_service().send_text_with_fallback(
-            text=text,
-            stream_id=stream_id,
-            user_id=user_id,
-            group_id=group_id,
-            platform=platform,
+        self._refresh_services()
+        self._require_session_store().load()
+        router = self._require_router()
+        moderation_service = self._require_moderation_service()
+        self.ctx.logger.info(
+            "麦麦绘图插件已加载: default_model=%s timeout=%ss openai_models=%s google_models=%s prompt_review=%s image_review=%s session_pref_count=%s",
+            router.resolve_default_model(),
+            router.resolve_request_timeout_seconds(),
+            len(router.get_openai_models()),
+            len(router.get_google_models()),
+            moderation_service.is_prompt_review_enabled(),
+            moderation_service.is_image_review_enabled(),
+            len(self._require_session_store().preferences),
         )
 
-    async def _send_generated_images_with_fallback(
-        self,
-        stream_id: str,
-        image_bytes_list: list[bytes],
-        user_id: str = "",
-        group_id: str = "",
-        platform: str = "qq",
-    ) -> int:
-        """发送图片，并在必要时回退到真实聊天流。"""
+    async def on_unload(self) -> None:
+        """插件卸载回调。"""
 
-        return await self._require_stream_service().send_generated_images_with_fallback(
-            stream_id=stream_id,
-            image_bytes_list=image_bytes_list,
-            user_id=user_id,
-            group_id=group_id,
-            platform=platform,
-        )
+        self._require_draw_service().cancel_background_tasks()
+        self._require_session_store().save()
+        self.ctx.logger.info("麦麦绘图插件已卸载")
 
-    async def _run_provider_call(self, call: Any, *args: Any) -> list[bytes]:
-        """执行图片请求，并按插件配置控制后台任务超时。"""
+    async def on_config_update(self, scope: str, config_data: dict[str, Any], version: str) -> None:
+        """配置变更时重新初始化平台。"""
 
-        timeout_seconds = self._resolve_request_timeout_seconds()
-        call_name = getattr(call, "__name__", call.__class__.__name__)
-        self.ctx.logger.info("开始调用图片平台: call=%s timeout=%ss", call_name, timeout_seconds)
-        if args:
-            prompt_preview = str(args[0])[:80] if isinstance(args[0], str) else ""
-            model_name = str(args[1]) if len(args) > 1 else ""
+        del config_data
+        if scope in {CONFIG_RELOAD_SCOPE_SELF, ON_MODEL_CONFIG_RELOAD, ON_BOT_CONFIG_RELOAD}:
+            self._refresh_services()
+            self._require_session_store().normalize_all()
+            self._require_session_store().save()
+            router = self._require_router()
+            moderation_service = self._require_moderation_service()
             self.ctx.logger.info(
-                "图片平台调用参数: call=%s model=%s prompt_preview=%s",
-                call_name,
-                model_name,
-                prompt_preview,
-            )
-
-        if inspect.iscoroutinefunction(call):
-            image_bytes_list = await asyncio.wait_for(call(*args), timeout=timeout_seconds)
-        else:
-            image_bytes_list = await asyncio.wait_for(asyncio.to_thread(call, *args), timeout=timeout_seconds)
-        self.ctx.logger.info("图片平台调用完成: call=%s result_count=%s", call_name, len(image_bytes_list))
-        return image_bytes_list
-
-    def _track_background_task(self, task: asyncio.Task[Any]) -> None:
-        """跟踪后台任务，避免任务对象被提前释放。"""
-
-        self._background_tasks.add(task)
-        task.add_done_callback(self._background_tasks.discard)
-        self.ctx.logger.info("后台图片任务已登记: task_id=%s pending_count=%s", id(task), len(self._background_tasks))
-
-    async def _background_draw(
-        self,
-        prompt: str,
-        stream_id: str,
-        resolved_model: str,
-        openai_compatibility_mode: str = "",
-        user_id: str = "",
-        group_id: str = "",
-        platform_name: str = "qq",
-    ) -> None:
-        """后台执行文生图。"""
-
-        try:
-            self.ctx.logger.info(
-                "后台文生图开始: stream_id=%s user_id=%s group_id=%s platform=%s model=%s openai_mode=%s prompt_preview=%s",
-                stream_id,
-                user_id,
-                group_id,
-                platform_name,
-                resolved_model,
-                openai_compatibility_mode,
-                prompt[:120],
-            )
-            image_platform, provider_name = self._require_router().require_platform_for_model(
-                resolved_model,
-                openai_compatibility_mode,
-            )
-            image_bytes_list = await self._run_provider_call(image_platform.generate_images, prompt, resolved_model, 1)
-            if not image_bytes_list:
-                self.ctx.logger.warning("后台文生图无结果: stream_id=%s model=%s", stream_id, resolved_model)
-                await self._send_text_with_fallback(
-                    text="图片生成失败，服务没有返回图片结果。",
-                    stream_id=stream_id,
-                    user_id=user_id,
-                    group_id=group_id,
-                    platform=platform_name,
-                )
-                return
-
-            sent_count = await self._send_generated_images_with_fallback(
-                stream_id=stream_id,
-                image_bytes_list=image_bytes_list,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
-            )
-            self.ctx.logger.info(
-                "后台图片生成完成: provider=%s model=%s count=%s",
-                provider_name,
-                resolved_model,
-                sent_count,
-            )
-        except TimeoutError:
-            timeout_seconds = self._resolve_request_timeout_seconds()
-            self.ctx.logger.warning("后台创建图片超时: timeout=%ss", timeout_seconds)
-            await self._send_text_with_fallback(
-                text=f"图片生成超时了，服务在 {timeout_seconds} 秒内没有返回结果。",
-                stream_id=stream_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
-            )
-        except Exception as exc:
-            self.ctx.logger.error("后台创建图片失败: %s", exc, exc_info=True)
-            await self._send_text_with_fallback(
-                text=f"图片生成失败：{exc}",
-                stream_id=stream_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
-            )
-
-    async def _background_edit_image(
-        self,
-        prompt: str,
-        stream_id: str,
-        resolved_model: str,
-        openai_compatibility_mode: str,
-        source_image_bytes: bytes,
-        matched_message_id: str,
-        user_id: str = "",
-        group_id: str = "",
-        platform_name: str = "qq",
-    ) -> None:
-        """后台执行图生图编辑。"""
-
-        try:
-            self.ctx.logger.info(
-                "后台图生图开始: stream_id=%s user_id=%s group_id=%s platform=%s model=%s openai_mode=%s source_message_id=%s prompt_preview=%s",
-                stream_id,
-                user_id,
-                group_id,
-                platform_name,
-                resolved_model,
-                openai_compatibility_mode,
-                matched_message_id,
-                prompt[:120],
-            )
-            image_platform, provider_name = self._require_router().require_platform_for_model(
-                resolved_model,
-                openai_compatibility_mode,
-            )
-            image_bytes_list = await self._run_provider_call(
-                image_platform.edit_images,
-                prompt,
-                resolved_model,
-                source_image_bytes,
-                1,
-            )
-            if not image_bytes_list:
-                self.ctx.logger.warning(
-                    "后台图生图无结果: stream_id=%s model=%s source_message_id=%s",
-                    stream_id,
-                    resolved_model,
-                    matched_message_id,
-                )
-                await self._send_text_with_fallback(
-                    text="图片编辑失败，服务没有返回图片结果。",
-                    stream_id=stream_id,
-                    user_id=user_id,
-                    group_id=group_id,
-                    platform=platform_name,
-                )
-                return
-
-            sent_count = await self._send_generated_images_with_fallback(
-                stream_id=stream_id,
-                image_bytes_list=image_bytes_list,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
-            )
-            self.ctx.logger.info(
-                "后台图片编辑完成: provider=%s model=%s count=%s source_message_id=%s",
-                provider_name,
-                resolved_model,
-                sent_count,
-                matched_message_id,
-            )
-        except TimeoutError:
-            timeout_seconds = self._resolve_request_timeout_seconds()
-            self.ctx.logger.warning("后台编辑图片超时: timeout=%ss", timeout_seconds)
-            await self._send_text_with_fallback(
-                text=f"图片编辑超时了，服务在 {timeout_seconds} 秒内没有返回结果。",
-                stream_id=stream_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
-            )
-        except Exception as exc:
-            self.ctx.logger.error("后台编辑图片失败: %s", exc, exc_info=True)
-            await self._send_text_with_fallback(
-                text=f"图片编辑失败：{exc}",
-                stream_id=stream_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
+                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss openai_models=%s google_models=%s prompt_review=%s image_review=%s",
+                scope,
+                version,
+                router.resolve_default_model(),
+                router.resolve_request_timeout_seconds(),
+                len(router.get_openai_models()),
+                len(router.get_google_models()),
+                moderation_service.is_prompt_review_enabled(),
+                moderation_service.is_image_review_enabled(),
             )
 
     async def _start_background_draw_request(
@@ -349,8 +186,12 @@ class DrawpicPlugin(MaiBotPlugin):
     ) -> dict[str, Any]:
         """按当前会话设置启动后台文生图。"""
 
+        draw_service = self._require_draw_service()
         session_preference = self._get_session_preference(stream_id, user_id, group_id, platform_name)
-        resolved_model = self._resolve_model_name(requested_model or session_preference["model"], allow_unknown_model=False)
+        resolved_model = draw_service.resolve_model_name(
+            requested_model or session_preference["model"],
+            allow_unknown_model=False,
+        )
         resolved_openai_mode = self._require_router().resolve_openai_compatibility_mode(
             requested_openai_compatibility_mode or session_preference["openai_compatibility_mode"]
         )
@@ -358,6 +199,7 @@ class DrawpicPlugin(MaiBotPlugin):
         if not provider_name:
             raise ValueError(f"指定模型不可用：{resolved_model}")
 
+        await draw_service.review_prompt_or_raise(prompt)
         self.ctx.logger.info(
             "收到文生图请求: stream_id=%s user_id=%s group_id=%s platform=%s provider=%s model=%s openai_mode=%s timeout=%ss prompt_preview=%s",
             stream_id,
@@ -367,79 +209,20 @@ class DrawpicPlugin(MaiBotPlugin):
             provider_name,
             resolved_model,
             resolved_openai_mode,
-            self._resolve_request_timeout_seconds(),
+            draw_service.resolve_request_timeout_seconds(),
             prompt[:120],
         )
-        background_task = asyncio.create_task(
-            self._background_draw(
-                prompt=prompt,
-                stream_id=stream_id,
-                resolved_model=resolved_model,
-                openai_compatibility_mode=resolved_openai_mode,
-                user_id=user_id,
-                group_id=group_id,
-                platform_name=platform_name,
-            )
+        return await draw_service.start_background_draw_request(
+            prompt=prompt,
+            stream_id=stream_id,
+            resolved_model=resolved_model,
+            resolved_openai_mode=resolved_openai_mode,
+            provider_name=provider_name,
+            user_id=user_id,
+            group_id=group_id,
+            platform_name=platform_name,
+            notify_start=notify_start,
         )
-        self._track_background_task(background_task)
-        if notify_start:
-            await self._send_text_with_fallback(
-                text=f"开始生成图片了，当前模型是 {resolved_model}。这次会在后台慢慢跑，生成完成后我会直接把图片发出来。",
-                stream_id=stream_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
-            )
-        return {
-            "success": True,
-            "message": "已开始后台生成图片，完成后会自动发送",
-            "provider": provider_name,
-            "model": resolved_model,
-            "openai_compatibility_mode": resolved_openai_mode,
-            "timeout_seconds": self._resolve_request_timeout_seconds(),
-        }
-
-    async def on_load(self) -> None:
-        """插件加载时初始化平台。"""
-
-        self._refresh_services()
-        self._require_session_store().load()
-        router = self._require_router()
-        self.ctx.logger.info(
-            "麦麦绘图插件已加载: default_model=%s timeout=%ss openai_models=%s google_models=%s session_pref_count=%s",
-            router.resolve_default_model(),
-            router.resolve_request_timeout_seconds(),
-            len(router.get_openai_models()),
-            len(router.get_google_models()),
-            len(self._require_session_store().preferences),
-        )
-
-    async def on_unload(self) -> None:
-        """插件卸载回调。"""
-
-        for task in list(self._background_tasks):
-            task.cancel()
-        self._require_session_store().save()
-        self.ctx.logger.info("麦麦绘图插件已卸载")
-
-    async def on_config_update(self, scope: str, config_data: dict[str, Any], version: str) -> None:
-        """配置变更时重新初始化平台。"""
-
-        del config_data
-        if scope in {CONFIG_RELOAD_SCOPE_SELF, ON_MODEL_CONFIG_RELOAD, ON_BOT_CONFIG_RELOAD}:
-            self._refresh_services()
-            self._require_session_store().normalize_all()
-            self._require_session_store().save()
-            router = self._require_router()
-            self.ctx.logger.info(
-                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss openai_models=%s google_models=%s",
-                scope,
-                version,
-                router.resolve_default_model(),
-                router.resolve_request_timeout_seconds(),
-                len(router.get_openai_models()),
-                len(router.get_google_models()),
-            )
 
     @Tool(
         "draw",
@@ -587,6 +370,7 @@ class DrawpicPlugin(MaiBotPlugin):
             return {"success": False, "message": "当前聊天流 ID 为空，无法回传图片"}
 
         try:
+            draw_service = self._require_draw_service()
             normalized_stream_id = stream_id.strip()
             normalized_user_id = user_id.strip() or str(kwargs.get("user_id") or "").strip()
             normalized_group_id = group_id.strip() or str(kwargs.get("group_id") or "").strip()
@@ -597,7 +381,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 normalized_group_id,
                 platform_name,
             )
-            resolved_model = self._resolve_model_name(model.strip() or session_preference["model"])
+            resolved_model = draw_service.resolve_model_name(model.strip() or session_preference["model"])
             resolved_openai_mode = session_preference["openai_compatibility_mode"]
             provider_name = self._require_router().get_model_provider(resolved_model)
             self.ctx.logger.info(
@@ -609,11 +393,12 @@ class DrawpicPlugin(MaiBotPlugin):
                 provider_name,
                 resolved_model,
                 resolved_openai_mode,
-                self._resolve_request_timeout_seconds(),
+                draw_service.resolve_request_timeout_seconds(),
                 prompt[:120],
                 source_message_id.strip(),
                 bool(source_image_base64.strip()),
             )
+            await draw_service.review_prompt_or_raise(prompt.strip())
             lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
@@ -638,39 +423,50 @@ class DrawpicPlugin(MaiBotPlugin):
                 matched_message_id,
                 len(source_image_bytes),
             )
-            background_task = asyncio.create_task(
-                self._background_edit_image(
-                    prompt=prompt.strip(),
-                    stream_id=normalized_stream_id,
-                    resolved_model=resolved_model,
-                    openai_compatibility_mode=resolved_openai_mode,
-                    source_image_bytes=source_image_bytes,
-                    matched_message_id=matched_message_id,
-                    user_id=normalized_user_id,
-                    group_id=normalized_group_id,
-                    platform_name=platform_name,
-                )
-            )
-            self._track_background_task(background_task)
-            await self._send_text_with_fallback(
-                text="开始后台编辑图片了，完成后我会直接把结果发出来。",
+            return await draw_service.start_background_edit_request(
+                prompt=prompt.strip(),
                 stream_id=normalized_stream_id,
+                resolved_model=resolved_model,
+                resolved_openai_mode=resolved_openai_mode,
+                provider_name=provider_name,
+                source_image_bytes=source_image_bytes,
+                matched_message_id=matched_message_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
-                platform=platform_name,
+                platform_name=platform_name,
             )
-            return {
-                "success": True,
-                "message": "已开始后台编辑图片，完成后会自动发送",
-                "provider": provider_name,
-                "model": resolved_model,
-                "openai_compatibility_mode": resolved_openai_mode,
-                "source_message_id": matched_message_id,
-                "timeout_seconds": self._resolve_request_timeout_seconds(),
-            }
         except Exception as exc:
             self.ctx.logger.error("启动后台编辑图片失败: %s", exc, exc_info=True)
             return {"success": False, "message": f"启动后台编辑图片失败：{exc}"}
+
+    @Tool(
+        "draw_status",
+        description="查询最近一个绘图后台任务，或查询指定 task_id 的绘图任务状态",
+        parameters=[
+            ToolParameterInfo(
+                name="stream_id",
+                param_type=ToolParamType.STRING,
+                description="当前聊天流 ID，用于查询当前会话最近一个后台绘图任务",
+                required=True,
+            ),
+            ToolParameterInfo(
+                name="task_id",
+                param_type=ToolParamType.STRING,
+                description="可选，指定要查询的后台绘图任务 ID；不填时默认查询当前会话最近一个任务",
+                required=False,
+            ),
+        ],
+    )
+    async def handle_draw_status(
+        self,
+        stream_id: str,
+        task_id: str = "",
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """查询后台绘图任务状态。"""
+
+        del kwargs
+        return self._require_draw_service().get_task_status_payload(stream_id=stream_id, task_id=task_id)
 
     @Command("draw_command", description="绘图命令", pattern=r"^/绘图(?:\s+(?P<content>.+))?$")
     async def handle_draw_command(
@@ -691,7 +487,7 @@ class DrawpicPlugin(MaiBotPlugin):
             return False, "当前聊天流不可用，无法执行绘图命令", 1
 
         if not command_payload or command_payload == "帮助":
-            await self._send_text_with_fallback(
+            await self._require_draw_service().send_text_with_fallback(
                 text=build_draw_help_text(self._require_router()),
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
@@ -707,7 +503,7 @@ class DrawpicPlugin(MaiBotPlugin):
             normalized_platform,
         )
         if command_payload == "状态":
-            await self._send_text_with_fallback(
+            await self._require_draw_service().send_text_with_fallback(
                 text=build_session_status_text(self._require_router(), session_preference),
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
@@ -719,7 +515,7 @@ class DrawpicPlugin(MaiBotPlugin):
         if command_payload.startswith("模型 "):
             model_name = command_payload[3:].strip()
             if not model_name:
-                await self._send_text_with_fallback(
+                await self._require_draw_service().send_text_with_fallback(
                     text="请在“/绘图 模型”后面填写具体模型名。",
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
@@ -730,7 +526,7 @@ class DrawpicPlugin(MaiBotPlugin):
 
             provider_name = self._require_router().get_model_provider(model_name)
             if not provider_name:
-                await self._send_text_with_fallback(
+                await self._require_draw_service().send_text_with_fallback(
                     text=f"模型不存在：{model_name}\n{build_draw_help_text(self._require_router())}",
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
@@ -746,7 +542,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 normalized_platform,
                 model=model_name,
             )
-            await self._send_text_with_fallback(
+            await self._require_draw_service().send_text_with_fallback(
                 text=f"当前会话绘图模型已切换为：{next_preference['model']}\n当前提供商：{provider_name}",
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
@@ -758,7 +554,7 @@ class DrawpicPlugin(MaiBotPlugin):
         if command_payload.startswith("兼容模式 "):
             compatibility_mode = command_payload[5:].strip()
             if compatibility_mode not in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
-                await self._send_text_with_fallback(
+                await self._require_draw_service().send_text_with_fallback(
                     text="兼容模式仅支持：auto、images_api、chat_completions、novelai_images_api",
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
@@ -774,7 +570,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 normalized_platform,
                 openai_compatibility_mode=compatibility_mode,
             )
-            await self._send_text_with_fallback(
+            await self._require_draw_service().send_text_with_fallback(
                 text=f"当前会话 OpenAI 兼容模式已切换为：{next_preference['openai_compatibility_mode']}",
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
@@ -783,13 +579,24 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return True, "已切换 OpenAI 兼容模式", 2
 
-        await self._start_background_draw_request(
-            prompt=command_payload,
-            stream_id=normalized_stream_id,
-            user_id=normalized_user_id,
-            group_id=normalized_group_id,
-            platform_name=normalized_platform,
-        )
+        try:
+            await self._start_background_draw_request(
+                prompt=command_payload,
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform_name=normalized_platform,
+            )
+        except Exception as exc:
+            self.ctx.logger.error("/绘图 命令启动失败: %s", exc, exc_info=True)
+            await self._require_draw_service().send_text_with_fallback(
+                text=f"绘图请求未能启动：{exc}",
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform=normalized_platform,
+            )
+            return False, "绘图命令执行失败", 1
         return True, "已开始处理绘图命令", 2
 
 

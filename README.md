@@ -6,6 +6,8 @@
 
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot 1.0+](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
+![SDK 2.x](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.1.0-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
@@ -15,8 +17,10 @@
 - 🖼️ **文生图与图生图**：支持直接根据提示词生成图片，或基于历史消息的图片进行编辑。
 - 🔄 **多平台支持**：内置支持 OpenAI 标准 `images` API、OpenAI Chat Completion 兼容、NovelAI 兼容接口，以及 Google Gemini 的图片生成 API。
 - 🧠 **会话隔离**：不同群聊 / 私聊可以使用独立的模型与兼容模式偏好，并在重启后持久化。
-- ⚡ **后台任务执行**：绘图过程不阻塞主聊天流，图片生成完成后自动下发。
-- 🤖 **工具调用支持**：除命令外，大语言模型也可通过 Tool Calling 自动调用 `draw` 与 `edit_image` 能力。
+- ⚡ **后台任务执行**：绘图过程不阻塞主聊天流，图片生成完成后自动下发，并提供任务状态查询工具。
+- 🤖 **工具调用支持**：除命令外，大语言模型也可通过 Tool Calling 自动调用 `draw`、`edit_image`、`draw_status` 能力。
+- 🛡️ **双重审核能力**：可选启用提示词审核与生成结果图片审核，分别复用 MaiBot 当前配置的 `replyer` 与 `vlm` 模型。
+- ♻️ **配置热更新**：订阅 `bot` / `model` 配置重载事件，调整主体配置后插件会自动刷新内部服务，无需重启。
 
 ## 📦 安装指南
 
@@ -33,7 +37,15 @@
    git clone https://github.com/WhiteCloudOL/maimai-drawpic-plugin
    ```
 
-3. 重启 MaiBot 即可生效。
+3. 安装插件依赖（在 MaiBot 主项目环境下执行）：
+   ```bash
+   pip install -r plugins/maimai-drawpic-plugin/requirements.txt
+   ```
+   若使用 `uv`，可执行 `uv pip install -r plugins/maimai-drawpic-plugin/requirements.txt`。
+
+4. 重启 MaiBot 即可生效。首次加载会在插件目录下生成默认 `config.toml`。
+
+> 📌 **运行依赖：** `aiohttp`、`pillow`、`google-genai`。`google-genai` 仅在使用 Google Gemini 图片接口时必须。
 
 ## ⚙️ 基础配置
 
@@ -43,8 +55,8 @@
 [plugin]
 # 是否启用插件
 enabled = true
-# 配置版本（请勿随意修改）
-config_version = "2.2.0"
+# 配置版本（请勿随意修改，由插件用于升级迁移）
+config_version = "2.3.0"
 
 [general]
 # 默认使用的模型名称，插件会自动在 OpenAI 与 Google 的模型列表中查找
@@ -52,18 +64,45 @@ default_model = "gpt-image-2"
 # 默认 OpenAI 兼容模式：auto / images_api / chat_completions / novelai_images_api
 # 通常建议保持 auto，由插件自动选择合适的接口
 default_openai_compatibility_mode = "auto"
-# 单次图片请求的超时时间（秒），建议 120 ~ 300
+# 单次图片请求的超时时间（秒），建议 120 ~ 300；插件会将其限制在 5 ~ 600 之间
 request_timeout_seconds = 150
+
+[prompt_review]
+# 是否启用提示词审核（调用 MaiBot 当前配置的 replyer 模型）
+enabled = false
+# 审核提示词，支持 {user_prompt} 占位符
+review_prompt = """
+你是绘图提示词审核器。请判断下面的绘图提示词是否适合继续交给绘图模型生成。
+你的回复必须严格使用以下格式，不要输出多余内容：
+结论：PASS 或 REJECT
+原因：一句简短中文说明
+
+待审核提示词：
+{user_prompt}
+"""
+
+[image_review]
+# 是否启用生成图片审核（调用 MaiBot 当前配置的 vlm 模型）
+enabled = false
+# 审核提示词，支持 {user_prompt} 占位符
+review_prompt = """
+你是绘图结果审核器。请审核这张图片是否适合直接发送给普通聊天场景。
+你的回复必须严格使用以下格式，不要输出多余内容：
+结论：PASS 或 REJECT
+原因：一句简短中文说明
+
+本次生成提示词：
+{user_prompt}
+"""
 
 [openai]
 # OpenAI 或 OpenAI 兼容服务的基础 URL（填根地址，不要带 /v1）
 base_url = "https://api.openai.com"
 # 你的 API 密钥
 api_key = "your-openai-api-key"
-# 走 OpenAI 兼容接口的图片模型列表
+# 走 OpenAI 兼容接口的图片模型列表（可按需增删）
 models = [
     "gpt-image-2",
-    "dall-e-3",
 ]
 
 [google]
@@ -71,12 +110,35 @@ models = [
 base_url = "https://generativelanguage.googleapis.com"
 # 你的 API 密钥
 api_key = "your-google-api-key"
-# 走 Google Gemini 接口的图片模型列表
+# 走 Google Gemini 接口的图片模型列表（可按需增删）
 models = [
     "gemini-3.1-flash-image-preview",
-    "gemini-3-pro-image-preview",
 ]
 ```
+
+### 🔧 主要配置项说明
+
+| 配置段 | 字段 | 含义 |
+| :--- | :--- | :--- |
+| `[plugin]` | `enabled` | 是否启用插件 |
+| `[plugin]` | `config_version` | 配置版本号，用于插件自身的配置迁移，请勿随意修改 |
+| `[general]` | `default_model` | 默认模型名，插件会在 OpenAI 与 Google 的模型列表中查找归属 |
+| `[general]` | `default_openai_compatibility_mode` | 默认 OpenAI 兼容模式，支持 `auto` / `images_api` / `chat_completions` / `novelai_images_api` |
+| `[general]` | `request_timeout_seconds` | 单次图片请求超时时间（秒），取值会被夹紧到 `[5, 600]` 区间 |
+| `[openai]` | `base_url` / `api_key` / `models` | OpenAI 或 OpenAI 兼容服务的基础 URL、密钥与模型列表 |
+| `[google]` | `base_url` / `api_key` / `models` | Google Gemini 或兼容网关的基础 URL、密钥与模型列表 |
+| `[prompt_review]` | `enabled` / `review_prompt` | 是否启用提示词审核以及审核提示模板（支持 `{user_prompt}` 占位符） |
+| `[image_review]` | `enabled` / `review_prompt` | 是否启用生成图片审核以及审核提示模板（支持 `{user_prompt}` 占位符） |
+
+> 💡 **模型归属：** 模型是否走 OpenAI 接口或 Google 接口，取决于它出现在哪一侧的 `models` 列表里。同名模型不要同时出现在两侧。
+
+### 🛡️ 审核配置说明
+
+- `prompt_review.enabled`：开启后，`draw` / `edit_image` / `/绘图` 的提示词会先交给 MaiBot 的 `replyer` 模型审核。
+- `image_review.enabled`：开启后，图片生成完成后会逐张交给 MaiBot 的 `vlm` 模型审核，只有通过的图片才会发送。
+- `review_prompt`：审核提示模板，支持使用 `{user_prompt}` 注入本次绘图提示词。
+
+> ⚠️ **注意：** 启用审核前，请确认 MaiBot 主体已经在 `model_config.toml` 中配置好可用的 `replyer` 与 `vlm` 任务模型。
 
 ### 🔌 OpenAI 兼容模式说明
 
@@ -93,7 +155,11 @@ models = [
 
 ### 💾 会话偏好持久化
 
-插件会把每个会话选择的模型与兼容模式保存到插件目录下的 `session_preferences.json`，即使重启 MaiBot 也会保留原有设置。
+插件会把每个会话选择的模型与兼容模式保存到插件目录下的 `session_preferences.json`，即使重启 MaiBot 也会保留原有设置。当模型列表在配置里被移除时，已失效的偏好会在加载时自动归一化回默认模型。
+
+### ♻️ 配置热更新
+
+插件订阅了 MaiBot 的 `bot` 与 `model` 配置重载事件。修改主体配置（例如切换 `replyer` / `vlm` 模型）后，插件会自动刷新内部服务，并保持现有的会话偏好不丢失。
 
 ## 💬 命令使用说明
 
@@ -102,21 +168,51 @@ models = [
 | 命令 | 说明 |
 | :--- | :--- |
 | `/绘图 <提示词>` | 根据提示词在后台生成图片，生成完成后自动发送 |
-| `/绘图 帮助` | 查看详细的绘图帮助信息以及当前可用模型 |
+| `/绘图 帮助` | 查看详细的绘图帮助信息以及当前可用模型（无参数时等价于 `帮助`） |
 | `/绘图 状态` | 查看当前会话正在使用的模型、提供商与兼容模式 |
-| `/绘图 模型 <模型名>` | 将当前会话切换到指定的绘图模型（例如 `/绘图 模型 dall-e-3`） |
+| `/绘图 模型 <模型名>` | 将当前会话切换到指定的绘图模型（例如 `/绘图 模型 gpt-image-2`） |
 | `/绘图 兼容模式 <模式>` | 切换 OpenAI 兼容调用模式，可选 `auto` / `images_api` / `chat_completions` / `novelai_images_api` |
 
-**💡 提示：** 麦麦具备工具调用能力，当麦麦判定你需要生成或者修改图片时，会自动在后台使用 `draw` 或 `edit_image` 工具，无需每次手动输入命令！
+**💡 提示：** 麦麦具备工具调用能力，当麦麦判定你需要生成或者修改图片时，会自动在后台使用 `draw` 或 `edit_image` 工具，无需每次手动输入命令。
 
 ## 🛠️ 工具调用能力
 
-插件向大语言模型暴露了以下两个工具：
+插件向大语言模型暴露了以下三个工具：
 
-- `draw`：根据提示词生成新图片。
-- `edit_image`：编辑当前聊天中的最近一张图片，或编辑指定消息中的图片。
+| 工具名 | 作用 |
+| :--- | :--- |
+| `draw` | 根据提示词生成新图片，结果以异步后台任务形式回传到当前聊天流 |
+| `edit_image` | 编辑当前聊天中的最近一张图片，或编辑指定 `source_message_id` / `source_image_base64` 对应的图片 |
+| `draw_status` | 查询当前会话最近一个绘图后台任务，或按 `task_id` 查询指定任务的状态 |
 
-两个工具都会将结果以异步后台任务的形式回传到当前聊天流。
+共通可选参数：
+
+- `model`：本次调用使用的模型名。不填则使用当前会话偏好。
+- `user_id` / `group_id` / `platform`：用于在回传图片时定位真实聊天流，默认 `platform = qq`。
+
+## 📁 目录结构一览
+
+```
+plugins/maimai-drawpic-plugin/
+├── _manifest.json          # 插件元数据（MaiBot 1.0+，maibot-sdk 2.x）
+├── plugin.py               # 插件入口，定义命令与工具
+├── requirements.txt        # 依赖：aiohttp、pillow、google-genai
+├── config.toml             # 首次加载自动生成的运行配置（本地生成）
+├── session_preferences.json# 会话级模型/兼容模式偏好（本地生成）
+├── core/
+│   ├── config.py           # 配置模型定义
+│   ├── draw_service.py     # 文生图 / 图生图后台任务调度
+│   ├── message_utils.py    # 查找源图片等聊天消息工具
+│   ├── moderation.py       # 提示词与图片审核服务
+│   ├── provider_router.py  # 模型归属判断与 Provider 创建
+│   ├── session_preferences.py # 会话偏好加载与持久化
+│   ├── stream_service.py   # 聊天流相关辅助
+│   ├── task_store.py       # 后台任务登记与查询
+│   └── texts.py            # 命令帮助 / 状态文本
+└── providers/
+    ├── openai_platform.py  # OpenAI 兼容图片接口调用
+    └── google_platform.py  # Google Gemini 图片接口调用
+```
 
 ## 📜 许可证
 
