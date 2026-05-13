@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "maimai-drawpic-plugin",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "name": "麦麦绘图",
   "description": "让麦麦拥有图片创建与图片编辑的能力，支持 OpenAI / Google / 智谱 图片模型",
   "author": {

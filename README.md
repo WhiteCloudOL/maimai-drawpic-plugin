@@ -7,7 +7,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.3.1-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.3.2-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
@@ -22,6 +22,10 @@
 - 🛡️ **双重审核能力**：可选启用提示词审核与生成结果图片审核，分别复用 MaiBot 当前配置的 `replyer` 与 `vlm` 模型。
 - ♻️ **配置热更新**：订阅 `bot` / `model` 配置重载事件，调整主体配置后插件会自动刷新内部服务，无需重启。
 
+> 💌 **遇到问题？有新想法？**  
+> 如果你在使用中遇到问题、想到新功能、或希望优化文档与代码，欢迎在仓库发起 **Issue** 或 **Pull Request**，一起把插件做得更好。  
+> ☁️另外欢迎加入我们的QQ群：637174573
+ 
 ## 📦 安装指南
 
 请将插件安装到 MaiBot 的 `plugins` 目录下，步骤如下：
