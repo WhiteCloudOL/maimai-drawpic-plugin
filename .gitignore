@@ -220,3 +220,4 @@ __marimo__/
 config.toml
 session_preferences.json
 config_back/
+draw_tasks.json

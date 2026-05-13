@@ -223,7 +223,7 @@ class DrawpicPlugin(MaiBotPlugin):
 
     @Tool(
         "draw",
-        description="根据提示词创建图片，并发送到当前聊天流",
+        description="根据提示词调用绘图模型创建图片，并发送到当前聊天流",
         parameters=[
             ToolParameterInfo(
                 name="prompt",

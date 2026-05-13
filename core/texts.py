@@ -29,6 +29,5 @@ def build_draw_help_text(router: ProviderRouter) -> str:
         "/绘图 这里直接写提示词\n"
         f"OpenAI 模型：{openai_models}\n"
         f"Google 模型：{google_models}\n"
-        f"智谱模型：{zhipu_models}\n"
-        "提示：智谱模型当前仅支持文生图，不支持 edit_image 图生图。"
+        f"智谱模型（仅文生图）：{zhipu_models}\n"
     )
