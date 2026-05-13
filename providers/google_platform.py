@@ -9,11 +9,18 @@ from PIL import Image as PILImage
 class GoogleImage:
     """Google 图片平台封装。"""
 
-    def __init__(self, api_key: str, base_url: str = "", request_timeout_seconds: int = 20):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "",
+        logger: Any | None = None,
+        request_timeout_seconds: int = 20,
+    ):
         client_kwargs: dict[str, Any] = {"api_key": api_key}
         http_options: dict[str, Any] = {"timeout": request_timeout_seconds * 1000}
         normalized_base_url = base_url.strip()
         self.base_url = normalized_base_url or "https://generativelanguage.googleapis.com"
+        self.logger = logger
         if normalized_base_url and normalized_base_url != "https://api.openai.com/v1":
             http_options["base_url"] = normalized_base_url
         client_kwargs["http_options"] = http_options
@@ -63,18 +70,47 @@ class GoogleImage:
         """将 Google SDK 异常整理为更容易排查的中文错误。"""
 
         if isinstance(exc, errors.ServerError):
+            self._log_error(
+                "Google API错误: operation=%s model=%s base_url=%s status=%s error=%s",
+                operation,
+                model,
+                self.base_url,
+                exc.code,
+                exc,
+            )
             return RuntimeError(
                 f"Google 图片服务暂时不可用（{operation}，模型: {model}，网关: {self.base_url}，"
                 f"状态码: {exc.code}）。这通常是上游网关或模型服务异常，请稍后重试或切换模型。"
             )
         if isinstance(exc, errors.ClientError):
+            self._log_error(
+                "Google API错误: operation=%s model=%s base_url=%s status=%s error=%s",
+                operation,
+                model,
+                self.base_url,
+                exc.code,
+                exc,
+            )
             return RuntimeError(
                 f"Google 图片请求失败（{operation}，模型: {model}，网关: {self.base_url}，"
                 f"状态码: {exc.code}）：{exc}"
             )
+        self._log_error(
+            "Google API错误: operation=%s model=%s base_url=%s error=%s",
+            operation,
+            model,
+            self.base_url,
+            exc,
+        )
         return RuntimeError(
             f"Google 图片请求失败（{operation}，模型: {model}，网关: {self.base_url}）：{exc}"
         )
+
+    def _log_error(self, message: str, *args: Any) -> None:
+        """记录错误日志。"""
+
+        if self.logger is not None:
+            self.logger.error(message, *args)
 
     def _generate_images_with_generate_content(self, prompt: str, model: str) -> list[bytes]:
         """使用 Gemini generateContent 接口执行文生图。"""

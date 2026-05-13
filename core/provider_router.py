@@ -2,6 +2,7 @@ from typing import Any, Literal, Protocol
 
 from ..providers.google_platform import GoogleImage
 from ..providers.openai_platform import OpenaiImage
+from ..providers.zhipu_platform import ZhipuImage
 from .config import DrawpicConfig, OpenAICompatibilityMode
 
 
@@ -16,8 +17,9 @@ class ImageProvider(Protocol):
 class ProviderRouter:
     """负责模型归属判断与 Provider 创建。"""
 
-    def __init__(self, config: DrawpicConfig):
+    def __init__(self, config: DrawpicConfig, logger: Any | None = None):
         self.config = config
+        self.logger = logger
 
     def get_openai_models(self) -> list[str]:
         """获取 OpenAI 模型列表。"""
@@ -29,12 +31,17 @@ class ProviderRouter:
 
         return [model.strip() for model in self.config.google.models if model.strip()]
 
+    def get_zhipu_models(self) -> list[str]:
+        """获取智谱模型列表。"""
+
+        return [model.strip() for model in self.config.zhipu.models if model.strip()]
+
     def get_all_models(self) -> list[str]:
         """获取全部可用模型列表。"""
 
-        return self.get_openai_models() + self.get_google_models()
+        return self.get_openai_models() + self.get_google_models() + self.get_zhipu_models()
 
-    def get_model_provider(self, model: str) -> Literal["openai", "google", ""]:
+    def get_model_provider(self, model: str) -> Literal["openai", "google", "zhipu", ""]:
         """根据模型名称判断其所属提供商。"""
 
         normalized_model = model.strip()
@@ -42,6 +49,8 @@ class ProviderRouter:
             return "openai"
         if normalized_model in self.get_google_models():
             return "google"
+        if normalized_model in self.get_zhipu_models():
+            return "zhipu"
         return ""
 
     def resolve_default_model(self) -> str:
@@ -95,6 +104,7 @@ class ProviderRouter:
             api_key=self.config.openai.api_key,
             base_url=self.config.openai.base_url,
             compatibility_mode=compatibility_mode,
+            logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
         )
 
@@ -104,19 +114,37 @@ class ProviderRouter:
         return GoogleImage(
             api_key=self.config.google.api_key,
             base_url=self.config.google.base_url,
+            logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
         )
+
+    def create_zhipu_provider(self) -> ZhipuImage:
+        """创建智谱图片提供商实例。"""
+
+        return ZhipuImage(
+            api_key=self.config.zhipu.api_key,
+            base_url=self.config.zhipu.base_url,
+            logger=self.logger,
+            request_timeout_seconds=self.resolve_request_timeout_seconds(),
+        )
+
+    def supports_image_edit(self, model: str) -> bool:
+        """判断模型是否支持图生图编辑。"""
+
+        return self.get_model_provider(model) != "zhipu"
 
     def require_platform_for_model(
         self,
         model: str,
         openai_compatibility_mode: str = "",
-    ) -> tuple[ImageProvider, Literal["openai", "google"]]:
+    ) -> tuple[ImageProvider, Literal["openai", "google", "zhipu"]]:
         """根据模型解析并创建对应的平台实例。"""
 
         provider_type = self.get_model_provider(model)
         if provider_type == "google":
             return self.create_google_provider(), "google"
+        if provider_type == "zhipu":
+            return self.create_zhipu_provider(), "zhipu"
         if provider_type == "openai":
             return self.create_openai_provider(
                 self.resolve_openai_compatibility_mode(openai_compatibility_mode)

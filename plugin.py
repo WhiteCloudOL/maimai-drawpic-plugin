@@ -26,11 +26,12 @@ class DrawpicPlugin(MaiBotPlugin):
     def __init__(self) -> None:
         super().__init__()
         self._session_preferences_path = Path(__file__).with_name("session_preferences.json")
+        self._task_store_path = Path(__file__).with_name("draw_tasks.json")
         self._router: ProviderRouter | None = None
         self._session_store: SessionPreferenceStore | None = None
         self._stream_service: ChatStreamService | None = None
         self._moderation_service: DrawpicModerationService | None = None
-        self._task_store = DrawTaskStore()
+        self._task_store = DrawTaskStore(path=self._task_store_path)
         self._draw_service: DrawService | None = None
 
     def _refresh_services(self) -> None:
@@ -40,7 +41,8 @@ class DrawpicPlugin(MaiBotPlugin):
         if self._session_store is not None:
             existing_preferences = dict(self._session_store.preferences)
 
-        self._router = ProviderRouter(self.config)
+        self._task_store.bind_logger(self.ctx.logger)
+        self._router = ProviderRouter(self.config, logger=self.ctx.logger)
         self._session_store = SessionPreferenceStore(
             path=self._session_preferences_path,
             router=self._router,
@@ -130,17 +132,20 @@ class DrawpicPlugin(MaiBotPlugin):
 
         self._refresh_services()
         self._require_session_store().load()
+        self._task_store.load()
         router = self._require_router()
         moderation_service = self._require_moderation_service()
         self.ctx.logger.info(
-            "麦麦绘图插件已加载: default_model=%s timeout=%ss openai_models=%s google_models=%s prompt_review=%s image_review=%s session_pref_count=%s",
+            "麦麦绘图插件已加载: default_model=%s timeout=%ss openai_models=%s google_models=%s zhipu_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
             router.resolve_default_model(),
             router.resolve_request_timeout_seconds(),
             len(router.get_openai_models()),
             len(router.get_google_models()),
+            len(router.get_zhipu_models()),
             moderation_service.is_prompt_review_enabled(),
             moderation_service.is_image_review_enabled(),
             len(self._require_session_store().preferences),
+            self._task_store.get_task_count(),
         )
 
     async def on_unload(self) -> None:
@@ -148,6 +153,7 @@ class DrawpicPlugin(MaiBotPlugin):
 
         self._require_draw_service().cancel_background_tasks()
         self._require_session_store().save()
+        self._task_store.save()
         self.ctx.logger.info("麦麦绘图插件已卸载")
 
     async def on_config_update(self, scope: str, config_data: dict[str, Any], version: str) -> None:
@@ -158,18 +164,21 @@ class DrawpicPlugin(MaiBotPlugin):
             self._refresh_services()
             self._require_session_store().normalize_all()
             self._require_session_store().save()
+            self._task_store.load()
             router = self._require_router()
             moderation_service = self._require_moderation_service()
             self.ctx.logger.info(
-                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss openai_models=%s google_models=%s prompt_review=%s image_review=%s",
+                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss openai_models=%s google_models=%s zhipu_models=%s prompt_review=%s image_review=%s task_count=%s",
                 scope,
                 version,
                 router.resolve_default_model(),
                 router.resolve_request_timeout_seconds(),
                 len(router.get_openai_models()),
                 len(router.get_google_models()),
+                len(router.get_zhipu_models()),
                 moderation_service.is_prompt_review_enabled(),
                 moderation_service.is_image_review_enabled(),
+                self._task_store.get_task_count(),
             )
 
     async def _start_background_draw_request(
@@ -200,18 +209,6 @@ class DrawpicPlugin(MaiBotPlugin):
             raise ValueError(f"指定模型不可用：{resolved_model}")
 
         await draw_service.review_prompt_or_raise(prompt)
-        self.ctx.logger.info(
-            "收到文生图请求: stream_id=%s user_id=%s group_id=%s platform=%s provider=%s model=%s openai_mode=%s timeout=%ss prompt_preview=%s",
-            stream_id,
-            user_id,
-            group_id,
-            platform_name,
-            provider_name,
-            resolved_model,
-            resolved_openai_mode,
-            draw_service.resolve_request_timeout_seconds(),
-            prompt[:120],
-        )
         return await draw_service.start_background_draw_request(
             prompt=prompt,
             stream_id=stream_id,
@@ -383,32 +380,21 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             resolved_model = draw_service.resolve_model_name(model.strip() or session_preference["model"])
             resolved_openai_mode = session_preference["openai_compatibility_mode"]
-            provider_name = self._require_router().get_model_provider(resolved_model)
-            self.ctx.logger.info(
-                "收到图生图请求: stream_id=%s user_id=%s group_id=%s platform=%s provider=%s model=%s openai_mode=%s timeout=%ss prompt_preview=%s source_message_id=%s has_source_base64=%s",
-                normalized_stream_id,
-                normalized_user_id,
-                normalized_group_id,
-                platform_name,
-                provider_name,
-                resolved_model,
-                resolved_openai_mode,
-                draw_service.resolve_request_timeout_seconds(),
-                prompt[:120],
-                source_message_id.strip(),
-                bool(source_image_base64.strip()),
-            )
+            router = self._require_router()
+            provider_name = router.get_model_provider(resolved_model)
+            if not provider_name:
+                return {"success": False, "message": f"指定模型不可用：{resolved_model}"}
+            if not router.supports_image_edit(resolved_model):
+                return {
+                    "success": False,
+                    "message": f"当前模型 {resolved_model} 仅支持文生图，不支持 edit_image 图生图编辑",
+                }
             await draw_service.review_prompt_or_raise(prompt.strip())
             lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
                 platform=platform_name,
-            )
-            self.ctx.logger.info(
-                "图生图源消息查找使用聊天流: requested_stream_id=%s lookup_stream_id=%s",
-                normalized_stream_id,
-                lookup_stream_id,
             )
             image_base64, matched_message_id = await find_source_image(
                 self.ctx,
@@ -417,12 +403,6 @@ class DrawpicPlugin(MaiBotPlugin):
                 source_image_base64=source_image_base64,
             )
             source_image_bytes = base64.b64decode(image_base64)
-            self.ctx.logger.info(
-                "图生图源图片已解析: stream_id=%s source_message_id=%s bytes=%s",
-                normalized_stream_id,
-                matched_message_id,
-                len(source_image_bytes),
-            )
             return await draw_service.start_background_edit_request(
                 prompt=prompt.strip(),
                 stream_id=normalized_stream_id,
@@ -465,8 +445,13 @@ class DrawpicPlugin(MaiBotPlugin):
     ) -> dict[str, Any]:
         """查询后台绘图任务状态。"""
 
-        del kwargs
-        return self._require_draw_service().get_task_status_payload(stream_id=stream_id, task_id=task_id)
+        return self._require_draw_service().get_task_status_payload(
+            stream_id=stream_id,
+            task_id=task_id,
+            user_id=str(kwargs.get("user_id") or "").strip(),
+            group_id=str(kwargs.get("group_id") or "").strip(),
+            platform=str(kwargs.get("platform") or "qq").strip() or "qq",
+        )
 
     @Command("draw_command", description="绘图命令", pattern=r"^/绘图(?:\s+(?P<content>.+))?$")
     async def handle_draw_command(
@@ -512,6 +497,16 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return True, "已显示当前绘图状态", 2
 
+        if command_payload == "模型":
+            await self._require_draw_service().send_text_with_fallback(
+                text="请在“/绘图 模型”后面填写具体模型名。",
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform=normalized_platform,
+            )
+            return False, "未提供模型名", 1
+
         if command_payload.startswith("模型 "):
             model_name = command_payload[3:].strip()
             if not model_name:
@@ -550,6 +545,16 @@ class DrawpicPlugin(MaiBotPlugin):
                 platform=normalized_platform,
             )
             return True, "已切换绘图模型", 2
+
+        if command_payload == "兼容模式":
+            await self._require_draw_service().send_text_with_fallback(
+                text="请在“/绘图 兼容模式”后面填写具体模式：auto、images_api、chat_completions、novelai_images_api",
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform=normalized_platform,
+            )
+            return False, "未提供兼容模式", 1
 
         if command_payload.startswith("兼容模式 "):
             compatibility_mode = command_payload[5:].strip()

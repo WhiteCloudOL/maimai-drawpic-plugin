@@ -21,11 +21,13 @@ class OpenaiImage:
         api_key: str,
         base_url: str = "https://api.openai.com",
         compatibility_mode: str = "images_api",
+        logger: Any | None = None,
         request_timeout_seconds: int = 20,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.compatibility_mode = compatibility_mode
+        self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
@@ -280,6 +282,13 @@ class OpenaiImage:
                 duration = time.time() - start_time
                 if response.status != 200:
                     error_text = await response.text()
+                    self._log_error(
+                        "OpenAI API错误: status=%s duration=%.2fs url=%s response_preview=%s",
+                        response.status,
+                        duration,
+                        url,
+                        error_text[:1200],
+                    )
                     raise RuntimeError(
                         f"OpenAI 图片生成接口错误 ({response.status}, 耗时: {duration:.2f}s): {error_text}"
                     )
@@ -299,6 +308,13 @@ class OpenaiImage:
                 duration = time.time() - start_time
                 if response.status != 200:
                     error_text = await response.text()
+                    self._log_error(
+                        "OpenAI API错误: status=%s duration=%.2fs url=%s response_preview=%s",
+                        response.status,
+                        duration,
+                        url,
+                        error_text[:1200],
+                    )
                     raise RuntimeError(
                         f"OpenAI 图片编辑接口错误 ({response.status}, 耗时: {duration:.2f}s): {error_text}"
                     )
@@ -509,5 +525,12 @@ class OpenaiImage:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
                 if response.status != 200:
+                    self._log_error("OpenAI API错误: 下载图片失败 status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载生成图片失败: status={response.status}")
                 return await response.read()
+
+    def _log_error(self, message: str, *args: Any) -> None:
+        """记录错误日志。"""
+
+        if self.logger is not None:
+            self.logger.error(message, *args)

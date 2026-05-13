@@ -21,7 +21,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.3.0",
+        default="2.4.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -136,11 +136,47 @@ class GoogleModelConfig(PluginConfigBase):
     )
 
 
+class ZhipuModelConfig(PluginConfigBase):
+    """智谱模型配置。"""
+
+    __ui_label__ = "智谱配置"
+    __ui_order__ = 4
+
+    base_url: str = Field(
+        default="https://open.bigmodel.cn",
+        description="智谱服务基础 URL。请填写根地址，不要带具体接口路径。",
+        json_schema_extra={
+            "label": "智谱基础 URL",
+            "hint": "智谱服务基础 URL。请填写根地址，不要带具体接口路径。",
+            "order": 0,
+        },
+    )
+    api_key: str = Field(
+        default="your-zhipu-api-key",
+        description="智谱 API 密钥",
+        json_schema_extra={
+            "label": "智谱 API 密钥",
+            "hint": "填入智谱开放平台的 API 密钥",
+            "input_type": "password",
+            "order": 1,
+        },
+    )
+    models: list[str] = Field(
+        default=["glm-image"],
+        description="智谱可用图片模型列表（仅支持文生图）",
+        json_schema_extra={
+            "label": "智谱模型列表",
+            "hint": "这里填写属于智谱图像生成接口的模型；当前仅支持文生图，不支持图生图编辑",
+            "order": 2,
+        },
+    )
+
+
 class PromptModerationConfig(PluginConfigBase):
     """提示词审核配置。"""
 
     __ui_label__ = "提示词审核"
-    __ui_order__ = 4
+    __ui_order__ = 5
 
     enabled: bool = Field(
         default=False,
@@ -178,7 +214,7 @@ class ImageModerationConfig(PluginConfigBase):
     """生成图片审核配置。"""
 
     __ui_label__ = "生成图片审核"
-    __ui_order__ = 5
+    __ui_order__ = 6
 
     enabled: bool = Field(
         default=False,
@@ -222,3 +258,4 @@ class DrawpicConfig(PluginConfigBase):
     image_review: ImageModerationConfig = Field(default_factory=ImageModerationConfig)
     openai: OpenAIModelConfig = Field(default_factory=OpenAIModelConfig)
     google: GoogleModelConfig = Field(default_factory=GoogleModelConfig)
+    zhipu: ZhipuModelConfig = Field(default_factory=ZhipuModelConfig)

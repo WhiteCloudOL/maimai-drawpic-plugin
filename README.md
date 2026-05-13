@@ -2,12 +2,12 @@
 
 # 🎨 麦麦绘图
 
-让 MaiBot 拥有强大的图片创建与编辑能力，支持 OpenAI 和 Google 平台的图片生成模型。
+让 MaiBot 拥有强大的图片创建与编辑能力，支持 OpenAI、Google 和智谱平台的图片生成模型。
 
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot 1.0+](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK 2.x](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.2.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.3.0-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
@@ -15,7 +15,7 @@
 ## 🌟 功能特性
 
 - 🖼️ **文生图与图生图**：支持直接根据提示词生成图片，或基于历史消息的图片进行编辑。
-- 🔄 **多平台支持**：内置支持 OpenAI 标准 `images` API、OpenAI Chat Completion 兼容、NovelAI 兼容接口，以及 Google Gemini 的图片生成 API。
+- 🔄 **多平台支持**：内置支持 OpenAI 标准 `images` API、OpenAI Chat Completion 兼容、NovelAI 兼容接口、Google Gemini 图片生成 API，以及智谱图片生成 API。
 - 🧠 **会话隔离**：不同群聊 / 私聊可以使用独立的模型与兼容模式偏好，并在重启后持久化。
 - ⚡ **后台任务执行**：绘图过程不阻塞主聊天流，图片生成完成后自动下发，并提供任务状态查询工具。
 - 🤖 **工具调用支持**：除命令外，大语言模型也可通过 Tool Calling 自动调用 `draw`、`edit_image`、`draw_status` 能力。
@@ -56,10 +56,10 @@
 # 是否启用插件
 enabled = true
 # 配置版本（请勿随意修改，由插件用于升级迁移）
-config_version = "2.3.0"
+config_version = "2.4.0"
 
 [general]
-# 默认使用的模型名称，插件会自动在 OpenAI 与 Google 的模型列表中查找
+# 默认使用的模型名称，插件会自动在 OpenAI、Google 与智谱的模型列表中查找
 default_model = "gpt-image-2"
 # 默认 OpenAI 兼容模式：auto / images_api / chat_completions / novelai_images_api
 # 通常建议保持 auto，由插件自动选择合适的接口
@@ -114,6 +114,16 @@ api_key = "your-google-api-key"
 models = [
     "gemini-3.1-flash-image-preview",
 ]
+
+[zhipu]
+# 智谱基础 URL（填根地址，不要带具体接口路径）
+base_url = "https://open.bigmodel.cn"
+# 你的 API 密钥
+api_key = "your-zhipu-api-key"
+# 走智谱图像生成接口的模型列表（当前仅支持文生图）
+models = [
+    "glm-image",
+]
 ```
 
 ### 🔧 主要配置项说明
@@ -122,15 +132,16 @@ models = [
 | :--- | :--- | :--- |
 | `[plugin]` | `enabled` | 是否启用插件 |
 | `[plugin]` | `config_version` | 配置版本号，用于插件自身的配置迁移，请勿随意修改 |
-| `[general]` | `default_model` | 默认模型名，插件会在 OpenAI 与 Google 的模型列表中查找归属 |
+| `[general]` | `default_model` | 默认模型名，插件会在 OpenAI、Google 与智谱的模型列表中查找归属 |
 | `[general]` | `default_openai_compatibility_mode` | 默认 OpenAI 兼容模式，支持 `auto` / `images_api` / `chat_completions` / `novelai_images_api` |
 | `[general]` | `request_timeout_seconds` | 单次图片请求超时时间（秒），取值会被夹紧到 `[5, 600]` 区间 |
 | `[openai]` | `base_url` / `api_key` / `models` | OpenAI 或 OpenAI 兼容服务的基础 URL、密钥与模型列表 |
 | `[google]` | `base_url` / `api_key` / `models` | Google Gemini 或兼容网关的基础 URL、密钥与模型列表 |
+| `[zhipu]` | `base_url` / `api_key` / `models` | 智谱图像生成接口的基础 URL、密钥与模型列表（当前仅支持文生图） |
 | `[prompt_review]` | `enabled` / `review_prompt` | 是否启用提示词审核以及审核提示模板（支持 `{user_prompt}` 占位符） |
 | `[image_review]` | `enabled` / `review_prompt` | 是否启用生成图片审核以及审核提示模板（支持 `{user_prompt}` 占位符） |
 
-> 💡 **模型归属：** 模型是否走 OpenAI 接口或 Google 接口，取决于它出现在哪一侧的 `models` 列表里。同名模型不要同时出现在两侧。
+> 💡 **模型归属：** 模型是否走 OpenAI、Google 或智谱接口，取决于它出现在哪一侧的 `models` 列表里。同名模型不要同时出现在多侧。
 
 ### 🛡️ 审核配置说明
 
@@ -151,7 +162,9 @@ models = [
 | `chat_completions` | 使用 OpenAI 的 Chat Completion 接口返回图片（部分中转/自部署网关会这样实现） |
 | `novelai_images_api` | 适配 NovelAI 风格的图片生成接口 |
 
-> 📝 **提示：** 当使用 Google 模型时，`openai_compatibility_mode` 不会生效；插件会自动走 Google Gemini 的图片生成 API。
+> 📝 **提示：** 当使用 Google 或智谱模型时，`openai_compatibility_mode` 不会生效；插件会自动走对应平台的图片生成 API。
+>
+> ⚠️ **限制：** 智谱模型当前只接入了文生图接口，不能用于 `edit_image` 图生图编辑。
 
 ### 💾 会话偏好持久化
 
@@ -182,7 +195,7 @@ models = [
 | 工具名 | 作用 |
 | :--- | :--- |
 | `draw` | 根据提示词生成新图片，结果以异步后台任务形式回传到当前聊天流 |
-| `edit_image` | 编辑当前聊天中的最近一张图片，或编辑指定 `source_message_id` / `source_image_base64` 对应的图片 |
+| `edit_image` | 编辑当前聊天中的最近一张图片，或编辑指定 `source_message_id` / `source_image_base64` 对应的图片（智谱模型暂不支持） |
 | `draw_status` | 查询当前会话最近一个绘图后台任务，或按 `task_id` 查询指定任务的状态 |
 
 共通可选参数：
@@ -211,7 +224,8 @@ plugins/maimai-drawpic-plugin/
 │   └── texts.py            # 命令帮助 / 状态文本
 └── providers/
     ├── openai_platform.py  # OpenAI 兼容图片接口调用
-    └── google_platform.py  # Google Gemini 图片接口调用
+    ├── google_platform.py  # Google Gemini 图片接口调用
+    └── zhipu_platform.py   # 智谱图片生成接口调用
 ```
 
 ## 📜 许可证
