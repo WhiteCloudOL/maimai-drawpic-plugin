@@ -7,7 +7,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot 1.0+](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK 2.x](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.1.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.2.0-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
