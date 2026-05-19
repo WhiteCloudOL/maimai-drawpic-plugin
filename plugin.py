@@ -136,9 +136,10 @@ class DrawpicPlugin(MaiBotPlugin):
         router = self._require_router()
         moderation_service = self._require_moderation_service()
         self.ctx.logger.info(
-            "麦麦绘图插件已加载: default_model=%s timeout=%ss openai_models=%s google_models=%s zhipu_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
+            "麦麦绘图插件已加载: default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
             router.resolve_default_model(),
             router.resolve_request_timeout_seconds(),
+            len(router.get_aliyun_models()),
             len(router.get_openai_models()),
             len(router.get_google_models()),
             len(router.get_zhipu_models()),
@@ -168,11 +169,12 @@ class DrawpicPlugin(MaiBotPlugin):
             router = self._require_router()
             moderation_service = self._require_moderation_service()
             self.ctx.logger.info(
-                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss openai_models=%s google_models=%s zhipu_models=%s prompt_review=%s image_review=%s task_count=%s",
+                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s prompt_review=%s image_review=%s task_count=%s",
                 scope,
                 version,
                 router.resolve_default_model(),
                 router.resolve_request_timeout_seconds(),
+                len(router.get_aliyun_models()),
                 len(router.get_openai_models()),
                 len(router.get_google_models()),
                 len(router.get_zhipu_models()),

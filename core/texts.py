@@ -18,6 +18,7 @@ def build_session_status_text(router: ProviderRouter, session_preference: dict[s
 def build_draw_help_text(router: ProviderRouter) -> str:
     """构建 /绘图 命令帮助文本。"""
 
+    aliyun_models = "、".join(router.get_aliyun_models()) or "未配置"
     openai_models = "、".join(router.get_openai_models()) or "未配置"
     google_models = "、".join(router.get_google_models()) or "未配置"
     zhipu_models = "、".join(router.get_zhipu_models()) or "未配置"
@@ -27,6 +28,7 @@ def build_draw_help_text(router: ProviderRouter) -> str:
         "/绘图 模型 模型名\n"
         "/绘图 兼容模式 auto|images_api|chat_completions|novelai_images_api\n"
         "/绘图 这里直接写提示词\n"
+        f"阿里百炼模型：{aliyun_models}\n"
         f"OpenAI 模型：{openai_models}\n"
         f"Google 模型：{google_models}\n"
         f"智谱模型（仅文生图）：{zhipu_models}\n"

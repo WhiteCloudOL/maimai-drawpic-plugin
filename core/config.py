@@ -21,7 +21,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.4.0",
+        default="2.5.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -37,10 +37,10 @@ class GeneralModelConfig(PluginConfigBase):
 
     default_model: str = Field(
         default="gpt-image-2",
-        description="默认模型名称。插件会自动在 OpenAI 与 Google 模型列表中查找该模型。",
+        description="默认模型名称。插件会自动在阿里百炼、OpenAI、Google 与智谱模型列表中查找该模型。",
         json_schema_extra={
             "label": "默认模型",
-            "hint": "默认模型名称。插件会自动在 OpenAI 与 Google 模型列表中查找该模型。",
+            "hint": "默认模型名称。插件会自动在阿里百炼、OpenAI、Google 与智谱模型列表中查找该模型。",
             "order": 0,
         },
     )
@@ -126,7 +126,7 @@ class GoogleModelConfig(PluginConfigBase):
         },
     )
     models: list[str] = Field(
-        default=["gemini-3.1-flash-image-preview"],
+        default=["gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview"],
         description="Google 可用图片模型列表",
         json_schema_extra={
             "label": "Google 模型列表",
@@ -172,11 +172,47 @@ class ZhipuModelConfig(PluginConfigBase):
     )
 
 
+class AliyunModelConfig(PluginConfigBase):
+    """阿里百炼模型配置。"""
+
+    __ui_label__ = "阿里百炼配置"
+    __ui_order__ = 5
+
+    base_url: str = Field(
+        default="https://dashscope.aliyuncs.com",
+        description="阿里百炼服务基础 URL。北京地域使用 dashscope.aliyuncs.com，新加坡地域使用 dashscope-intl.aliyuncs.com。",
+        json_schema_extra={
+            "label": "阿里百炼基础 URL",
+            "hint": "填写百炼根地址，不要带具体接口路径；北京地域默认 https://dashscope.aliyuncs.com",
+            "order": 0,
+        },
+    )
+    api_key: str = Field(
+        default="your-aliyun-api-key",
+        description="阿里百炼 API 密钥",
+        json_schema_extra={
+            "label": "阿里百炼 API 密钥",
+            "hint": "填入阿里百炼（DashScope / Model Studio）的 API 密钥",
+            "input_type": "password",
+            "order": 1,
+        },
+    )
+    models: list[str] = Field(
+        default=["qwen-image-2.0"],
+        description="阿里百炼可用图片模型列表（支持文生图与图像编辑）",
+        json_schema_extra={
+            "label": "阿里百炼模型列表",
+            "hint": "这里填写属于阿里百炼图片接口的模型，例如 qwen-image-2.0、qwen-image-2.0-pro、qwen-image-edit",
+            "order": 2,
+        },
+    )
+
+
 class PromptModerationConfig(PluginConfigBase):
     """提示词审核配置。"""
 
     __ui_label__ = "提示词审核"
-    __ui_order__ = 5
+    __ui_order__ = 6
 
     enabled: bool = Field(
         default=False,
@@ -214,7 +250,7 @@ class ImageModerationConfig(PluginConfigBase):
     """生成图片审核配置。"""
 
     __ui_label__ = "生成图片审核"
-    __ui_order__ = 6
+    __ui_order__ = 7
 
     enabled: bool = Field(
         default=False,
@@ -259,3 +295,4 @@ class DrawpicConfig(PluginConfigBase):
     openai: OpenAIModelConfig = Field(default_factory=OpenAIModelConfig)
     google: GoogleModelConfig = Field(default_factory=GoogleModelConfig)
     zhipu: ZhipuModelConfig = Field(default_factory=ZhipuModelConfig)
+    aliyun: AliyunModelConfig = Field(default_factory=AliyunModelConfig)

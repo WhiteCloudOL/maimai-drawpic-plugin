@@ -1,5 +1,6 @@
 from typing import Any, Literal, Protocol
 
+from ..providers.aliyun_platform import AliyunImage
 from ..providers.google_platform import GoogleImage
 from ..providers.openai_platform import OpenaiImage
 from ..providers.zhipu_platform import ZhipuImage
@@ -26,6 +27,11 @@ class ProviderRouter:
 
         return [model.strip() for model in self.config.openai.models if model.strip()]
 
+    def get_aliyun_models(self) -> list[str]:
+        """获取阿里百炼模型列表。"""
+
+        return [model.strip() for model in self.config.aliyun.models if model.strip()]
+
     def get_google_models(self) -> list[str]:
         """获取 Google 模型列表。"""
 
@@ -39,12 +45,14 @@ class ProviderRouter:
     def get_all_models(self) -> list[str]:
         """获取全部可用模型列表。"""
 
-        return self.get_openai_models() + self.get_google_models() + self.get_zhipu_models()
+        return self.get_aliyun_models() + self.get_openai_models() + self.get_google_models() + self.get_zhipu_models()
 
-    def get_model_provider(self, model: str) -> Literal["openai", "google", "zhipu", ""]:
+    def get_model_provider(self, model: str) -> Literal["aliyun", "openai", "google", "zhipu", ""]:
         """根据模型名称判断其所属提供商。"""
 
         normalized_model = model.strip()
+        if normalized_model in self.get_aliyun_models():
+            return "aliyun"
         if normalized_model in self.get_openai_models():
             return "openai"
         if normalized_model in self.get_google_models():
@@ -97,6 +105,16 @@ class ProviderRouter:
             return normalized_model
         return self.resolve_default_model()
 
+    def create_aliyun_provider(self) -> AliyunImage:
+        """创建阿里百炼图片提供商实例。"""
+
+        return AliyunImage(
+            api_key=self.config.aliyun.api_key,
+            base_url=self.config.aliyun.base_url,
+            logger=self.logger,
+            request_timeout_seconds=self.resolve_request_timeout_seconds(),
+        )
+
     def create_openai_provider(self, compatibility_mode: OpenAICompatibilityMode) -> OpenaiImage:
         """创建 OpenAI 图片提供商实例。"""
 
@@ -137,10 +155,12 @@ class ProviderRouter:
         self,
         model: str,
         openai_compatibility_mode: str = "",
-    ) -> tuple[ImageProvider, Literal["openai", "google", "zhipu"]]:
+    ) -> tuple[ImageProvider, Literal["aliyun", "openai", "google", "zhipu"]]:
         """根据模型解析并创建对应的平台实例。"""
 
         provider_type = self.get_model_provider(model)
+        if provider_type == "aliyun":
+            return self.create_aliyun_provider(), "aliyun"
         if provider_type == "google":
             return self.create_google_provider(), "google"
         if provider_type == "zhipu":
