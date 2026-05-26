@@ -25,8 +25,9 @@ class DrawpicPlugin(MaiBotPlugin):
 
     def __init__(self) -> None:
         super().__init__()
-        self._session_preferences_path = Path(__file__).with_name("session_preferences.json")
-        self._task_store_path = Path(__file__).with_name("draw_tasks.json")
+        self._data_dir = Path(__file__).with_name("data")
+        self._session_preferences_path = self._data_dir / "session_preferences.json"
+        self._task_store_path = self._data_dir / "draw_tasks.json"
         self._router: ProviderRouter | None = None
         self._session_store: SessionPreferenceStore | None = None
         self._stream_service: ChatStreamService | None = None
@@ -34,9 +35,22 @@ class DrawpicPlugin(MaiBotPlugin):
         self._task_store = DrawTaskStore(path=self._task_store_path)
         self._draw_service: DrawService | None = None
 
+    def _prepare_data_dir(self) -> None:
+        """准备插件运行时数据目录，并迁移旧位置的数据文件。"""
+
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        legacy_paths = {
+            Path(__file__).with_name("session_preferences.json"): self._session_preferences_path,
+            Path(__file__).with_name("draw_tasks.json"): self._task_store_path,
+        }
+        for legacy_path, current_path in legacy_paths.items():
+            if legacy_path.exists() and not current_path.exists():
+                legacy_path.replace(current_path)
+
     def _refresh_services(self) -> None:
         """刷新内部服务对象。"""
 
+        self._prepare_data_dir()
         existing_preferences: dict[str, dict[str, str]] = {}
         if self._session_store is not None:
             existing_preferences = dict(self._session_store.preferences)
@@ -51,7 +65,7 @@ class DrawpicPlugin(MaiBotPlugin):
         self._session_store.preferences = existing_preferences
         self._session_store.normalize_all()
         self._stream_service = ChatStreamService(self.ctx)
-        self._moderation_service = DrawpicModerationService(self.config)
+        self._moderation_service = DrawpicModerationService(self.config, self.ctx)
         self._draw_service = DrawService(
             ctx=self.ctx,
             router=self._router,

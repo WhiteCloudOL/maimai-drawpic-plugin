@@ -70,6 +70,7 @@ class SessionPreferenceStore:
         """保存会话级模型配置到本地文件。"""
 
         self.normalize_all()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(
             json.dumps(self.preferences, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -80,13 +81,12 @@ class SessionPreferenceStore:
 
         normalized_preferences: dict[str, dict[str, str]] = {}
         for session_key, session_value in self.preferences.items():
+            model = str(session_value.get("model") or "").strip()
+            openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
             normalized_preferences[session_key] = {
-                "model": self.router.resolve_model_name(
-                    session_value.get("model", ""),
-                    allow_unknown_model=False,
-                ),
+                "model": model if model and self.router.get_model_provider(model) else "",
                 "openai_compatibility_mode": self.router.resolve_openai_compatibility_mode(
-                    session_value.get("openai_compatibility_mode", "")
+                    openai_compatibility_mode
                 ),
             }
         self.preferences = normalized_preferences
@@ -98,20 +98,17 @@ class SessionPreferenceStore:
         group_id: str = "",
         platform: str = "qq",
     ) -> dict[str, str]:
-        """获取并初始化当前会话的模型配置。"""
+        """获取当前会话的模型配置；未设置模型时不写入默认模型。"""
 
         session_key = self.resolve_session_key(stream_id, user_id, group_id, platform)
         session_value = self.preferences.get(session_key, {})
+        model = str(session_value.get("model") or "").strip()
         resolved_preference = {
-            "model": self.router.resolve_model_name(
-                str(session_value.get("model") or ""),
-                allow_unknown_model=False,
-            ),
+            "model": self.router.resolve_model_name(model, allow_unknown_model=False) if model else "",
             "openai_compatibility_mode": self.router.resolve_openai_compatibility_mode(
                 str(session_value.get("openai_compatibility_mode") or "")
             ),
         }
-        self.preferences[session_key] = resolved_preference
         return resolved_preference
 
     def set_preference(

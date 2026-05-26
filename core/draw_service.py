@@ -140,7 +140,7 @@ class DrawService:
             return (
                 f"绘图任务仍在处理中：task_id={record.task_id}，类型={record.task_type}，"
                 f"模型={record.model}。当前不要在本轮继续调用 draw_status，"
-                f"请直接回复用户“还在生成中”，并至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查一次。"
+                f"请根据上下文自然告知用户任务仍在生成，并至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查一次。"
             )
         if record.status == "completed":
             return (
@@ -206,7 +206,7 @@ class DrawService:
             message = (
                 f"绘图任务仍在处理中：task_id={record.task_id}，类型={record.task_type}，模型={record.model}。"
                 f"距离上次查询仅 {seconds_since_last_query} 秒。当前不要在本轮继续调用 draw_status，"
-                f"请直接回复用户“还在生成中”，并在 {max(next_check_after_seconds, 1)} 秒后再查。"
+                f"请根据上下文自然告知用户任务仍在生成，并在 {max(next_check_after_seconds, 1)} 秒后再查。"
             )
 
         return {
@@ -454,7 +454,7 @@ class DrawService:
         user_id: str = "",
         group_id: str = "",
         platform_name: str = "qq",
-        notify_start: bool = True,
+        notify_start: bool = False,
     ) -> dict[str, Any]:
         """启动后台文生图。"""
 
@@ -486,18 +486,20 @@ class DrawService:
         )
         self.track_background_task(background_task, task_record.task_id)
         if notify_start:
-            await self.send_text_with_fallback(
-                text=f"开始生成图片了，当前模型是 {resolved_model}。这次会在后台慢慢跑，生成完成后我会直接把图片发出来。",
-                stream_id=stream_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
+            self.ctx.logger.info(
+                "绘图任务已提交: task_id=%s model=%s stream_id=%s user_id=%s group_id=%s platform=%s",
+                task_record.task_id,
+                resolved_model,
+                stream_id,
+                user_id,
+                group_id,
+                platform_name,
             )
         return {
             "success": True,
             "message": (
                 f"已开始后台生成图片，task_id={task_record.task_id}。"
-                "这是异步任务。当前不要立刻反复调用 draw_status；请先正常回复用户正在生成中，"
+                "这是异步任务。当前不要立刻反复调用 draw_status；请根据对话上下文自然回复用户任务已开始，"
                 f"至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查询状态。"
             ),
             "provider": provider_name,
@@ -555,18 +557,11 @@ class DrawService:
             )
         )
         self.track_background_task(background_task, task_record.task_id)
-        await self.send_text_with_fallback(
-            text="开始后台编辑图片了，完成后我会直接把结果发出来。",
-            stream_id=stream_id,
-            user_id=user_id,
-            group_id=group_id,
-            platform=platform_name,
-        )
         return {
             "success": True,
             "message": (
                 f"已开始后台编辑图片，task_id={task_record.task_id}。"
-                "这是异步任务。当前不要立刻反复调用 draw_status；请先正常回复用户正在处理中，"
+                "这是异步任务。当前不要立刻反复调用 draw_status；请根据对话上下文自然回复用户任务已开始，"
                 f"至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查询状态。"
             ),
             "provider": provider_name,

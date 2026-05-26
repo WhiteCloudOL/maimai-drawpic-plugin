@@ -218,6 +218,7 @@ __marimo__/
 #maimai
 !_manifest.json
 config.toml
+data/
 session_preferences.json
 config_back/
 draw_tasks.json

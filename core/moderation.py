@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
+from typing import Any
 
 import base64
 
 from PIL import Image as PILImage
-
-from src.services.llm_service import LLMServiceClient
 
 from .config import DrawpicConfig
 
@@ -24,16 +23,9 @@ class ModerationResult:
 class DrawpicModerationService:
     """负责提示词与生成图片审核。"""
 
-    def __init__(self, config: DrawpicConfig) -> None:
+    def __init__(self, config: DrawpicConfig, ctx: Any) -> None:
         self.config = config
-        self._prompt_reviewer = LLMServiceClient(
-            task_name="replyer",
-            request_type="drawpic.prompt_review",
-        )
-        self._image_reviewer = LLMServiceClient(
-            task_name="vlm",
-            request_type="drawpic.image_review",
-        )
+        self.ctx = ctx
 
     def is_prompt_review_enabled(self) -> bool:
         """是否启用提示词审核。"""
@@ -55,8 +47,13 @@ class DrawpicModerationService:
             self.config.prompt_review.review_prompt,
             prompt,
         )
-        response = await self._prompt_reviewer.generate_response(rendered_prompt)
-        return self._parse_review_response(response.response)
+        response = await self.ctx.llm.generate(
+            rendered_prompt,
+            model="replyer",
+            temperature=0.0,
+            max_tokens=512,
+        )
+        return self._parse_review_response(self._extract_llm_response(response))
 
     async def review_image(self, prompt: str, image_bytes: bytes) -> ModerationResult:
         """审核生成图片。"""
@@ -70,12 +67,33 @@ class DrawpicModerationService:
         )
         image_format = self._detect_image_format(image_bytes)
         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-        response = await self._image_reviewer.generate_response_for_image(
-            rendered_prompt,
-            image_base64,
-            image_format,
+        response = await self.ctx.llm.generate(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": rendered_prompt},
+                        {
+                            "type": "image",
+                            "image_format": image_format,
+                            "image_base64": image_base64,
+                        },
+                    ],
+                }
+            ],
+            model="vlm",
+            temperature=0.0,
+            max_tokens=512,
         )
-        return self._parse_review_response(response.response)
+        return self._parse_review_response(self._extract_llm_response(response))
+
+    @staticmethod
+    def _extract_llm_response(response: dict[str, Any]) -> str:
+        """从 SDK LLM 能力返回中提取文本响应。"""
+
+        if not response.get("success", False):
+            raise RuntimeError(str(response.get("error") or "审核模型调用失败"))
+        return str(response.get("response") or response.get("content") or "").strip()
 
     @staticmethod
     def _render_template(template: str, user_prompt: str) -> str:

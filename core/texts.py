@@ -4,10 +4,12 @@ from .provider_router import ProviderRouter
 def build_session_status_text(router: ProviderRouter, session_preference: dict[str, str]) -> str:
     """构建当前会话的绘图状态文本。"""
 
-    model_name = session_preference["model"]
+    model_name = session_preference["model"] or router.resolve_default_model()
     provider_name = router.get_model_provider(model_name) or "unknown"
+    lock_status = "已锁定" if session_preference["model"] else "未锁定，跟随默认模型"
     lines = [
         f"当前绘图模型：{model_name}",
+        f"会话模型状态：{lock_status}",
         f"当前提供商：{provider_name}",
         f"当前 OpenAI 兼容模式：{session_preference['openai_compatibility_mode']}",
         f"默认模型：{router.resolve_default_model()}",

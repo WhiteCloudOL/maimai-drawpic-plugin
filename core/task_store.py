@@ -116,6 +116,7 @@ class DrawTaskStore:
     def save(self) -> None:
         """保存后台绘图任务到本地文件。"""
 
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         serialized_tasks = {
             task_id: self._serialize_record(record)
             for task_id, record in self._tasks.items()
