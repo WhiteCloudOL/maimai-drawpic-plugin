@@ -4,6 +4,8 @@ from maibot_sdk import Field, PluginConfigBase
 
 
 OpenAICompatibilityMode = Literal["auto", "images_api", "chat_completions", "novelai_images_api"]
+QuotaPeriodMode = Literal["daily", "weekly", "monthly", "once"]
+CommandReplyMode = Literal["图片", "文本"]
 
 
 class PluginSectionConfig(PluginConfigBase):
@@ -21,7 +23,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.5.0",
+        default="2.8.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -29,10 +31,10 @@ class PluginSectionConfig(PluginConfigBase):
     )
 
 
-class GeneralModelConfig(PluginConfigBase):
-    """通用模型配置。"""
+class GeneralConfig(PluginConfigBase):
+    """通用配置。"""
 
-    __ui_label__ = "通用模型配置"
+    __ui_label__ = "通用配置"
     __ui_order__ = 1
 
     default_model: str = Field(
@@ -60,6 +62,61 @@ class GeneralModelConfig(PluginConfigBase):
             "label": "图片请求超时",
             "hint": "单次图片请求超时时间（秒），建议设置为 120 到 300",
             "order": 2,
+        },
+    )
+    command_reply_mode: CommandReplyMode = Field(
+        default="图片",
+        description="聊天命令返回形式，可选择图片或文本。",
+        json_schema_extra={
+            "label": "命令返回形式",
+            "hint": "图片=使用粉色图片模板回复命令；文本=直接发送纯文本回复",
+            "options": ["图片", "文本"],
+            "order": 3,
+        },
+    )
+    permission_enabled: bool = Field(
+        default=True,
+        description="是否启用权限管理。启用后，仅插件管理员可切换模型、切换兼容模式和修改用户次数。",
+        json_schema_extra={
+            "label": "启用权限管理",
+            "hint": "启用后，模型切换、兼容模式切换和次数管理命令仅允许插件管理员使用",
+            "order": 4,
+        },
+    )
+    admin_user_ids: list[str] = Field(
+        default=[],
+        description="插件管理员用户 ID 列表，通常填写 QQ 号。",
+        json_schema_extra={
+            "label": "插件管理员列表",
+            "hint": "填写允许管理模型、兼容模式和用户次数的用户 ID，通常为 QQ 号",
+            "order": 5,
+        },
+    )
+    quota_enabled: bool = Field(
+        default=True,
+        description="是否启用用户绘图次数管理。管理员不受次数限制。",
+        json_schema_extra={
+            "label": "启用用户次数管理",
+            "hint": "启用后，普通用户每次绘图会消耗次数；管理员不受限制",
+            "order": 6,
+        },
+    )
+    quota_period: QuotaPeriodMode = Field(
+        default="daily",
+        description="用户次数重置周期：daily / weekly / monthly / once。",
+        json_schema_extra={
+            "label": "次数周期",
+            "hint": "daily=每日，weekly=每周，monthly=每月，once=一次性不自动重置",
+            "order": 7,
+        },
+    )
+    default_quota: int = Field(
+        default=5,
+        description="普通用户在当前周期内默认可用绘图次数。",
+        json_schema_extra={
+            "label": "默认可用次数",
+            "hint": "普通用户在所选周期内默认可用的绘图次数",
+            "order": 8,
         },
     )
 
@@ -289,7 +346,7 @@ class DrawpicConfig(PluginConfigBase):
     """插件配置。"""
 
     plugin: PluginSectionConfig = Field(default_factory=PluginSectionConfig)
-    general: GeneralModelConfig = Field(default_factory=GeneralModelConfig)
+    general: GeneralConfig = Field(default_factory=GeneralConfig)
     prompt_review: PromptModerationConfig = Field(default_factory=PromptModerationConfig)
     image_review: ImageModerationConfig = Field(default_factory=ImageModerationConfig)
     openai: OpenAIModelConfig = Field(default_factory=OpenAIModelConfig)

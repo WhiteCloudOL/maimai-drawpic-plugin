@@ -289,13 +289,6 @@ class DrawService:
                     message=review_reason_text,
                 )
                 self.ctx.logger.error("画图失败: task_id=%s provider=%s model=%s error=%s", task_id, provider_name, resolved_model, review_reason_text)
-                await self.send_text_with_fallback(
-                    text=f"图片生成完成了，但结果未通过审核，已拦截发送。{review_reason_text}",
-                    stream_id=stream_id,
-                    user_id=user_id,
-                    group_id=group_id,
-                    platform=platform_name,
-                )
                 return
 
             sent_count = await self.stream_service.send_generated_images_with_fallback(
@@ -395,13 +388,6 @@ class DrawService:
                     message=review_reason_text,
                 )
                 self.ctx.logger.error("画图失败: task_id=%s provider=%s model=%s error=%s", task_id, provider_name, resolved_model, review_reason_text)
-                await self.send_text_with_fallback(
-                    text=f"图片编辑完成了，但结果未通过审核，已拦截发送。{review_reason_text}",
-                    stream_id=stream_id,
-                    user_id=user_id,
-                    group_id=group_id,
-                    platform=platform_name,
-                )
                 return
 
             sent_count = await self.stream_service.send_generated_images_with_fallback(

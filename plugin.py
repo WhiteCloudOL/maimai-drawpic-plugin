@@ -8,13 +8,21 @@ from maibot_sdk.types import ToolParameterInfo, ToolParamType
 
 from .core.config import DrawpicConfig
 from .core.draw_service import DrawService
+from .core.image_reply import PinkImageReplyRenderer
 from .core.message_utils import find_source_image
 from .core.moderation import DrawpicModerationService
 from .core.provider_router import ProviderRouter
 from .core.session_preferences import SessionPreferenceStore
 from .core.stream_service import ChatStreamService
 from .core.task_store import DrawTaskStore
-from .core.texts import build_draw_help_text, build_session_status_text
+from .core.texts import (
+    build_command_usage_text,
+    build_compatible_mode_text,
+    build_model_text,
+    build_quota_adjust_text,
+    build_session_status_text,
+)
+from .core.usage_store import UserQuotaStore
 
 
 class DrawpicPlugin(MaiBotPlugin):
@@ -28,11 +36,14 @@ class DrawpicPlugin(MaiBotPlugin):
         self._data_dir = Path(__file__).with_name("data")
         self._session_preferences_path = self._data_dir / "session_preferences.json"
         self._task_store_path = self._data_dir / "draw_tasks.json"
+        self._usage_store_path = self._data_dir / "user_quotas.json"
         self._router: ProviderRouter | None = None
         self._session_store: SessionPreferenceStore | None = None
         self._stream_service: ChatStreamService | None = None
         self._moderation_service: DrawpicModerationService | None = None
         self._task_store = DrawTaskStore(path=self._task_store_path)
+        self._usage_store = UserQuotaStore(path=self._usage_store_path)
+        self._image_reply_renderer = PinkImageReplyRenderer()
         self._draw_service: DrawService | None = None
 
     def _prepare_data_dir(self) -> None:
@@ -56,6 +67,7 @@ class DrawpicPlugin(MaiBotPlugin):
             existing_preferences = dict(self._session_store.preferences)
 
         self._task_store.bind_logger(self.ctx.logger)
+        self._usage_store.bind_logger(self.ctx.logger)
         self._router = ProviderRouter(self.config, logger=self.ctx.logger)
         self._session_store = SessionPreferenceStore(
             path=self._session_preferences_path,
@@ -66,6 +78,7 @@ class DrawpicPlugin(MaiBotPlugin):
         self._session_store.normalize_all()
         self._stream_service = ChatStreamService(self.ctx)
         self._moderation_service = DrawpicModerationService(self.config, self.ctx)
+        self._image_reply_renderer = PinkImageReplyRenderer()
         self._draw_service = DrawService(
             ctx=self.ctx,
             router=self._router,
@@ -141,12 +154,98 @@ class DrawpicPlugin(MaiBotPlugin):
             openai_compatibility_mode=openai_compatibility_mode,
         )
 
+    def _is_admin(self, user_id: str) -> bool:
+        """判断用户是否为插件管理员。"""
+
+        normalized_user_id = user_id.strip()
+        if not normalized_user_id:
+            return False
+        admin_ids = {str(admin_id).strip() for admin_id in self.config.general.admin_user_ids}
+        return normalized_user_id in admin_ids
+
+    def _can_manage_session(self, user_id: str) -> bool:
+        """判断用户是否可管理模型、兼容模式与次数。"""
+
+        if not self.config.general.permission_enabled:
+            return True
+        return self._is_admin(user_id)
+
+    def _resolve_quota_user_id(self, user_id: str, group_id: str, stream_id: str) -> str:
+        """解析额度使用的用户键。"""
+
+        return user_id.strip() or group_id.strip() or stream_id.strip()
+
+    def _quota_status_text(self, user_id: str, group_id: str, stream_id: str) -> str:
+        """构建用户额度状态文本。"""
+
+        if not self.config.general.quota_enabled:
+            return "未启用次数管理"
+        if self._is_admin(user_id):
+            return "管理员不受次数限制"
+        quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
+        remaining = self._usage_store.get_remaining(
+            quota_user_id,
+            period=self.config.general.quota_period,
+            default_quota=self.config.general.default_quota,
+        )
+        return f"当前周期剩余 {remaining} 次（周期：{self.config.general.quota_period}）"
+
+    def _consume_draw_quota(self, user_id: str, group_id: str, stream_id: str) -> tuple[bool, str]:
+        """消耗一次绘图额度。"""
+
+        if not self.config.general.quota_enabled:
+            return True, "未启用次数管理"
+        if self._is_admin(user_id):
+            return True, "管理员不受次数限制"
+        quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
+        if not quota_user_id:
+            return False, "无法识别用户，不能使用绘图次数"
+        success, remaining = self._usage_store.consume(
+            quota_user_id,
+            period=self.config.general.quota_period,
+            default_quota=self.config.general.default_quota,
+        )
+        if not success:
+            return False, f"绘图次数已用尽（周期：{self.config.general.quota_period}）"
+        return True, f"当前周期剩余 {remaining} 次"
+
+    async def _send_command_reply(
+        self,
+        *,
+        title: str,
+        body: str,
+        stream_id: str,
+        user_id: str,
+        group_id: str,
+        platform: str,
+    ) -> bool:
+        """按配置发送命令回复。"""
+
+        if self.config.general.command_reply_mode == "文本":
+            text = f"{title}\n\n{body.strip() or '无内容'}"
+            return await self._require_stream_service().send_text_with_fallback(
+                text=text,
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+        image_bytes = self._image_reply_renderer.render(title, body)
+        return await self._require_stream_service().send_image_bytes_with_fallback(
+            image_bytes=image_bytes,
+            stream_id=stream_id,
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform,
+        )
+
     async def on_load(self) -> None:
         """插件加载时初始化平台。"""
 
         self._refresh_services()
         self._require_session_store().load()
         self._task_store.load()
+        self._usage_store.load()
         router = self._require_router()
         moderation_service = self._require_moderation_service()
         self.ctx.logger.info(
@@ -169,6 +268,7 @@ class DrawpicPlugin(MaiBotPlugin):
         self._require_draw_service().cancel_background_tasks()
         self._require_session_store().save()
         self._task_store.save()
+        self._usage_store.save()
         self.ctx.logger.info("麦麦绘图插件已卸载")
 
     async def on_config_update(self, scope: str, config_data: dict[str, Any], version: str) -> None:
@@ -225,6 +325,9 @@ class DrawpicPlugin(MaiBotPlugin):
             raise ValueError(f"指定模型不可用：{resolved_model}")
 
         await draw_service.review_prompt_or_raise(prompt)
+        quota_allowed, quota_message = self._consume_draw_quota(user_id, group_id, stream_id)
+        if not quota_allowed:
+            raise PermissionError(quota_message)
         return await draw_service.start_background_draw_request(
             prompt=prompt,
             stream_id=stream_id,
@@ -305,6 +408,11 @@ class DrawpicPlugin(MaiBotPlugin):
                 group_id=group_id.strip() or str(kwargs.get("group_id") or "").strip(),
                 platform_name=platform.strip() or str(kwargs.get("platform") or "qq").strip() or "qq",
             )
+        except PermissionError as exc:
+            return {
+                "success": False,
+                "message": f"{exc}。请自然告知用户当前无法继续绘图，并提示联系管理员调整次数。",
+            }
         except Exception as exc:
             self.ctx.logger.error("启动后台创建图片失败: %s", exc, exc_info=True)
             return {"success": False, "message": f"启动后台创建图片失败：{exc}"}
@@ -406,6 +514,16 @@ class DrawpicPlugin(MaiBotPlugin):
                     "message": f"当前模型 {resolved_model} 仅支持文生图，不支持 edit_image 图生图编辑",
                 }
             await draw_service.review_prompt_or_raise(prompt.strip())
+            quota_allowed, quota_message = self._consume_draw_quota(
+                normalized_user_id,
+                normalized_group_id,
+                normalized_stream_id,
+            )
+            if not quota_allowed:
+                return {
+                    "success": False,
+                    "message": f"{quota_message}。请自然告知用户当前无法继续绘图，并提示联系管理员调整次数。",
+                }
             lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
@@ -469,13 +587,124 @@ class DrawpicPlugin(MaiBotPlugin):
             platform=str(kwargs.get("platform") or "qq").strip() or "qq",
         )
 
-    @Command("draw_command", description="绘图命令", pattern=r"^/绘图(?:\s+(?P<content>.+))?$")
+    @staticmethod
+    def _split_command_payload(command_payload: str) -> tuple[str, str]:
+        """拆分命令首词与剩余文本。"""
+
+        stripped_payload = command_payload.strip()
+        if not stripped_payload:
+            return "", ""
+        parts = stripped_payload.split(maxsplit=1)
+        first_word = parts[0]
+        rest_payload = parts[1] if len(parts) > 1 else ""
+        return first_word, rest_payload
+
+    @staticmethod
+    def _normalize_command_name(command_name: str) -> str:
+        """归一化中英文命令名。"""
+
+        command_map = {
+            "状态": "status",
+            "status": "status",
+            "模型": "model",
+            "model": "model",
+            "兼容模式": "compatible-mode",
+            "compatible-mode": "compatible-mode",
+            "绘制": "draw",
+            "draw": "draw",
+            "次数": "times",
+            "times": "times",
+            "添加": "add",
+            "add": "add",
+            "减少": "remove",
+            "remove": "remove",
+            "设置": "set",
+            "set": "set",
+        }
+        return command_map.get(command_name.strip(), "")
+
+    async def _handle_times_command(
+        self,
+        *,
+        rest_payload: str,
+        stream_id: str,
+        user_id: str,
+        group_id: str,
+        platform: str,
+    ) -> tuple[bool, str, int]:
+        """处理用户次数调整命令。"""
+
+        if not self._can_manage_session(user_id):
+            await self._send_command_reply(
+                title="权限不足",
+                body="当前已启用权限管理。\n只有插件管理员可以调整用户绘图次数。",
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "权限不足", 1
+
+        action_word, action_rest = self._split_command_payload(rest_payload)
+        action = self._normalize_command_name(action_word)
+        if action not in {"add", "remove", "set"}:
+            await self._send_command_reply(
+                title="次数命令用法",
+                body=(
+                    "/绘图 添加/减少/设置 用户ID 次数"
+                ),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "次数命令参数不足", 1
+
+        target_user_id, count_text = self._split_command_payload(action_rest)
+        try:
+            count = int(count_text.strip())
+        except ValueError:
+            count = -1
+        if not target_user_id or count < 0 or (action in {"add", "remove"} and count == 0):
+            await self._send_command_reply(
+                title="次数命令参数无效",
+                body="请提供用户ID和有效次数。\n添加/减少需要正整数，设置可设置为 0。",
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "次数命令参数无效", 1
+
+        remaining = self._usage_store.adjust_remaining(
+            target_user_id,
+            action=action,  # type: ignore[arg-type]
+            count=count,
+            period=self.config.general.quota_period,
+            default_quota=self.config.general.default_quota,
+        )
+        action_label_map = {
+            "add": "添加",
+            "remove": "减少",
+            "set": "设置",
+        }
+        await self._send_command_reply(
+            title="次数已更新",
+            body=build_quota_adjust_text(action_label_map[action], target_user_id, remaining),
+            stream_id=stream_id,
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform,
+        )
+        return True, "已调整用户绘图次数", 2
+
+    @Command("draw_command", description="绘图命令", pattern=r"^/(?:绘图|drawpic)(?:\s+(?P<content>[\s\S]+))?$")
     async def handle_draw_command(
         self,
         stream_id: str = "",
         **kwargs: Any,
     ) -> tuple[bool, str, int]:
-        """处理 /绘图 命令。"""
+        """处理绘图命令。"""
 
         matched_groups = kwargs.get("matched_groups", {})
         command_payload = str(matched_groups.get("content") or "").strip() if isinstance(matched_groups, dict) else ""
@@ -487,9 +716,10 @@ class DrawpicPlugin(MaiBotPlugin):
         if not normalized_stream_id:
             return False, "当前聊天流不可用，无法执行绘图命令", 1
 
-        if not command_payload or command_payload == "帮助":
-            await self._require_draw_service().send_text_with_fallback(
-                text=build_draw_help_text(self._require_router()),
+        if not command_payload or command_payload in {"帮助", "help"}:
+            await self._send_command_reply(
+                title="麦麦绘图",
+                body=build_command_usage_text(),
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
@@ -503,9 +733,30 @@ class DrawpicPlugin(MaiBotPlugin):
             normalized_group_id,
             normalized_platform,
         )
-        if command_payload == "状态":
-            await self._require_draw_service().send_text_with_fallback(
-                text=build_session_status_text(self._require_router(), session_preference),
+        first_word, rest_payload = self._split_command_payload(command_payload)
+        normalized_command = self._normalize_command_name(first_word)
+
+        if normalized_command == "status":
+            latest_task = self._task_store.get_latest_task(
+                self._require_draw_service().build_session_key(
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=normalized_platform,
+                )
+            )
+            await self._send_command_reply(
+                title="绘图状态",
+                body=build_session_status_text(
+                    self._require_router(),
+                    session_preference,
+                    latest_task,
+                    quota_text=self._quota_status_text(
+                        normalized_user_id,
+                        normalized_group_id,
+                        normalized_stream_id,
+                    ),
+                ),
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
@@ -513,32 +764,35 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return True, "已显示当前绘图状态", 2
 
-        if command_payload == "模型":
-            await self._require_draw_service().send_text_with_fallback(
-                text="请在“/绘图 模型”后面填写具体模型名。",
-                stream_id=normalized_stream_id,
-                user_id=normalized_user_id,
-                group_id=normalized_group_id,
-                platform=normalized_platform,
-            )
-            return False, "未提供模型名", 1
-
-        if command_payload.startswith("模型 "):
-            model_name = command_payload[3:].strip()
+        if normalized_command == "model":
+            model_name = rest_payload.strip()
             if not model_name:
-                await self._require_draw_service().send_text_with_fallback(
-                    text="请在“/绘图 模型”后面填写具体模型名。",
+                await self._send_command_reply(
+                    title="绘图模型",
+                    body=build_model_text(self._require_router(), session_preference),
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
                     group_id=normalized_group_id,
                     platform=normalized_platform,
                 )
-                return False, "未提供模型名", 1
+                return True, "已显示模型列表", 2
+
+            if not self._can_manage_session(normalized_user_id):
+                await self._send_command_reply(
+                    title="权限不足",
+                    body="当前已启用权限管理。\n只有插件管理员可以切换本群或本会话使用的绘图模型。",
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=normalized_platform,
+                )
+                return False, "权限不足", 1
 
             provider_name = self._require_router().get_model_provider(model_name)
             if not provider_name:
-                await self._require_draw_service().send_text_with_fallback(
-                    text=f"模型不存在：{model_name}\n{build_draw_help_text(self._require_router())}",
+                await self._send_command_reply(
+                    title="模型不存在",
+                    body=f"未找到模型：{model_name}\n\n{build_model_text(self._require_router(), session_preference)}",
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
                     group_id=normalized_group_id,
@@ -553,8 +807,9 @@ class DrawpicPlugin(MaiBotPlugin):
                 normalized_platform,
                 model=model_name,
             )
-            await self._require_draw_service().send_text_with_fallback(
-                text=f"当前会话绘图模型已切换为：{next_preference['model']}\n当前提供商：{provider_name}",
+            await self._send_command_reply(
+                title="模型已切换",
+                body=f"当前会话绘图模型：{provider_name}：{next_preference['model']}",
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
@@ -562,21 +817,34 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return True, "已切换绘图模型", 2
 
-        if command_payload == "兼容模式":
-            await self._require_draw_service().send_text_with_fallback(
-                text="请在“/绘图 兼容模式”后面填写具体模式：auto、images_api、chat_completions、novelai_images_api",
-                stream_id=normalized_stream_id,
-                user_id=normalized_user_id,
-                group_id=normalized_group_id,
-                platform=normalized_platform,
-            )
-            return False, "未提供兼容模式", 1
+        if normalized_command == "compatible-mode":
+            compatibility_mode = rest_payload.strip()
+            if not compatibility_mode:
+                await self._send_command_reply(
+                    title="OpenAI 兼容模式",
+                    body=build_compatible_mode_text(session_preference["openai_compatibility_mode"]),
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=normalized_platform,
+                )
+                return True, "已显示兼容模式说明", 2
 
-        if command_payload.startswith("兼容模式 "):
-            compatibility_mode = command_payload[5:].strip()
+            if not self._can_manage_session(normalized_user_id):
+                await self._send_command_reply(
+                    title="权限不足",
+                    body="当前已启用权限管理。\n只有插件管理员可以切换 OpenAI 兼容模式。",
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=normalized_platform,
+                )
+                return False, "权限不足", 1
+
             if compatibility_mode not in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
-                await self._require_draw_service().send_text_with_fallback(
-                    text="兼容模式仅支持：auto、images_api、chat_completions、novelai_images_api",
+                await self._send_command_reply(
+                    title="兼容模式无效",
+                    body=build_compatible_mode_text(session_preference["openai_compatibility_mode"]),
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
                     group_id=normalized_group_id,
@@ -591,8 +859,12 @@ class DrawpicPlugin(MaiBotPlugin):
                 normalized_platform,
                 openai_compatibility_mode=compatibility_mode,
             )
-            await self._require_draw_service().send_text_with_fallback(
-                text=f"当前会话 OpenAI 兼容模式已切换为：{next_preference['openai_compatibility_mode']}",
+            await self._send_command_reply(
+                title="兼容模式已切换",
+                body=(
+                    f"当前会话 OpenAI 兼容模式：{next_preference['openai_compatibility_mode']}\n"
+                    "该设置仅对 OpenAI 提供商生效。"
+                ),
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
@@ -600,25 +872,74 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return True, "已切换 OpenAI 兼容模式", 2
 
-        try:
-            await self._start_background_draw_request(
-                prompt=command_payload,
-                stream_id=normalized_stream_id,
-                user_id=normalized_user_id,
-                group_id=normalized_group_id,
-                platform_name=normalized_platform,
+        if normalized_command == "draw":
+            prompt = rest_payload.strip()
+            if not prompt:
+                await self._send_command_reply(
+                    title="缺少绘图提示词",
+                    body="请使用：/绘图 绘制 <prompt>",
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=normalized_platform,
+                )
+                return False, "缺少提示词", 1
+
+            try:
+                await self._start_background_draw_request(
+                    prompt=prompt,
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform_name=normalized_platform,
+                )
+            except Exception as exc:
+                self.ctx.logger.error("/绘图 绘制命令启动失败: %s", exc, exc_info=True)
+                await self._send_command_reply(
+                    title="绘图请求未能启动",
+                    body=str(exc),
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=normalized_platform,
+                )
+                return False, "绘图命令执行失败", 1
+
+            self.ctx.logger.info(
+                "绘图任务已提交: stream_id=%s user_id=%s group_id=%s",
+                normalized_stream_id,
+                normalized_user_id,
+                normalized_group_id,
             )
-        except Exception as exc:
-            self.ctx.logger.error("/绘图 命令启动失败: %s", exc, exc_info=True)
-            await self._require_draw_service().send_text_with_fallback(
-                text=f"绘图请求未能启动：{exc}",
+            return True, "已开始处理绘图命令", 2
+
+        if normalized_command == "times":
+            return await self._handle_times_command(
+                rest_payload=rest_payload,
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
                 platform=normalized_platform,
             )
-            return False, "绘图命令执行失败", 1
-        return True, "已开始处理绘图命令", 2
+
+        if normalized_command in {"add", "remove", "set"}:
+            return await self._handle_times_command(
+                rest_payload=f"{normalized_command} {rest_payload}".strip(),
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform=normalized_platform,
+            )
+
+        await self._send_command_reply(
+            title="未知子命令",
+            body=build_command_usage_text(),
+            stream_id=normalized_stream_id,
+            user_id=normalized_user_id,
+            group_id=normalized_group_id,
+            platform=normalized_platform,
+        )
+        return False, "未知绘图子命令", 1
 
 
 def create_plugin() -> DrawpicPlugin:

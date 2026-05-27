@@ -260,6 +260,46 @@ class ChatStreamService:
             )
             return sent_count
 
+    async def send_image_bytes_with_fallback(
+        self,
+        image_bytes: bytes,
+        stream_id: str,
+        user_id: str = "",
+        group_id: str = "",
+        platform: str = "qq",
+    ) -> bool:
+        """发送单张图片，并在必要时重新解析活跃聊天流后重试。"""
+
+        resolved_stream_id = await self.resolve_live_stream_id(
+            stream_id=stream_id,
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform,
+        )
+        if not resolved_stream_id:
+            self.ctx.logger.warning("未能解析到可用聊天流，无法发送图片回复")
+            return False
+
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        send_result = await self.ctx.send.image(image_base64, resolved_stream_id)
+        if send_result:
+            return True
+
+        self.ctx.logger.warning(
+            "首次发送图片回复失败，尝试重新解析聊天流: original_stream_id=%s resolved_stream_id=%s",
+            stream_id,
+            resolved_stream_id,
+        )
+        fallback_stream_id = await self.resolve_live_stream_id(
+            stream_id="",
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform,
+        )
+        if not fallback_stream_id or fallback_stream_id == resolved_stream_id:
+            return False
+        return bool(await self.ctx.send.image(image_base64, fallback_stream_id))
+
     async def send_text_with_fallback(
         self,
         text: str,
