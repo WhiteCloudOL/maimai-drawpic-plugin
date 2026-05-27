@@ -6,6 +6,7 @@ from typing import Any
 import asyncio
 import inspect
 import re
+import unicodedata
 
 from .moderation import DrawpicModerationService
 from .provider_router import ProviderRouter
@@ -31,17 +32,57 @@ class DrawService:
         "{user_prompt}"
     )
     ENGLISH_PROMPT_REPAIR_PROMPT = (
-        "下面的改写结果仍包含非英文文字或非英文标点。请重新输出 NovelAI / Stable Diffusion 友好的英文提示词，"
-        "所有单词和标点都必须改为英文写法，只输出提示词本身。\n"
+        "下面的改写结果没有通过英文提示词校验。请重新输出 NovelAI / Stable Diffusion 友好的英文提示词。\n"
+        "硬性要求：\n"
+        "1. 只能使用 ASCII 范围内的英文单词、数字、空格和英文半角标点。\n"
+        "2. 不能保留中文、日文、韩文、全角英文、全角数字、全角标点、表情符号或任何非 ASCII 字符。\n"
+        "3. 优先用英文逗号分隔标签，只输出提示词本身。\n"
         "\n"
+        "失败原因：{validation_error}\n"
         "原始提示词：\n"
         "{user_prompt}\n"
         "\n"
         "上次改写结果：\n"
         "{rewritten_prompt}"
     )
-    NON_ENGLISH_PROMPT_PATTERN = re.compile(
-        r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]|[，。？！；：、（）【】《》“”‘’…—￥]"
+    PROMPT_REWRITE_ATTEMPTS = 3
+    NON_ENGLISH_PROMPT_PATTERN = re.compile(r"[^\x00-\x7f]")
+    PROMPT_PUNCTUATION_TRANSLATION = str.maketrans(
+        {
+            "，": ",",
+            "。": ".",
+            "？": "?",
+            "！": "!",
+            "；": ";",
+            "：": ":",
+            "、": ",",
+            "（": "(",
+            "）": ")",
+            "【": "[",
+            "】": "]",
+            "《": "<",
+            "》": ">",
+            "“": '"',
+            "”": '"',
+            "‘": "'",
+            "’": "'",
+            "…": "...",
+            "—": "-",
+            "–": "-",
+            "−": "-",
+            "～": "~",
+            "·": ",",
+            "￥": "Yuan",
+            "¥": "Yen",
+            "「": '"',
+            "」": '"',
+            "『": '"',
+            "』": '"',
+            "〔": "[",
+            "〕": "]",
+            "〖": "[",
+            "〗": "]",
+        }
     )
 
     def __init__(
@@ -119,11 +160,13 @@ class DrawService:
             return prompt
 
         rewritten_prompt = ""
-        for attempt_index in range(2):
+        validation_error = ""
+        for attempt_index in range(self.PROMPT_REWRITE_ATTEMPTS):
             rendered_prompt = (
                 self.ENGLISH_PROMPT_REWRITE_PROMPT.format(user_prompt=prompt)
                 if attempt_index == 0
                 else self.ENGLISH_PROMPT_REPAIR_PROMPT.format(
+                    validation_error=validation_error,
                     user_prompt=prompt,
                     rewritten_prompt=rewritten_prompt,
                 )
@@ -137,7 +180,8 @@ class DrawService:
             rewritten_prompt = self._normalize_rewritten_prompt(
                 DrawpicModerationService._extract_llm_response(response)
             )
-            if rewritten_prompt and not self.NON_ENGLISH_PROMPT_PATTERN.search(rewritten_prompt):
+            validation_error = self._get_english_prompt_validation_error(rewritten_prompt)
+            if not validation_error:
                 self.ctx.logger.info(
                     "提示词英文改写完成: provider=%s model=%s original_len=%s rewritten_len=%s",
                     provider_name,
@@ -147,10 +191,10 @@ class DrawService:
                 )
                 return rewritten_prompt
 
-        raise RuntimeError("英文提示词改写失败：改写结果仍包含非英文文本或非英文标点")
+        raise RuntimeError(f"英文提示词改写失败：{validation_error or '改写结果为空'}")
 
-    @staticmethod
-    def _normalize_rewritten_prompt(prompt: str) -> str:
+    @classmethod
+    def _normalize_rewritten_prompt(cls, prompt: str) -> str:
         """清理 LLM 可能包裹在结果外侧的格式符。"""
 
         normalized_prompt = prompt.strip()
@@ -167,7 +211,26 @@ class DrawService:
             and normalized_prompt[0] in {'"', "'"}
         ):
             normalized_prompt = normalized_prompt[1:-1].strip()
-        return normalized_prompt
+        normalized_prompt = unicodedata.normalize("NFKC", normalized_prompt)
+        normalized_prompt = normalized_prompt.translate(cls.PROMPT_PUNCTUATION_TRANSLATION)
+        normalized_prompt = re.sub(r"[ \t]+", " ", normalized_prompt)
+        normalized_prompt = re.sub(r"\s*,\s*", ", ", normalized_prompt)
+        normalized_prompt = re.sub(r"\s*\n\s*", "\n", normalized_prompt)
+        return normalized_prompt.strip(" \t\r\n,")
+
+    @classmethod
+    def _get_english_prompt_validation_error(cls, prompt: str) -> str:
+        """返回英文提示词校验错误，空字符串表示通过。"""
+
+        if not prompt.strip():
+            return "改写结果为空"
+
+        invalid_match = cls.NON_ENGLISH_PROMPT_PATTERN.search(prompt)
+        if invalid_match is None:
+            return ""
+
+        invalid_char = invalid_match.group(0)
+        return f"改写结果仍包含非 ASCII 字符：{invalid_char!r}"
 
     async def filter_reviewed_images(
         self,
