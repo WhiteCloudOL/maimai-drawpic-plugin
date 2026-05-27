@@ -5,6 +5,7 @@ from typing import Any
 
 import asyncio
 import inspect
+import re
 
 from .moderation import DrawpicModerationService
 from .provider_router import ProviderRouter
@@ -16,6 +17,32 @@ class DrawService:
     """负责后台绘图执行、审核与任务状态管理。"""
 
     STATUS_RECHECK_INTERVAL_SECONDS = 20
+    ENGLISH_PROMPT_REWRITE_PROMPT = (
+        "你是图片生成提示词英文改写器，负责把用户提示词改写成可直接交给 NovelAI / Stable Diffusion / "
+        "通用图片生成模型使用的英文提示词。\n"
+        "要求：\n"
+        "1. 把中文、日文、韩文等非英文文本全部翻译或转写为自然英文单词，不能保留原语言文字。\n"
+        "2. 把中文标点、日文标点、全角标点和特殊连接符全部替换为英文半角标点，优先使用英文逗号分隔标签。\n"
+        "3. 保留用户原意、角色名、构图、风格、画质、动作、服装、场景和数量关系；已有英文标签可自然整理。\n"
+        "4. 不要补充安全审查、解释、标题、引号、Markdown 或多余说明。\n"
+        "5. 只输出一行或多行英文提示词本身。\n"
+        "\n"
+        "用户提示词：\n"
+        "{user_prompt}"
+    )
+    ENGLISH_PROMPT_REPAIR_PROMPT = (
+        "下面的改写结果仍包含非英文文字或非英文标点。请重新输出 NovelAI / Stable Diffusion 友好的英文提示词，"
+        "所有单词和标点都必须改为英文写法，只输出提示词本身。\n"
+        "\n"
+        "原始提示词：\n"
+        "{user_prompt}\n"
+        "\n"
+        "上次改写结果：\n"
+        "{rewritten_prompt}"
+    )
+    NON_ENGLISH_PROMPT_PATTERN = re.compile(
+        r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]|[，。？！；：、（）【】《》“”‘’…—￥]"
+    )
 
     def __init__(
         self,
@@ -79,6 +106,68 @@ class DrawService:
         if not review_result.passed:
             reason_suffix = f"原因：{review_result.reason}" if review_result.reason else "原因：审核模型判定为不通过"
             raise ValueError(f"提示词审核未通过，已拒绝本次绘图请求。{reason_suffix}")
+
+    async def rewrite_prompt_to_english_if_needed(
+        self,
+        prompt: str,
+        provider_name: str,
+        model: str,
+    ) -> str:
+        """按提供商配置把提示词改写为英文。"""
+
+        if not self.router.should_rewrite_prompt_to_english(provider_name):
+            return prompt
+
+        rewritten_prompt = ""
+        for attempt_index in range(2):
+            rendered_prompt = (
+                self.ENGLISH_PROMPT_REWRITE_PROMPT.format(user_prompt=prompt)
+                if attempt_index == 0
+                else self.ENGLISH_PROMPT_REPAIR_PROMPT.format(
+                    user_prompt=prompt,
+                    rewritten_prompt=rewritten_prompt,
+                )
+            )
+            response = await self.ctx.llm.generate(
+                rendered_prompt,
+                model="replyer",
+                temperature=0.0,
+                max_tokens=1024,
+            )
+            rewritten_prompt = self._normalize_rewritten_prompt(
+                DrawpicModerationService._extract_llm_response(response)
+            )
+            if rewritten_prompt and not self.NON_ENGLISH_PROMPT_PATTERN.search(rewritten_prompt):
+                self.ctx.logger.info(
+                    "提示词英文改写完成: provider=%s model=%s original_len=%s rewritten_len=%s",
+                    provider_name,
+                    model,
+                    len(prompt),
+                    len(rewritten_prompt),
+                )
+                return rewritten_prompt
+
+        raise RuntimeError("英文提示词改写失败：改写结果仍包含非英文文本或非英文标点")
+
+    @staticmethod
+    def _normalize_rewritten_prompt(prompt: str) -> str:
+        """清理 LLM 可能包裹在结果外侧的格式符。"""
+
+        normalized_prompt = prompt.strip()
+        if normalized_prompt.startswith("```"):
+            lines = normalized_prompt.splitlines()
+            if lines:
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            normalized_prompt = "\n".join(lines).strip()
+        if (
+            len(normalized_prompt) >= 2
+            and normalized_prompt[0] == normalized_prompt[-1]
+            and normalized_prompt[0] in {'"', "'"}
+        ):
+            normalized_prompt = normalized_prompt[1:-1].strip()
+        return normalized_prompt
 
     async def filter_reviewed_images(
         self,
@@ -263,14 +352,24 @@ class DrawService:
                 resolved_model,
                 openai_compatibility_mode,
             )
+            provider_prompt = await self.rewrite_prompt_to_english_if_needed(
+                prompt,
+                provider_name,
+                resolved_model,
+            )
             self.ctx.logger.info(
                 "开始画图: task_id=%s provider=%s model=%s prompt=%s",
                 task_id,
                 provider_name,
                 resolved_model,
-                prompt[:120],
+                provider_prompt[:120],
             )
-            image_bytes_list = await self.run_provider_call(image_platform.generate_images, prompt, resolved_model, 1)
+            image_bytes_list = await self.run_provider_call(
+                image_platform.generate_images,
+                provider_prompt,
+                resolved_model,
+                1,
+            )
             if not image_bytes_list:
                 self.task_store.update_task(
                     task_id,
@@ -356,16 +455,21 @@ class DrawService:
                 resolved_model,
                 openai_compatibility_mode,
             )
+            provider_prompt = await self.rewrite_prompt_to_english_if_needed(
+                prompt,
+                provider_name,
+                resolved_model,
+            )
             self.ctx.logger.info(
                 "开始画图: task_id=%s provider=%s model=%s prompt=%s",
                 task_id,
                 provider_name,
                 resolved_model,
-                prompt[:120],
+                provider_prompt[:120],
             )
             image_bytes_list = await self.run_provider_call(
                 image_platform.edit_images,
-                prompt,
+                provider_prompt,
                 resolved_model,
                 source_image_bytes,
                 1,

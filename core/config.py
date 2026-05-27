@@ -23,7 +23,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.10.0",
+        default="2.11.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -155,6 +155,15 @@ class OpenAIModelConfig(PluginConfigBase):
             "order": 3,
         },
     )
+    rewrite_prompt_to_english: bool = Field(
+        default=False,
+        description="是否在调用 OpenAI 提供商前将提示词改写为英文。",
+        json_schema_extra={
+            "label": "英文提示词改写",
+            "hint": "开启后会调用 MaiBot replyer 模型，将非英文提示词改写为英文单词和 NovelAI 友好的英文标点。使用 NovelAI/StableDiffusion 兼容模型时必须开启，否则可能生图失败。",
+            "order": 4,
+        },
+    )
 
 
 class GoogleModelConfig(PluginConfigBase):
@@ -191,6 +200,15 @@ class GoogleModelConfig(PluginConfigBase):
             "order": 2,
         },
     )
+    rewrite_prompt_to_english: bool = Field(
+        default=False,
+        description="是否在调用 Google 提供商前将提示词改写为英文。",
+        json_schema_extra={
+            "label": "英文提示词改写",
+            "hint": "开启后会调用 MaiBot replyer 模型，将非英文提示词改写为英文单词和 NovelAI 友好的英文标点。使用 NovelAI/StableDiffusion 兼容模型时必须开启，否则可能生图失败。",
+            "order": 3,
+        },
+    )
 
 
 class ZhipuModelConfig(PluginConfigBase):
@@ -225,6 +243,15 @@ class ZhipuModelConfig(PluginConfigBase):
             "label": "智谱模型列表",
             "hint": "这里填写属于智谱图像生成接口的模型；当前仅支持文生图，不支持图生图编辑",
             "order": 2,
+        },
+    )
+    rewrite_prompt_to_english: bool = Field(
+        default=False,
+        description="是否在调用智谱提供商前将提示词改写为英文。",
+        json_schema_extra={
+            "label": "英文提示词改写",
+            "hint": "开启后会调用 MaiBot replyer 模型，将非英文提示词改写为英文单词和 NovelAI 友好的英文标点。使用 NovelAI/StableDiffusion 兼容模型时必须开启，否则可能生图失败。",
+            "order": 3,
         },
     )
 
@@ -312,6 +339,15 @@ class AliyunModelConfig(PluginConfigBase):
             "label": "启用提示词智能改写",
             "hint": "开启后百炼会优化正向提示词；不会修改反向提示词。",
             "order": 6,
+        },
+    )
+    rewrite_prompt_to_english: bool = Field(
+        default=False,
+        description="是否在调用阿里百炼提供商前将提示词改写为英文。",
+        json_schema_extra={
+            "label": "英文提示词改写",
+            "hint": "开启后会调用 MaiBot replyer 模型，将非英文提示词改写为英文单词和 NovelAI 友好的英文标点。使用 NovelAI/StableDiffusion 兼容模型时必须开启，否则可能生图失败。",
+            "order": 7,
         },
     )
 

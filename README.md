@@ -7,7 +7,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.5.1-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.5.2-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
@@ -19,6 +19,7 @@
 - **会话偏好**：群聊和私聊可分别保存模型与 OpenAI 兼容模式；新会话默认跟随全局默认模型。
 - **后台任务**：绘图不阻塞聊天流程，生成完成后自动发送图片，可通过状态命令或工具查询任务。
 - **LLM 工具调用**：向 MaiBot 暴露 `draw`、`edit_image`、`draw_status`，由 LLM 在合适场景自主调用。
+- **英文提示词改写**：可按服务商启用，调用 MaiBot 的 `replyer` 模型把非英文提示词改写为适合生图模型的英文提示词。
 - **审核与额度**：可选启用提示词审核、图片审核、管理员权限和用户绘图次数管理。
 - **配置热更新**：订阅 `bot` / `model` 配置重载事件，主体配置更新后插件会刷新内部服务。
 
@@ -58,7 +59,7 @@ uv pip install -r plugins/maimai-drawpic-plugin/requirements.txt
 # 是否启用插件
 enabled = true
 # 配置版本（请勿随意修改，由插件用于升级迁移）
-config_version = "2.10.0"
+config_version = "2.11.0"
 
 [general]
 # 默认使用的模型名称，插件会自动在阿里百炼、OpenAI、Google 与智谱的模型列表中查找
@@ -118,6 +119,9 @@ models = [
 # 默认 OpenAI 兼容模式：auto / images_api / chat_completions / novelai_images_api
 # 通常建议保持 auto，由插件自动选择合适的接口
 default_openai_compatibility_mode = "auto"
+# 是否在调用 OpenAI 提供商前使用 MaiBot replyer 模型改写为英文提示词
+# 使用 NovelAI/StableDiffusion 兼容模型时必须开启，否则可能生图失败
+rewrite_prompt_to_english = false
 
 [google]
 # Google Gemini 或兼容网关的基础 URL
@@ -128,6 +132,8 @@ api_key = "your-google-api-key"
 models = [
     "gemini-3.1-flash-image-preview",
 ]
+# 是否在调用 Google 提供商前使用 MaiBot replyer 模型改写为英文提示词
+rewrite_prompt_to_english = false
 
 [zhipu]
 # 智谱基础 URL（填根地址，不要带具体接口路径）
@@ -138,6 +144,8 @@ api_key = "your-zhipu-api-key"
 models = [
     "glm-image",
 ]
+# 是否在调用智谱提供商前使用 MaiBot replyer 模型改写为英文提示词
+rewrite_prompt_to_english = false
 
 [aliyun]
 # 阿里百炼基础 URL（填根地址，不要带具体接口路径）
@@ -154,7 +162,7 @@ models = [
     "qwen-image-edit-plus",
 ]
 # 未在 model_size_overrides 中配置的阿里百炼模型会使用该分辨率
-default_size = "1024*1024"
+default_size = "2048*2048"
 # 按模型覆盖分辨率。每项格式为 模型名=宽*高
 model_size_overrides = [
     "qwen-image-2.0=2048*2048",
@@ -168,6 +176,8 @@ model_size_overrides = [
 negative_prompt = "低分辨率，低画质，肢体畸形，手指畸形，文字模糊，构图混乱，过度光滑，画面具有 AI 感。"
 # 是否开启百炼提示词智能改写
 prompt_extend = true
+# 是否在调用阿里百炼提供商前使用 MaiBot replyer 模型改写为英文提示词
+rewrite_prompt_to_english = false
 
 ```
 
@@ -185,10 +195,14 @@ prompt_extend = true
 | `[aliyun]` | `base_url` / `api_key` / `models` | 阿里百炼图片接口的基础 URL、密钥与模型列表（支持文生图与图像编辑） |
 | `[aliyun]` | `default_size` / `model_size_overrides` | 阿里百炼默认分辨率和按模型覆盖分辨率，覆盖项格式为 `模型名=宽*高` |
 | `[aliyun]` | `negative_prompt` / `prompt_extend` | 阿里百炼反向提示词与提示词智能改写开关 |
+| `[aliyun]` | `rewrite_prompt_to_english` | 调用阿里百炼前是否先使用 MaiBot `replyer` 模型改写为英文提示词 |
 | `[openai]` | `base_url` / `api_key` / `models` | OpenAI 或 OpenAI 兼容服务的基础 URL、密钥与模型列表 |
 | `[openai]` | `default_openai_compatibility_mode` | 默认 OpenAI 兼容模式，支持 `auto` / `images_api` / `chat_completions` / `novelai_images_api` |
+| `[openai]` | `rewrite_prompt_to_english` | 调用 OpenAI 提供商前是否先使用 MaiBot `replyer` 模型改写为英文提示词 |
 | `[google]` | `base_url` / `api_key` / `models` | Google Gemini 或兼容网关的基础 URL、密钥与模型列表 |
+| `[google]` | `rewrite_prompt_to_english` | 调用 Google 提供商前是否先使用 MaiBot `replyer` 模型改写为英文提示词 |
 | `[zhipu]` | `base_url` / `api_key` / `models` | 智谱图像生成接口的基础 URL、密钥与模型列表（当前仅支持文生图） |
+| `[zhipu]` | `rewrite_prompt_to_english` | 调用智谱前是否先使用 MaiBot `replyer` 模型改写为英文提示词 |
 | `[prompt_review]` | `enabled` / `review_prompt` | 是否启用提示词审核以及审核提示模板（支持 `{user_prompt}` 占位符） |
 | `[image_review]` | `enabled` / `review_prompt` | 是否启用生成图片审核以及审核提示模板（支持 `{user_prompt}` 占位符） |
 
@@ -214,6 +228,12 @@ prompt_extend = true
 | `novelai_images_api` | 适配 NovelAI 风格的图片生成接口 |
 
 使用阿里百炼、Google 或智谱模型时，`openai_compatibility_mode` 不生效，插件会走对应平台的图片接口。智谱模型当前仅支持文生图，不能用于 `edit_image` 图生图编辑。
+
+### 英文提示词改写
+
+各服务商都提供独立的 `rewrite_prompt_to_english` 开关。开启后，插件会在调用图片接口前使用 MaiBot 当前配置的 `replyer` 模型，将中文、日文等非英文内容改写为英文单词，并把中文/全角标点整理为 NovelAI、Stable Diffusion 更容易识别的英文半角标点。
+
+该改写提示词由插件内置，不提供额外模板配置。使用 NovelAI 或 Stable Diffusion 兼容模型时必须开启，否则非英文提示词可能导致生图失败或效果异常。
 
 ### 会话偏好
 

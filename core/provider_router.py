@@ -95,6 +95,20 @@ class ProviderRouter:
             return 600
         return timeout_seconds
 
+    def should_rewrite_prompt_to_english(self, provider_name: str) -> bool:
+        """判断指定提供商是否需要先把提示词改写为英文。"""
+
+        normalized_provider = provider_name.strip().lower()
+        if normalized_provider == "aliyun":
+            return self.config.aliyun.rewrite_prompt_to_english
+        if normalized_provider == "openai":
+            return self.config.openai.rewrite_prompt_to_english
+        if normalized_provider == "google":
+            return self.config.google.rewrite_prompt_to_english
+        if normalized_provider == "zhipu":
+            return self.config.zhipu.rewrite_prompt_to_english
+        return False
+
     def resolve_model_name(self, model: str = "", allow_unknown_model: bool = False) -> str:
         """解析最终使用的模型名。"""
 
