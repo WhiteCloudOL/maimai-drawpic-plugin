@@ -23,7 +23,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.8.0",
+        default="2.10.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -46,22 +46,13 @@ class GeneralConfig(PluginConfigBase):
             "order": 0,
         },
     )
-    default_openai_compatibility_mode: OpenAICompatibilityMode = Field(
-        default="auto",
-        description="默认 OpenAI 兼容模式。仅在当前会话使用 OpenAI 系模型时生效。",
-        json_schema_extra={
-            "label": "默认 OpenAI 兼容模式",
-            "hint": "支持 auto、images_api、chat_completions、novelai_images_api；通常建议使用 auto",
-            "order": 1,
-        },
-    )
     request_timeout_seconds: int = Field(
         default=150,
         description="单次图片请求超时时间（秒），用于后台图片任务",
         json_schema_extra={
             "label": "图片请求超时",
             "hint": "单次图片请求超时时间（秒），建议设置为 120 到 300",
-            "order": 2,
+            "order": 1,
         },
     )
     command_reply_mode: CommandReplyMode = Field(
@@ -71,7 +62,7 @@ class GeneralConfig(PluginConfigBase):
             "label": "命令返回形式",
             "hint": "图片=使用粉色图片模板回复命令；文本=直接发送纯文本回复",
             "options": ["图片", "文本"],
-            "order": 3,
+            "order": 2,
         },
     )
     permission_enabled: bool = Field(
@@ -80,7 +71,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "启用权限管理",
             "hint": "启用后，模型切换、兼容模式切换和次数管理命令仅允许插件管理员使用",
-            "order": 4,
+            "order": 3,
         },
     )
     admin_user_ids: list[str] = Field(
@@ -89,7 +80,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "插件管理员列表",
             "hint": "填写允许管理模型、兼容模式和用户次数的用户 ID，通常为 QQ 号",
-            "order": 5,
+            "order": 4,
         },
     )
     quota_enabled: bool = Field(
@@ -98,7 +89,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "启用用户次数管理",
             "hint": "启用后，普通用户每次绘图会消耗次数；管理员不受限制",
-            "order": 6,
+            "order": 5,
         },
     )
     quota_period: QuotaPeriodMode = Field(
@@ -107,7 +98,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "次数周期",
             "hint": "daily=每日，weekly=每周，monthly=每月，once=一次性不自动重置",
-            "order": 7,
+            "order": 6,
         },
     )
     default_quota: int = Field(
@@ -116,7 +107,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "默认可用次数",
             "hint": "普通用户在所选周期内默认可用的绘图次数",
-            "order": 8,
+            "order": 7,
         },
     )
 
@@ -153,6 +144,15 @@ class OpenAIModelConfig(PluginConfigBase):
             "label": "OpenAI 模型列表",
             "hint": "这里填写属于 OpenAI 或 OpenAI 兼容接口的图片模型",
             "order": 2,
+        },
+    )
+    default_openai_compatibility_mode: OpenAICompatibilityMode = Field(
+        default="auto",
+        description="默认 OpenAI 兼容模式。仅在当前会话使用 OpenAI 系模型时生效。",
+        json_schema_extra={
+            "label": "默认 OpenAI 兼容模式",
+            "hint": "支持 auto、images_api、chat_completions、novelai_images_api；通常建议使用 auto",
+            "order": 3,
         },
     )
 
@@ -255,12 +255,63 @@ class AliyunModelConfig(PluginConfigBase):
         },
     )
     models: list[str] = Field(
-        default=["qwen-image-2.0"],
+        default=[
+            "qwen-image-2.0",
+            "qwen-image-2.0-pro",
+            "qwen-image-max",
+            "qwen-image-plus",
+            "qwen-image-edit-max",
+            "qwen-image-edit-plus",
+        ],
         description="阿里百炼可用图片模型列表（支持文生图与图像编辑）",
         json_schema_extra={
             "label": "阿里百炼模型列表",
-            "hint": "这里填写属于阿里百炼图片接口的模型，例如 qwen-image-2.0、qwen-image-2.0-pro、qwen-image-edit",
+            "hint": "这里填写属于阿里百炼图片接口的模型，例如 qwen-image-2.0、qwen-image-2.0-pro、qwen-image-edit-max",
             "order": 2,
+        },
+    )
+    default_size: str = Field(
+        default="2048*2048",
+        description="阿里百炼图片默认分辨率。未在按模型覆盖分辨率中配置的模型会使用该值。",
+        json_schema_extra={
+            "label": "默认分辨率",
+            "hint": "格式为 宽*高，例如 2048*2048。不同模型支持范围不同，建议优先通过按模型覆盖分辨率配置。",
+            "order": 3,
+        },
+    )
+    model_size_overrides: list[str] = Field(
+        default=[
+            "qwen-image-2.0=2048*2048",
+            "qwen-image-2.0-pro=2048*2048",
+            "qwen-image-max=1328*1328",
+            "qwen-image-plus=1328*1328",
+            "qwen-image-edit-max=1024*1024",
+            "qwen-image-edit-plus=1024*1024",
+        ],
+        description="阿里百炼按模型覆盖分辨率。每项格式为 模型名=宽*高。",
+        json_schema_extra={
+            "label": "按模型覆盖分辨率",
+            "hint": "每行填写一个 模型名=宽*高，例如 qwen-image-plus=1328*1328。qwen-image-2.0 系列支持自由宽高，总像素需在 512*512 至 2048*2048。",
+            "order": 4,
+        },
+    )
+    negative_prompt: str = Field(
+        default="低分辨率，低画质，肢体畸形，手指畸形，文字模糊，构图混乱，过度光滑，画面具有 AI 感。",
+        description="阿里百炼反向提示词，用于描述不希望在图像中出现的内容。",
+        json_schema_extra={
+            "label": "反向提示词",
+            "hint": "留空则不传 negative_prompt；百炼限制长度不超过 500 个字符。",
+            "input_type": "textarea",
+            "order": 5,
+        },
+    )
+    prompt_extend: bool = Field(
+        default=True,
+        description="是否启用阿里百炼提示词智能改写。",
+        json_schema_extra={
+            "label": "启用提示词智能改写",
+            "hint": "开启后百炼会优化正向提示词；不会修改反向提示词。",
+            "order": 6,
         },
     )
 

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import base64
-import time
 from io import BytesIO
 from typing import Any
 
-import aiohttp
 from PIL import Image as PILImage
+import aiohttp
+import base64
+import time
 
 
 class AliyunImage:
@@ -20,11 +20,23 @@ class AliyunImage:
         base_url: str = "https://dashscope.aliyuncs.com",
         logger: Any | None = None,
         request_timeout_seconds: int = 20,
+        default_size: str = "1024*1024",
+        model_size_overrides: dict[str, str] | None = None,
+        negative_prompt: str = "",
+        prompt_extend: bool = True,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
+        self.default_size = default_size.strip()
+        self.model_size_overrides = {
+            str(model).strip(): str(size).strip()
+            for model, size in (model_size_overrides or {}).items()
+            if str(model).strip() and str(size).strip()
+        }
+        self.negative_prompt = negative_prompt.strip()
+        self.prompt_extend = prompt_extend
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """调用阿里百炼文生图接口。"""
@@ -45,12 +57,7 @@ class AliyunImage:
                         }
                     ]
                 },
-                "parameters": {
-                    "n": n,
-                    "prompt_extend": True,
-                    "size": "1024*1024",
-                    "watermark": False,
-                },
+                "parameters": self._build_parameters(model, n),
             },
         )
         return await self._extract_images(response)
@@ -79,15 +86,33 @@ class AliyunImage:
                         }
                     ]
                 },
-                "parameters": {
-                    "n": n,
-                    "prompt_extend": True,
-                    "size": "1024*1024",
-                    "watermark": False,
-                },
+                "parameters": self._build_parameters(model, n),
             },
         )
         return await self._extract_images(response)
+
+    def _build_parameters(self, model: str, n: int) -> dict[str, Any]:
+        """构建阿里百炼图片处理参数。"""
+
+        parameters: dict[str, Any] = {
+            "n": n,
+            "watermark": False,
+        }
+        if self.negative_prompt:
+            parameters["negative_prompt"] = self.negative_prompt
+
+        normalized_model = model.strip()
+        if normalized_model != "qwen-image-edit":
+            parameters["prompt_extend"] = self.prompt_extend
+            resolved_size = self._resolve_size(normalized_model)
+            if resolved_size:
+                parameters["size"] = resolved_size
+        return parameters
+
+    def _resolve_size(self, model: str) -> str:
+        """按模型名解析分辨率配置。"""
+
+        return self.model_size_overrides.get(model, self.default_size)
 
     @staticmethod
     def _detect_mime_type(image_bytes: bytes) -> str:

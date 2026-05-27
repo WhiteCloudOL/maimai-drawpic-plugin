@@ -80,7 +80,7 @@ class ProviderRouter:
         if normalized_mode in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
             return normalized_mode  # type: ignore[return-value]
 
-        default_mode = self.config.general.default_openai_compatibility_mode
+        default_mode = self.config.openai.default_openai_compatibility_mode
         if default_mode in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
             return default_mode
         return "auto"
@@ -113,7 +113,26 @@ class ProviderRouter:
             base_url=self.config.aliyun.base_url,
             logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
+            default_size=self.config.aliyun.default_size,
+            model_size_overrides=self._parse_aliyun_model_size_overrides(),
+            negative_prompt=self.config.aliyun.negative_prompt,
+            prompt_extend=self.config.aliyun.prompt_extend,
         )
+
+    def _parse_aliyun_model_size_overrides(self) -> dict[str, str]:
+        """把 WebUI 友好的列表配置解析为模型分辨率映射。"""
+
+        size_overrides: dict[str, str] = {}
+        for item in self.config.aliyun.model_size_overrides:
+            normalized_item = item.strip()
+            if not normalized_item or "=" not in normalized_item:
+                continue
+            model_name, size = normalized_item.split("=", maxsplit=1)
+            model_name = model_name.strip()
+            size = size.strip()
+            if model_name and size:
+                size_overrides[model_name] = size
+        return size_overrides
 
     def create_openai_provider(self, compatibility_mode: OpenAICompatibilityMode) -> OpenaiImage:
         """创建 OpenAI 图片提供商实例。"""

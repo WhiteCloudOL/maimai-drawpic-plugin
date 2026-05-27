@@ -7,7 +7,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.5.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.5.1-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
@@ -58,14 +58,11 @@ uv pip install -r plugins/maimai-drawpic-plugin/requirements.txt
 # 是否启用插件
 enabled = true
 # 配置版本（请勿随意修改，由插件用于升级迁移）
-config_version = "2.8.0"
+config_version = "2.10.0"
 
 [general]
 # 默认使用的模型名称，插件会自动在阿里百炼、OpenAI、Google 与智谱的模型列表中查找
 default_model = "gpt-image-2"
-# 默认 OpenAI 兼容模式：auto / images_api / chat_completions / novelai_images_api
-# 通常建议保持 auto，由插件自动选择合适的接口
-default_openai_compatibility_mode = "auto"
 # 单次图片请求的超时时间（秒），建议 120 ~ 300；插件会将其限制在 5 ~ 600 之间
 request_timeout_seconds = 150
 # 聊天命令返回形式：图片 / 文本
@@ -118,6 +115,9 @@ api_key = "your-openai-api-key"
 models = [
     "gpt-image-2",
 ]
+# 默认 OpenAI 兼容模式：auto / images_api / chat_completions / novelai_images_api
+# 通常建议保持 auto，由插件自动选择合适的接口
+default_openai_compatibility_mode = "auto"
 
 [google]
 # Google Gemini 或兼容网关的基础 URL
@@ -147,7 +147,27 @@ api_key = "your-aliyun-api-key"
 # 走阿里百炼图片接口的模型列表（支持文生图与图像编辑）
 models = [
     "qwen-image-2.0",
+    "qwen-image-2.0-pro",
+    "qwen-image-max",
+    "qwen-image-plus",
+    "qwen-image-edit-max",
+    "qwen-image-edit-plus",
 ]
+# 未在 model_size_overrides 中配置的阿里百炼模型会使用该分辨率
+default_size = "1024*1024"
+# 按模型覆盖分辨率。每项格式为 模型名=宽*高
+model_size_overrides = [
+    "qwen-image-2.0=2048*2048",
+    "qwen-image-2.0-pro=2048*2048",
+    "qwen-image-max=1328*1328",
+    "qwen-image-plus=1328*1328",
+    "qwen-image-edit-max=1024*1024",
+    "qwen-image-edit-plus=1024*1024",
+]
+# 反向提示词，留空则不传 negative_prompt
+negative_prompt = "低分辨率，低画质，肢体畸形，手指畸形，文字模糊，构图混乱，过度光滑，画面具有 AI 感。"
+# 是否开启百炼提示词智能改写
+prompt_extend = true
 
 ```
 
@@ -158,13 +178,15 @@ models = [
 | `[plugin]` | `enabled` | 是否启用插件 |
 | `[plugin]` | `config_version` | 配置版本号，用于插件自身的配置迁移，请勿随意修改 |
 | `[general]` | `default_model` | 默认模型名，插件会在阿里百炼、OpenAI、Google 与智谱的模型列表中查找归属 |
-| `[general]` | `default_openai_compatibility_mode` | 默认 OpenAI 兼容模式，支持 `auto` / `images_api` / `chat_completions` / `novelai_images_api` |
 | `[general]` | `request_timeout_seconds` | 单次图片请求超时时间（秒），取值会被夹紧到 `[5, 600]` 区间 |
 | `[general]` | `command_reply_mode` | 聊天命令返回形式，可选 `图片` / `文本`，默认 `图片` |
 | `[general]` | `permission_enabled` / `admin_user_ids` | 权限管理开关与插件管理员用户 ID 列表 |
 | `[general]` | `quota_enabled` / `quota_period` / `default_quota` | 用户绘图次数管理开关、周期与默认可用次数 |
 | `[aliyun]` | `base_url` / `api_key` / `models` | 阿里百炼图片接口的基础 URL、密钥与模型列表（支持文生图与图像编辑） |
+| `[aliyun]` | `default_size` / `model_size_overrides` | 阿里百炼默认分辨率和按模型覆盖分辨率，覆盖项格式为 `模型名=宽*高` |
+| `[aliyun]` | `negative_prompt` / `prompt_extend` | 阿里百炼反向提示词与提示词智能改写开关 |
 | `[openai]` | `base_url` / `api_key` / `models` | OpenAI 或 OpenAI 兼容服务的基础 URL、密钥与模型列表 |
+| `[openai]` | `default_openai_compatibility_mode` | 默认 OpenAI 兼容模式，支持 `auto` / `images_api` / `chat_completions` / `novelai_images_api` |
 | `[google]` | `base_url` / `api_key` / `models` | Google Gemini 或兼容网关的基础 URL、密钥与模型列表 |
 | `[zhipu]` | `base_url` / `api_key` / `models` | 智谱图像生成接口的基础 URL、密钥与模型列表（当前仅支持文生图） |
 | `[prompt_review]` | `enabled` / `review_prompt` | 是否启用提示词审核以及审核提示模板（支持 `{user_prompt}` 占位符） |
@@ -182,7 +204,7 @@ models = [
 
 ### OpenAI 兼容模式
 
-`default_openai_compatibility_mode` 以及 `/绘图 兼容模式 <模式>` 支持下列取值：
+`openai.default_openai_compatibility_mode` 以及 `/绘图 兼容模式 <模式>` 支持下列取值：
 
 | 模式 | 说明 |
 | :--- | :--- |
