@@ -38,6 +38,8 @@ def build_model_text(router: ProviderRouter, session_preference: dict[str, str])
         ("OpenAI", router.get_openai_models()),
         ("Google", router.get_google_models()),
         ("智谱", router.get_zhipu_models()),
+        ("硅基流动", router.get_siliconflow_models()),
+        ("NovelAI / NovelAPI", router.get_novelai_models()),
     ]
     lines = [
         f"当前使用模型：{current_provider}：{current_model}",
@@ -87,7 +89,7 @@ def build_compatible_mode_text(current_mode: str) -> str:
             "auto：自动选择，推荐默认使用",
             "images_api：OpenAI 标准 Images API",
             "chat_completions：Chat Completion 返回图片",
-            "novelai_images_api：NovelAI 风格图片接口",
+            "novelai_images_api：旧版 NovelAI 风格 OpenAI 兼容接口",
             "",
             "示例：/绘图 兼容模式 images_api",
         ]

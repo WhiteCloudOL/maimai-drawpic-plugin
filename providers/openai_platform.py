@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from io import BytesIO
+from typing import Any
+
+from PIL import Image as PILImage
+
+import aiohttp
 import base64
 import mimetypes
 import re
 import time
-from io import BytesIO
-from typing import Any
-
-import aiohttp
-from PIL import Image as PILImage
 
 
 class OpenaiImage:
@@ -23,12 +24,34 @@ class OpenaiImage:
         compatibility_mode: str = "images_api",
         logger: Any | None = None,
         request_timeout_seconds: int = 20,
+        default_size: str = "1024x1024",
+        model_size_overrides: dict[str, str] | None = None,
+        quality: str = "",
+        response_format: str = "",
+        output_format: str = "",
+        background: str = "",
+        moderation: str = "",
+        max_images: int = 1,
+        extra_parameters: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.compatibility_mode = compatibility_mode
         self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
+        self.default_size = default_size.strip()
+        self.model_size_overrides = {
+            str(model).strip(): str(size).strip()
+            for model, size in (model_size_overrides or {}).items()
+            if str(model).strip() and str(size).strip()
+        }
+        self.quality = quality.strip()
+        self.response_format = response_format.strip()
+        self.output_format = output_format.strip()
+        self.background = background.strip()
+        self.moderation = moderation.strip()
+        self.max_images = max(int(max_images), 1)
+        self.extra_parameters = dict(extra_parameters or {})
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """手动调用 OpenAI 兼容文生图接口。"""
@@ -43,18 +66,9 @@ class OpenaiImage:
                     )
                     return await self._extract_chat_completion_images(response)
 
-                payload: dict[str, Any] = {
-                    "model": model,
-                    "prompt": prompt,
-                    "n": n,
-                    "size": "1024x1024",
-                }
-                if mode == "images_api" and not self._is_gpt_image_model(model):
-                    payload["response_format"] = "b64_json"
-
                 response = await self._post_json(
                     url=f"{self.base_url}/v1/images/generations",
-                    payload=payload,
+                    payload=self._build_images_generation_payload(prompt=prompt, model=model, n=n),
                 )
                 return await self._extract_images_auto(response)
             except Exception as exc:
@@ -188,6 +202,42 @@ class OpenaiImage:
             return ["images_api", "novelai_images_api"]
         return ["images_api", "chat_completions"]
 
+    def _resolve_size(self, model: str) -> str:
+        """按模型名解析分辨率配置。"""
+
+        return self.model_size_overrides.get(model.strip(), self.default_size)
+
+    def _resolve_n(self, n: int) -> int:
+        """解析最终请求图片数量。"""
+
+        return min(max(int(n), 1), self.max_images)
+
+    def _build_images_generation_payload(self, prompt: str, model: str, n: int) -> dict[str, Any]:
+        """构建 OpenAI Images API 文生图请求体。"""
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "n": self._resolve_n(n),
+        }
+        size = self._resolve_size(model)
+        if size:
+            payload["size"] = size
+        if self.quality:
+            payload["quality"] = self.quality
+        if self.response_format:
+            payload["response_format"] = self.response_format
+        elif not self._is_gpt_image_model(model):
+            payload["response_format"] = "b64_json"
+        if self.output_format:
+            payload["output_format"] = self.output_format
+        if self.background:
+            payload["background"] = self.background
+        if self.moderation:
+            payload["moderation"] = self.moderation
+        payload.update(self.extra_parameters)
+        return payload
+
     def _build_chat_completions_payload(self, prompt: str, model: str, n: int) -> dict[str, Any]:
         """构建 chat completions 兼容模式的文生图请求体。"""
 
@@ -211,8 +261,10 @@ class OpenaiImage:
                 }
             ],
         }
-        if n > 1:
-            payload["n"] = n
+        resolved_n = self._resolve_n(n)
+        if resolved_n > 1:
+            payload["n"] = resolved_n
+        payload.update(self.extra_parameters)
         return payload
 
     def _build_chat_completions_edit_payload(
@@ -264,8 +316,10 @@ class OpenaiImage:
                 }
             ],
         }
-        if n > 1:
-            payload["n"] = n
+        resolved_n = self._resolve_n(n)
+        if resolved_n > 1:
+            payload["n"] = resolved_n
+        payload.update(self.extra_parameters)
         return payload
 
     async def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -339,8 +393,21 @@ class OpenaiImage:
                 form = aiohttp.FormData()
                 form.add_field("model", model)
                 form.add_field("prompt", prompt)
-                form.add_field("n", str(n))
-                form.add_field("size", "1024x1024")
+                form.add_field("n", str(self._resolve_n(n)))
+                size = self._resolve_size(model)
+                if size:
+                    form.add_field("size", size)
+                if self.quality:
+                    form.add_field("quality", self.quality)
+                if self.response_format:
+                    form.add_field("response_format", self.response_format)
+                if self.output_format:
+                    form.add_field("output_format", self.output_format)
+                if self.background:
+                    form.add_field("background", self.background)
+                for key, value in self.extra_parameters.items():
+                    if value is not None:
+                        form.add_field(str(key), str(value))
                 form.add_field(
                     field_name,
                     image_bytes,

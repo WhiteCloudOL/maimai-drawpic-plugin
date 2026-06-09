@@ -4,6 +4,7 @@ from io import BytesIO
 from typing import Any
 
 from PIL import Image as PILImage
+
 import aiohttp
 import base64
 import time
@@ -24,6 +25,9 @@ class AliyunImage:
         model_size_overrides: dict[str, str] | None = None,
         negative_prompt: str = "",
         prompt_extend: bool = True,
+        watermark: bool = False,
+        max_images: int = 1,
+        extra_parameters: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -37,6 +41,9 @@ class AliyunImage:
         }
         self.negative_prompt = negative_prompt.strip()
         self.prompt_extend = prompt_extend
+        self.watermark = watermark
+        self.max_images = max(int(max_images), 1)
+        self.extra_parameters = dict(extra_parameters or {})
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """调用阿里百炼文生图接口。"""
@@ -95,8 +102,8 @@ class AliyunImage:
         """构建阿里百炼图片处理参数。"""
 
         parameters: dict[str, Any] = {
-            "n": n,
-            "watermark": False,
+            "n": min(max(int(n), 1), self.max_images),
+            "watermark": self.watermark,
         }
         if self.negative_prompt:
             parameters["negative_prompt"] = self.negative_prompt
@@ -107,6 +114,7 @@ class AliyunImage:
             resolved_size = self._resolve_size(normalized_model)
             if resolved_size:
                 parameters["size"] = resolved_size
+        parameters.update(self.extra_parameters)
         return parameters
 
     def _resolve_size(self, model: str) -> str:

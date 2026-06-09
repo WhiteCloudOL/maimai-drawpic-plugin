@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import base64
-import time
 from typing import Any
 
 import aiohttp
+import base64
+import time
 
 
 class ZhipuImage:
@@ -16,11 +16,19 @@ class ZhipuImage:
         base_url: str = "https://open.bigmodel.cn",
         logger: Any | None = None,
         request_timeout_seconds: int = 20,
+        size: str = "1280x1280",
+        response_format: str = "url",
+        user: str = "",
+        extra_parameters: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
+        self.size = size.strip()
+        self.response_format = response_format.strip()
+        self.user = user.strip()
+        self.extra_parameters = dict(extra_parameters or {})
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """调用智谱文生图接口。"""
@@ -30,11 +38,7 @@ class ZhipuImage:
 
         response = await self._post_json(
             url=f"{self.base_url}/api/paas/v4/images/generations",
-            payload={
-                "model": model,
-                "prompt": prompt,
-                "size": "1280x1280",
-            },
+            payload=self._build_payload(prompt=prompt, model=model),
         )
         return await self._extract_images(response)
 
@@ -43,6 +47,22 @@ class ZhipuImage:
 
         del prompt, model, image_bytes, n
         raise RuntimeError("智谱图片模型当前仅支持文生图，不支持图生图编辑")
+
+    def _build_payload(self, prompt: str, model: str) -> dict[str, Any]:
+        """构建智谱图像生成请求体。"""
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+        }
+        if self.size:
+            payload["size"] = self.size
+        if self.response_format:
+            payload["response_format"] = self.response_format
+        if self.user:
+            payload["user"] = self.user
+        payload.update(self.extra_parameters)
+        return payload
 
     def _build_headers(self) -> dict[str, str]:
         """构建请求头。"""

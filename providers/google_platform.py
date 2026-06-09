@@ -15,6 +15,15 @@ class GoogleImage:
         base_url: str = "",
         logger: Any | None = None,
         request_timeout_seconds: int = 20,
+        number_of_images: int = 1,
+        aspect_ratio: str = "",
+        output_mime_type: str = "image/png",
+        person_generation: str = "",
+        negative_prompt: str = "",
+        seed: int = -1,
+        guidance_scale: float = 0.0,
+        add_watermark: bool = False,
+        extra_parameters: dict[str, Any] | None = None,
     ):
         client_kwargs: dict[str, Any] = {"api_key": api_key}
         http_options: dict[str, Any] = {"timeout": request_timeout_seconds * 1000}
@@ -25,6 +34,15 @@ class GoogleImage:
             http_options["base_url"] = normalized_base_url
         client_kwargs["http_options"] = http_options
         self.client = genai.Client(**client_kwargs)
+        self.number_of_images = max(int(number_of_images), 1)
+        self.aspect_ratio = aspect_ratio.strip()
+        self.output_mime_type = output_mime_type.strip()
+        self.person_generation = person_generation.strip()
+        self.negative_prompt = negative_prompt.strip()
+        self.seed = int(seed)
+        self.guidance_scale = float(guidance_scale)
+        self.add_watermark = add_watermark
+        self.extra_parameters = dict(extra_parameters or {})
 
     @staticmethod
     def _uses_generate_content_api(model: str) -> bool:
@@ -65,6 +83,57 @@ class GoogleImage:
                 if data:
                     image_bytes_list.append(data)
         return image_bytes_list
+
+    @staticmethod
+    def _filter_config_kwargs(config_class: type[Any], kwargs: dict[str, Any]) -> dict[str, Any]:
+        """只保留当前 google-genai 版本支持的配置字段。"""
+
+        fields = getattr(config_class, "model_fields", None)
+        if isinstance(fields, dict):
+            return {key: value for key, value in kwargs.items() if key in fields and value is not None}
+        return {key: value for key, value in kwargs.items() if value is not None}
+
+    def _build_image_config_kwargs(self, n: int) -> dict[str, Any]:
+        """构建 Google 图片生成/编辑配置参数。"""
+
+        kwargs: dict[str, Any] = {
+            "number_of_images": min(max(int(n), 1), self.number_of_images),
+        }
+        if self.output_mime_type:
+            kwargs["output_mime_type"] = self.output_mime_type
+        if self.aspect_ratio:
+            kwargs["aspect_ratio"] = self.aspect_ratio
+        if self.person_generation:
+            kwargs["person_generation"] = self.person_generation
+        if self.negative_prompt:
+            kwargs["negative_prompt"] = self.negative_prompt
+        if self.seed >= 0:
+            kwargs["seed"] = self.seed
+        if self.guidance_scale > 0:
+            kwargs["guidance_scale"] = self.guidance_scale
+        kwargs["add_watermark"] = self.add_watermark
+        kwargs.update(self.extra_parameters)
+        return kwargs
+
+    def _build_generate_content_config(self) -> types.GenerateContentConfig:
+        """构建 Gemini generateContent 图片配置。"""
+
+        config_kwargs: dict[str, Any] = {
+            "response_modalities": ["TEXT", "IMAGE"],
+        }
+        image_config_class = getattr(types, "ImageConfig", None)
+        if image_config_class is not None:
+            image_config_kwargs = {
+                key: value
+                for key, value in self._build_image_config_kwargs(1).items()
+                if key not in {"number_of_images", "add_watermark"}
+            }
+            filtered_image_config_kwargs = self._filter_config_kwargs(image_config_class, image_config_kwargs)
+            if filtered_image_config_kwargs:
+                config_kwargs["image_config"] = image_config_class(**filtered_image_config_kwargs)
+        return types.GenerateContentConfig(
+            **self._filter_config_kwargs(types.GenerateContentConfig, config_kwargs)
+        )
 
     def _wrap_google_error(self, exc: Exception, model: str, operation: str) -> RuntimeError:
         """将 Google SDK 异常整理为更容易排查的中文错误。"""
@@ -118,9 +187,7 @@ class GoogleImage:
             response = self.client.models.generate_content(
                 model=model,
                 contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"],
-                ),
+                config=self._build_generate_content_config(),
             )
         except Exception as exc:
             raise self._wrap_google_error(exc, model, "文生图") from exc
@@ -143,9 +210,7 @@ class GoogleImage:
                     ),
                     prompt,
                 ],
-                config=types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"],
-                ),
+                config=self._build_generate_content_config(),
             )
         except Exception as exc:
             raise self._wrap_google_error(exc, model, "图生图") from exc
@@ -162,8 +227,10 @@ class GoogleImage:
                 model=model,
                 prompt=prompt,
                 config=types.GenerateImagesConfig(
-                    number_of_images=n,
-                    output_mime_type="image/png",
+                    **self._filter_config_kwargs(
+                        types.GenerateImagesConfig,
+                        self._build_image_config_kwargs(n),
+                    )
                 ),
             )
         except Exception as exc:
@@ -196,8 +263,10 @@ class GoogleImage:
                 prompt=prompt,
                 reference_images=[reference_image],
                 config=types.EditImageConfig(
-                    number_of_images=n,
-                    output_mime_type="image/png",
+                    **self._filter_config_kwargs(
+                        types.EditImageConfig,
+                        self._build_image_config_kwargs(n),
+                    )
                 ),
             )
         except Exception as exc:
