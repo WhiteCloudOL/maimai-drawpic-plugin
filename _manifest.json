@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "maimai-drawpic-plugin",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "name": "麦麦绘图",
   "description": "让麦麦拥有图片创建与图片编辑的能力，支持多平台图片模型",
   "author": {
@@ -23,7 +23,11 @@
     "min_version": "2.0.0",
     "max_version": "2.99.99"
   },
-  "dependencies": [],
+  "dependencies": [
+	{"type": "python_package", "name": "aiohttp", "version_spec": ">=3.0.0"},
+	{"type": "python_package", "name": "google-genai", "version_spec": ">=1.58.0"},
+	{"type": "python_package", "name": "pillow", "version_spec": ">=9.0.0"}
+  ],
   "capabilities": [
     "send.text",
     "send.image",
@@ -39,6 +43,14 @@
   "i18n": {
     "default_locale": "zh-CN",
     "locales_path": "i18n",
-    "supported_locales": ["zh-CN", "en-US"]
+    "supported_locales": ["zh-CN"]
+  },
+  "display": {
+    "icon": {
+      "type": "local",
+      "value": "assets/icon.png",
+      "fallback": "database",
+      "background": "#eff6fe"
+    }
   }
 }
