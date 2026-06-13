@@ -545,13 +545,53 @@ class OpenaiImage:
         if not isinstance(item, dict):
             return None
 
-        image_base64 = item.get("b64_json") or item.get("image_base64")
+        for key in ("text", "content"):
+            text_value = item.get(key)
+            if not isinstance(text_value, str) or not text_value:
+                continue
+            extracted = await self._extract_image_bytes_from_string(text_value)
+            if extracted is not None:
+                return extracted
+
+        for key in ("content", "parts", "images"):
+            nested_items = item.get(key)
+            if not isinstance(nested_items, list):
+                continue
+            for nested_item in nested_items:
+                extracted = await self._extract_image_bytes_from_content_item(nested_item)
+                if extracted is not None:
+                    return extracted
+
+        image_base64 = item.get("b64_json") or item.get("image_base64") or item.get("base64")
         if isinstance(image_base64, str) and image_base64:
             return base64.b64decode(image_base64)
+
+        inline_data = item.get("inline_data") or item.get("inlineData")
+        if isinstance(inline_data, dict):
+            inline_base64 = inline_data.get("data")
+            if isinstance(inline_base64, str) and inline_base64:
+                return base64.b64decode(inline_base64)
+
+        source = item.get("source")
+        if isinstance(source, dict):
+            source_base64 = source.get("data")
+            if isinstance(source_base64, str) and source_base64:
+                return base64.b64decode(source_base64)
+            source_url = source.get("url")
+            if isinstance(source_url, str) and source_url:
+                return await self._extract_image_bytes_from_string(source_url)
+        elif isinstance(source, str) and source:
+            return await self._extract_image_bytes_from_string(source)
 
         image_url = item.get("url")
         if isinstance(image_url, str) and image_url:
             return await self._extract_image_bytes_from_string(image_url)
+
+        image_field = item.get("image")
+        if isinstance(image_field, (dict, str)):
+            extracted = await self._extract_image_bytes_from_content_item(image_field)
+            if extracted is not None:
+                return extracted
 
         image_url_object = item.get("image_url")
         if isinstance(image_url_object, dict):
