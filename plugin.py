@@ -1,13 +1,17 @@
 from pathlib import Path
 from typing import Any, ClassVar
 
-from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
-from maibot_sdk.types import ToolParameterInfo, ToolParamType
+from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, HookHandler, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
+from maibot_sdk.types import HookMode, ToolParameterInfo, ToolParamType
 
 from .core.config import DrawpicConfig
 from .core.draw_service import DrawService
 from .core.image_reply import PinkImageReplyRenderer
-from .core.message_utils import decode_image_base64, find_source_image
+from .core.message_utils import (
+    cache_source_image_from_message,
+    decode_image_base64,
+    find_source_image,
+)
 from .core.moderation import DrawpicModerationService
 from .core.provider_router import ProviderRouter
 from .core.session_preferences import SessionPreferenceStore
@@ -206,6 +210,47 @@ class DrawpicPlugin(MaiBotPlugin):
         if not success:
             return False, f"绘图次数已用尽（周期：{self.config.general.quota_period}）"
         return True, f"当前周期剩余 {remaining} 次"
+
+    @staticmethod
+    def _resolve_stream_id_from_hook_message(message: Any) -> str:
+        """从命名 Hook 的消息载荷中解析聊天流 ID。"""
+
+        if not isinstance(message, dict):
+            return ""
+        return str(message.get("session_id") or "").strip()
+
+    @HookHandler(
+        "chat.receive.before_process",
+        name="source_image_cache_handler",
+        description="缓存入站图片原文，供 QQ 引用消息编辑使用",
+        mode=HookMode.OBSERVE,
+    )
+    async def handle_source_image_cache(self, message: Any = None, stream_id: str = "", **kwargs: Any):
+        """在主链清理图片二进制前缓存真实图片。"""
+
+        del kwargs
+        if not isinstance(message, dict):
+            return True, True, None, None, None
+
+        resolved_stream_id = stream_id or self._resolve_stream_id_from_hook_message(message)
+        if not resolved_stream_id:
+            return True, True, None, None, None
+
+        try:
+            cached = cache_source_image_from_message(resolved_stream_id, message)
+        except ValueError as exc:
+            self.ctx.logger.warning("缓存入站图片失败: stream_id=%s error=%s", resolved_stream_id, exc)
+            return True, True, None, None, None
+
+        if cached is not None:
+            message_id, image_base64_len = cached
+            self.ctx.logger.info(
+                "已缓存入站图片: stream_id=%s message_id=%s image_base64_len=%s",
+                resolved_stream_id,
+                message_id,
+                image_base64_len,
+            )
+        return True, True, None, None, None
 
     async def _send_command_reply(
         self,
@@ -421,7 +466,11 @@ class DrawpicPlugin(MaiBotPlugin):
 
     @Tool(
         "edit_image",
-        description="基于当前聊天中的真实图片执行图生图编辑；仅当用户明确要求修改、编辑、重绘已有图片时调用。找不到真实图片或模型平台不支持图片编辑时，返回原因并由 AI 告知用户无法调用图片编辑",
+        description=(
+            "基于当前聊天中的真实图片执行图生图编辑；仅当用户明确要求修改、编辑、重绘已有图片时调用。"
+            "如果用户回复/引用了一张图片，直接调用本工具，插件会从引用消息中提取真实图片。"
+            "找不到真实图片或模型平台不支持图片编辑时，返回原因并由 AI 告知用户无法调用图片编辑"
+        ),
         parameters=[
             ToolParameterInfo(
                 name="prompt",
@@ -438,7 +487,7 @@ class DrawpicPlugin(MaiBotPlugin):
             ToolParameterInfo(
                 name="source_message_id",
                 param_type=ToolParamType.STRING,
-                description="可选，指定要编辑的源图片消息 ID；不填时自动取最近一张图片",
+                description="可选，指定要编辑的源图片消息 ID；不填时自动优先取当前/最近引用消息中的图片，再取最近一张图片",
                 required=False,
             ),
             ToolParameterInfo(
