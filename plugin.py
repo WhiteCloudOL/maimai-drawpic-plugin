@@ -1,15 +1,13 @@
 from pathlib import Path
 from typing import Any, ClassVar
 
-import base64
-
 from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
 from maibot_sdk.types import ToolParameterInfo, ToolParamType
 
 from .core.config import DrawpicConfig
 from .core.draw_service import DrawService
 from .core.image_reply import PinkImageReplyRenderer
-from .core.message_utils import find_source_image
+from .core.message_utils import decode_image_base64, find_source_image
 from .core.moderation import DrawpicModerationService
 from .core.provider_router import ProviderRouter
 from .core.session_preferences import SessionPreferenceStore
@@ -346,7 +344,7 @@ class DrawpicPlugin(MaiBotPlugin):
 
     @Tool(
         "draw",
-        description="根据提示词调用绘图模型创建图片，并发送到当前聊天流",
+        description="根据纯文本提示调用绘图模型创建新图片，并发送到当前聊天流；用户要求修改、编辑、重绘已有图片时不要调用本工具，应调用 edit_image",
         parameters=[
             ToolParameterInfo(
                 name="prompt",
@@ -423,12 +421,12 @@ class DrawpicPlugin(MaiBotPlugin):
 
     @Tool(
         "edit_image",
-        description="编辑当前聊天中的最近一张图片，或编辑指定消息中的图片",
+        description="基于当前聊天中的真实图片执行图生图编辑；仅当用户明确要求修改、编辑、重绘已有图片时调用。找不到真实图片或模型平台不支持图片编辑时，返回原因并由 AI 告知用户无法调用图片编辑",
         parameters=[
             ToolParameterInfo(
                 name="prompt",
                 param_type=ToolParamType.STRING,
-                description="图片编辑提示词，描述希望修改成什么样",
+                description="图片编辑提示词，描述希望基于源图修改成什么样；不要把源图片描述写在这里替代真实图片",
                 required=True,
             ),
             ToolParameterInfo(
@@ -446,7 +444,7 @@ class DrawpicPlugin(MaiBotPlugin):
             ToolParameterInfo(
                 name="source_image_base64",
                 param_type=ToolParamType.STRING,
-                description="可选，直接传入源图片 Base64；有值时优先使用它",
+                description="可选，直接传入真实源图片 Base64 或 data:image/...;base64；不要传图片描述文本",
                 required=False,
             ),
             ToolParameterInfo(
@@ -515,18 +513,10 @@ class DrawpicPlugin(MaiBotPlugin):
             if not router.supports_image_edit(resolved_model):
                 return {
                     "success": False,
-                    "message": f"当前模型 {resolved_model} 仅支持文生图，不支持 edit_image 图生图编辑",
-                }
-            await draw_service.review_prompt_or_raise(prompt.strip())
-            quota_allowed, quota_message = self._consume_draw_quota(
-                normalized_user_id,
-                normalized_group_id,
-                normalized_stream_id,
-            )
-            if not quota_allowed:
-                return {
-                    "success": False,
-                    "message": f"{quota_message}。请自然告知用户当前无法继续绘图，并提示联系管理员调整次数。",
+                    "message": (
+                        f"当前模型 {resolved_model} 所属平台不支持图片编辑，无法调用 edit_image 图生图。"
+                        "请自然告知用户当前只能文生图，不能基于已有图片修改。"
+                    ),
                 }
             lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
                 stream_id=normalized_stream_id,
@@ -540,7 +530,18 @@ class DrawpicPlugin(MaiBotPlugin):
                 source_message_id=source_message_id,
                 source_image_base64=source_image_base64,
             )
-            source_image_bytes = base64.b64decode(image_base64)
+            source_image_bytes = decode_image_base64(image_base64)
+            await draw_service.review_prompt_or_raise(prompt.strip())
+            quota_allowed, quota_message = self._consume_draw_quota(
+                normalized_user_id,
+                normalized_group_id,
+                normalized_stream_id,
+            )
+            if not quota_allowed:
+                return {
+                    "success": False,
+                    "message": f"{quota_message}。请自然告知用户当前无法继续绘图，并提示联系管理员调整次数。",
+                }
             return await draw_service.start_background_edit_request(
                 prompt=prompt.strip(),
                 stream_id=normalized_stream_id,
@@ -553,6 +554,14 @@ class DrawpicPlugin(MaiBotPlugin):
                 group_id=normalized_group_id,
                 platform_name=platform_name,
             )
+        except ValueError as exc:
+            return {
+                "success": False,
+                "message": (
+                    f"{exc}。无法调用 edit_image 图片编辑；请自然告知用户需要先发送一张真实图片，"
+                    "或回复/指定包含图片的消息后再编辑。"
+                ),
+            }
         except Exception as exc:
             self.ctx.logger.error("启动后台编辑图片失败: %s", exc, exc_info=True)
             return {"success": False, "message": f"启动后台编辑图片失败：{exc}"}

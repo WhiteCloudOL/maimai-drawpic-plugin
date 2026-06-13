@@ -7,14 +7,14 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.6.1-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.6.2-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
 
 ## 功能特性
 
-- **文生图与图生图**：根据提示词生成图片，也可以基于聊天中的图片继续编辑。
+- **文生图与图生图**：根据提示词生成图片，也可以基于聊天中的真实图片继续编辑，编辑时会校验源图数据，避免把图片描述误当作源图。
 - **多平台模型**：支持 OpenAI Images API、OpenAI Chat Completion 兼容、Google Gemini、智谱、阿里百炼、硅基流动和 NovelAI / NovelAPI。
 - **平台参数配置**：各平台支持分辨率、生成数量、输出格式、随机种子、反向提示词、采样步数、引导强度和额外参数等常用配置，兼容不同上游能力差异。
 - **会话偏好**：群聊和私聊可分别保存模型与 OpenAI 兼容模式；新会话默认跟随全局默认模型。
@@ -431,7 +431,7 @@ OpenAI provider 面向 OpenAI 官方 Images API、NewAPI 等 OpenAI 兼容中转
 | 工具名 | 作用 |
 | :--- | :--- |
 | `draw` | 根据提示词生成新图片，结果以异步后台任务形式回传到当前聊天流 |
-| `edit_image` | 编辑当前聊天中的最近一张图片，或编辑指定 `source_message_id` / `source_image_base64` 对应的图片（智谱模型暂不支持，其他平台取决于上游模型能力） |
+| `edit_image` | 编辑当前聊天中的最近一张真实图片，或编辑指定 `source_message_id` / `source_image_base64` 对应的图片；`source_image_base64` 必须是真实图片 Base64 或 `data:image/...;base64`，不能传图片描述文本（智谱模型暂不支持，其他平台取决于上游模型能力） |
 | `draw_status` | 查询当前会话最近一个绘图后台任务，或按 `task_id` 查询指定任务的状态 |
 
 共通可选参数：

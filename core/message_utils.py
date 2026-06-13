@@ -1,4 +1,10 @@
+from io import BytesIO
 from typing import Any
+
+from PIL import Image as PILImage
+
+import base64
+import binascii
 
 
 def _normalize_base64_value(value: Any) -> str:
@@ -7,6 +13,67 @@ def _normalize_base64_value(value: Any) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return ""
+
+
+def _remove_data_url_prefix(value: str) -> str:
+    """移除 data URL 前缀，只保留 Base64 数据。"""
+
+    if not value.lower().startswith("data:"):
+        return value
+
+    header, separator, payload = value.partition(",")
+    if not separator or ";base64" not in header.lower() or not header.lower().startswith("data:image/"):
+        raise ValueError("source_image_base64 不是有效的图片 data URL")
+    return payload
+
+
+def normalize_image_base64(value: Any) -> str:
+    """规范化图片 Base64，支持 data:image/...;base64 前缀。"""
+
+    normalized_value = _normalize_base64_value(value)
+    if not normalized_value:
+        return ""
+
+    normalized_value = _remove_data_url_prefix(normalized_value)
+    normalized_value = "".join(normalized_value.split())
+    if not normalized_value:
+        return ""
+
+    padding_remainder = len(normalized_value) % 4
+    if padding_remainder == 1:
+        raise ValueError("source_image_base64 不是有效的图片 Base64")
+    if padding_remainder:
+        normalized_value += "=" * (4 - padding_remainder)
+    return normalized_value
+
+
+def decode_image_base64(value: Any) -> bytes:
+    """解码并校验真实图片 Base64。"""
+
+    normalized_value = normalize_image_base64(value)
+    if not normalized_value:
+        raise ValueError("没有可用的真实图片数据")
+
+    try:
+        image_bytes = base64.b64decode(normalized_value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("source_image_base64 不是有效的图片 Base64") from exc
+
+    try:
+        with PILImage.open(BytesIO(image_bytes)) as image:
+            image.verify()
+    except Exception as exc:
+        raise ValueError("source_image_base64 不是可识别的真实图片") from exc
+
+    return image_bytes
+
+
+def validate_image_base64(value: Any) -> str:
+    """确认候选 Base64 是真实图片，并返回规范化后的 Base64。"""
+
+    normalized_value = normalize_image_base64(value)
+    decode_image_base64(normalized_value)
+    return normalized_value
 
 
 def _extract_image_base64_from_segment(segment: dict[str, Any]) -> str:
@@ -122,7 +189,7 @@ async def find_source_image(
 
     normalized_image_base64 = source_image_base64.strip()
     if normalized_image_base64:
-        return normalized_image_base64, source_message_id.strip()
+        return validate_image_base64(normalized_image_base64), source_message_id.strip()
 
     normalized_message_id = source_message_id.strip()
     if normalized_message_id:
@@ -136,7 +203,7 @@ async def find_source_image(
         if isinstance(message, dict):
             image_base64 = extract_image_base64_from_message(message)
             if image_base64:
-                return image_base64, normalized_message_id
+                return validate_image_base64(image_base64), normalized_message_id
 
     recent_result = await ctx.call_capability(
         "message.get_recent",
@@ -152,7 +219,11 @@ async def find_source_image(
 
     for message in reversed(recent_messages):
         image_base64 = extract_image_base64_from_message(message)
-        if image_base64:
-            return image_base64, str(message.get("message_id") or "").strip()
+        if not image_base64:
+            continue
+        try:
+            return validate_image_base64(image_base64), str(message.get("message_id") or "").strip()
+        except ValueError:
+            continue
 
-    raise ValueError("最近消息中没有找到图片，请先发送图片，或显式传入 source_message_id")
+    raise ValueError("最近消息中没有找到可编辑的真实图片，请先发送图片，或显式传入 source_message_id")
