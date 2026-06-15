@@ -1,8 +1,5 @@
-from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
-
-import json
 
 from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, HookHandler, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
 from maibot_sdk.types import HookMode, ToolParameterInfo, ToolParamType
@@ -43,7 +40,6 @@ class DrawpicPlugin(MaiBotPlugin):
         self._session_preferences_path = self._data_dir / "session_preferences.json"
         self._task_store_path = self._data_dir / "draw_tasks.json"
         self._usage_store_path = self._data_dir / "user_quotas.json"
-        self._raw_message_log_path = self._data_dir / "logs.txt"
         self._router: ProviderRouter | None = None
         self._session_store: SessionPreferenceStore | None = None
         self._stream_service: ChatStreamService | None = None
@@ -248,48 +244,6 @@ class DrawpicPlugin(MaiBotPlugin):
         return lookup_stream_ids
 
     @staticmethod
-    def _truncate_raw_message_value(value: Any, key_hint: str = "") -> Any:
-        """递归裁剪原始消息中的图片 Base64，其他字段尽量完整保留。"""
-
-        normalized_key_hint = key_hint.lower()
-        if isinstance(value, dict):
-            return {
-                str(key): DrawpicPlugin._truncate_raw_message_value(item, str(key))
-                for key, item in value.items()
-            }
-        if isinstance(value, list):
-            return [DrawpicPlugin._truncate_raw_message_value(item, key_hint) for item in value]
-        if isinstance(value, tuple):
-            return [DrawpicPlugin._truncate_raw_message_value(item, key_hint) for item in value]
-        if isinstance(value, str):
-            should_truncate = (
-                "base64" in normalized_key_hint
-                or normalized_key_hint in {"binary_data", "file_base64", "image_base64"}
-                or value.startswith("data:image/")
-            )
-            if should_truncate and len(value) > 100:
-                return f"{value[:100]}...<truncated length={len(value)}>"
-            return value
-        if isinstance(value, bytes):
-            preview = value[:100].hex()
-            return f"<bytes length={len(value)} hex_preview={preview}>"
-        try:
-            json.dumps(value, ensure_ascii=False)
-        except TypeError:
-            return repr(value)
-        return value
-
-    def _append_raw_message_log(self, payload: dict[str, Any]) -> None:
-        """追加写入测试用原始消息日志。"""
-
-        self._data_dir.mkdir(parents=True, exist_ok=True)
-        sanitized_payload = self._truncate_raw_message_value(payload)
-        log_text = json.dumps(sanitized_payload, ensure_ascii=False, indent=2)
-        with self._raw_message_log_path.open("a", encoding="utf-8") as log_file:
-            log_file.write(log_text)
-            log_file.write("\n\n")
-
-    @staticmethod
     def _extract_text_command_from_raw_message(message: Any) -> str:
         """从原始消息文本段中提取被 reply/at 前缀遮挡的绘图命令。"""
 
@@ -381,27 +335,6 @@ class DrawpicPlugin(MaiBotPlugin):
                 "intercept_message_level": intercept_message_level,
             },
         }
-
-    @HookHandler(
-        "chat.receive.before_process",
-        name="raw_message_debug_logger",
-        description="测试用：将所有入站消息原始字段写入插件 data/logs.txt",
-        mode=HookMode.OBSERVE,
-    )
-    async def handle_raw_message_debug_log(self, message: Any = None, stream_id: str = "", **kwargs: Any):
-        """测试用原始消息日志，直接输出所有 Hook 字段。"""
-
-        payload = {
-            "logged_at": datetime.now().isoformat(timespec="seconds"),
-            "stream_id": stream_id,
-            "message": message,
-            "kwargs": kwargs,
-        }
-        try:
-            self._append_raw_message_log(payload)
-        except Exception as exc:
-            self.ctx.logger.warning("写入原始消息测试日志失败: %s", exc)
-        return True, True, None, None, None
 
     @HookHandler(
         "chat.receive.before_process",

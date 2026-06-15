@@ -7,7 +7,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.7.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.7.1-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
@@ -16,6 +16,7 @@
 
 - **文生图与图生图**：`/绘图 文生图 <prompt>` 强制纯文本生图，`/绘图 图生图 <prompt>` 强制基于源图编辑。图生图既能识别命令消息中**直接附带的图片（非引用）**，也能识别**回复/引用的图片**，单条命令支持**多张图片**；在支持的平台（OpenAI、Google、阿里百炼）上多图一并提交，仅支持单图的平台（NovelAI、硅基流动）自动取第一张，不支持图生图的平台会给出切换提示。编辑前会逐张校验源图数据，避免把图片描述误当作源图。
 - **多平台模型**：支持 OpenAI Images API、OpenAI Chat Completion 兼容、Google Gemini、智谱、阿里百炼、硅基流动和 NovelAI / NovelAPI。
+- **编辑尺寸适配**：图生图会尽量沿用源图尺寸或比例；OpenAI 官方 `gpt-image-2` 会按官方约束规范化原图尺寸，OpenAI 兼容中转（如 NewAPI）会按源图比例选择兼容枚举尺寸，接口不支持时自动回退到配置的默认尺寸。
 - **平台参数配置**：各平台支持分辨率、生成数量、输出格式、随机种子、反向提示词、采样步数、引导强度和额外参数等常用配置，兼容不同上游能力差异。
 - **会话偏好**：群聊和私聊可分别保存模型与 OpenAI 兼容模式；新会话默认跟随全局默认模型。
 - **后台任务**：绘图不阻塞聊天流程，生成完成后自动发送图片，可通过状态命令或工具查询任务。
@@ -120,7 +121,7 @@ models = [
 # 默认 OpenAI 兼容模式：auto / images_api / chat_completions / novelai_images_api
 # 通常建议保持 auto，由插件自动选择合适的接口
 default_openai_compatibility_mode = "auto"
-# OpenAI Images API 默认分辨率；兼容平台可按自身要求填写
+# OpenAI Images API 默认分辨率；图生图尺寸适配失败时会回退到该值，兼容平台可按自身要求填写
 default_size = "1024x1024"
 # 按模型覆盖分辨率。每项格式为 模型名=宽x高
 model_size_overrides = []
@@ -153,7 +154,7 @@ models = [
 ]
 # Google generate_images/edit_image 图片数量；Gemini generateContent 图片模型通常只返回 1 张
 number_of_images = 1
-# Google 图片宽高比；常见值 1:1、3:4、4:3、9:16、16:9
+# Google 图片宽高比；图生图会优先按源图比例选择最接近的标准比例，失败时回退到该值
 aspect_ratio = "1:1"
 # 输出图片 MIME 类型
 output_mime_type = "image/png"
@@ -377,8 +378,9 @@ OpenAI provider 面向 OpenAI 官方 Images API、NewAPI 等 OpenAI 兼容中转
 
 - **硅基流动**：调用 `/v1/images/generations`，支持文生图和带 `image` 的图生图请求；响应兼容官方 `images` 数组和 OpenAI 风格 `data` 数组。
 - **NovelAI / NovelAPI**：调用 `/ai/generate-image`，支持官方 zip 图片响应、直接图片响应，以及常见 NovelAPI JSON 响应。图生图会传入 `image`、`strength` 和 `noise`。
-- **OpenAI 兼容平台**：默认 `auto` 会按模型特征尝试 Images API 或 Chat Completions；`extra_parameters` 可用于 NewAPI 等中转自定义字段。
-- **Google**：Imagen 生成/编辑路径传入 SDK 支持的配置字段；Gemini generateContent 图片模型使用 `image_config` 传入可用图像参数。
+- **OpenAI 兼容平台**：默认 `auto` 会按模型特征尝试 Images API 或 Chat Completions；`extra_parameters` 可用于 NewAPI 等中转自定义字段。图生图支持 OpenAI 官方与 OpenAI 兼容中转：官方 `gpt-image-2` 优先尝试规范化后的源图尺寸，其他兼容模型按源图比例选择 `1024x1024`、`1536x1024` 或 `1024x1536`，失败后回退 `default_size`。
+- **Google**：Imagen 生成/编辑路径传入 SDK 支持的配置字段；Gemini generateContent 图片模型使用 `image_config` 传入可用图像参数。图生图会尽量保持输入图比例，接口拒绝时回退配置中的 `aspect_ratio`。
+- **阿里百炼**：支持多图输入；支持尺寸参数的模型会优先尝试源图尺寸，不支持显式尺寸的 `qwen-image-edit` 会沿用平台默认行为。
 
 ### 英文提示词改写
 
