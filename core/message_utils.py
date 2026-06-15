@@ -163,22 +163,53 @@ def extract_reply_target_message_ids(message: dict[str, Any]) -> list[str]:
     """从消息结构中提取 QQ 回复/引用的目标消息 ID。"""
 
     target_message_ids: list[str] = []
-    direct_reply_to = str(message.get("reply_to") or "").strip()
-    if direct_reply_to:
-        target_message_ids.append(direct_reply_to)
+
+    def _add_target_message_id(value: Any) -> None:
+        target_message_id = str(value or "").strip()
+        if target_message_id and target_message_id not in target_message_ids:
+            target_message_ids.append(target_message_id)
+
+    for key in (
+        "reply_to",
+        "reply_message_id",
+        "quote_message_id",
+        "quoted_message_id",
+        "target_message_id",
+        "source_message_id",
+    ):
+        _add_target_message_id(message.get(key))
+
+    for nested_key in ("reply", "quote", "quoted_message"):
+        nested_value = message.get(nested_key)
+        if isinstance(nested_value, dict):
+            for key in (
+                "target_message_id",
+                "message_id",
+                "id",
+                "reply_to",
+                "source_message_id",
+            ):
+                _add_target_message_id(nested_value.get(key))
+        else:
+            _add_target_message_id(nested_value)
 
     for segment in _extract_segments_from_message(message):
-        if str(segment.get("type") or "").strip() != "reply":
+        if str(segment.get("type") or "").strip() not in {"reply", "quote"}:
             continue
 
         segment_data = segment.get("data")
         if isinstance(segment_data, dict):
-            target_message_id = str(segment_data.get("target_message_id") or "").strip()
+            for key in (
+                "target_message_id",
+                "message_id",
+                "id",
+                "reply_to",
+                "source_message_id",
+            ):
+                _add_target_message_id(segment_data.get(key))
         else:
-            target_message_id = str(segment_data or "").strip()
+            _add_target_message_id(segment_data)
 
-        if target_message_id and target_message_id not in target_message_ids:
-            target_message_ids.append(target_message_id)
     return target_message_ids
 
 
@@ -329,25 +360,46 @@ async def find_all_images_from_message_by_id(
         return None
     visited_message_ids.add(normalized_message_id)
 
+    collected: list[str] = []
+    seen: set[str] = set()
+    matched_message_id = ""
+
+    def _add(image_base64_list: list[str]) -> None:
+        for image_base64 in image_base64_list:
+            if image_base64 and image_base64 not in seen:
+                seen.add(image_base64)
+                collected.append(image_base64)
+
     cached_images = find_all_cached_source_images(stream_id, normalized_message_id)
     if cached_images is not None:
-        return cached_images
+        cached_image_base64_list, cached_message_id = cached_images
+        _add(cached_image_base64_list)
+        matched_message_id = cached_message_id
 
     message = await get_message_by_id_for_image_lookup(ctx, stream_id, normalized_message_id)
     if not isinstance(message, dict):
+        if collected:
+            return collected, matched_message_id or normalized_message_id
         return None
 
     image_base64_list = _validate_image_base64_list(extract_all_image_base64_from_message(message))
     if image_base64_list:
-        matched_message_id = str(message.get("message_id") or normalized_message_id).strip()
-        _remember_source_image(stream_id.strip(), matched_message_id, image_base64_list)
-        return image_base64_list, matched_message_id
+        direct_message_id = str(message.get("message_id") or normalized_message_id).strip()
+        _remember_source_image(stream_id.strip(), direct_message_id, image_base64_list)
+        _add(image_base64_list)
+        if not matched_message_id:
+            matched_message_id = direct_message_id
 
     for target_message_id in extract_reply_target_message_ids(message):
         found = await find_all_images_from_message_by_id(ctx, stream_id, target_message_id, visited_message_ids)
         if found is not None:
-            return found
+            found_image_base64_list, found_message_id = found
+            _add(found_image_base64_list)
+            if not matched_message_id:
+                matched_message_id = found_message_id
 
+    if collected:
+        return collected, matched_message_id or normalized_message_id
     return None
 
 
@@ -423,13 +475,36 @@ async def find_source_image(
 ) -> tuple[str, str]:
     """查找待编辑的源图片。"""
 
+    image_base64_list, matched_message_id = await find_source_images(
+        ctx,
+        stream_id,
+        source_message_id=source_message_id,
+        source_image_base64=source_image_base64,
+    )
+    return image_base64_list[0], matched_message_id
+
+
+async def find_source_images(
+    ctx: Any,
+    stream_id: str,
+    source_message_id: str = "",
+    source_image_base64: str = "",
+    current_message: dict[str, Any] | None = None,
+) -> tuple[list[str], str]:
+    """查找待编辑的源图片列表，合并当前消息与回复/引用消息中的图片。"""
+
     normalized_image_base64 = source_image_base64.strip()
     if normalized_image_base64:
-        return validate_image_base64(normalized_image_base64), source_message_id.strip()
+        return [validate_image_base64(normalized_image_base64)], source_message_id.strip()
+
+    if isinstance(current_message, dict):
+        current_images = await collect_command_source_images(ctx, stream_id, current_message)
+        if current_images:
+            return current_images, str(current_message.get("message_id") or "").strip()
 
     normalized_message_id = source_message_id.strip()
     if normalized_message_id:
-        found = await find_image_from_message_by_id(ctx, stream_id, normalized_message_id)
+        found = await find_all_images_from_message_by_id(ctx, stream_id, normalized_message_id)
         if found is not None:
             return found
 
@@ -446,20 +521,24 @@ async def find_source_image(
         raise ValueError("最近消息返回格式不正确，无法自动寻找待编辑图片")
 
     for message in reversed(recent_messages):
-        found = await extract_image_from_reply_message(ctx, stream_id, message)
+        found = await collect_message_source_images(ctx, stream_id, message)
         if found is not None:
             return found
 
-    for message in reversed(recent_messages):
-        image_base64 = extract_image_base64_from_message(message)
-        if not image_base64:
-            continue
-        try:
-            return validate_image_base64(image_base64), str(message.get("message_id") or "").strip()
-        except ValueError:
-            continue
-
     raise ValueError("最近消息和引用消息中没有找到可编辑的真实图片，请先发送或回复一张图片")
+
+
+async def collect_message_source_images(
+    ctx: Any,
+    stream_id: str,
+    message: dict[str, Any],
+) -> tuple[list[str], str] | None:
+    """收集单条消息直接携带及其回复/引用目标中的全部图片。"""
+
+    image_base64_list = await collect_command_source_images(ctx, stream_id, message)
+    if not image_base64_list:
+        return None
+    return image_base64_list, str(message.get("message_id") or "").strip()
 
 
 async def collect_command_source_images(
@@ -484,6 +563,8 @@ async def collect_command_source_images(
                 collected.append(image_base64)
 
     # 1) 本条命令消息直接附带的图片（非引用）
+    _add(_validate_image_base64_list(extract_all_image_base64_from_message(message)))
+
     message_id = str(message.get("message_id") or "").strip()
     if message_id:
         cached = find_all_cached_source_images(stream_id, message_id)

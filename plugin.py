@@ -11,7 +11,7 @@ from .core.message_utils import (
     cache_source_image_from_message,
     collect_command_source_images,
     decode_image_base64,
-    find_source_image,
+    find_source_images,
 )
 from .core.moderation import DrawpicModerationService
 from .core.provider_router import ProviderRouter
@@ -574,13 +574,15 @@ class DrawpicPlugin(MaiBotPlugin):
                 group_id=normalized_group_id,
                 platform=platform_name,
             )
-            image_base64, matched_message_id = await find_source_image(
+            current_message = kwargs.get("message")
+            image_base64_list, matched_message_id = await find_source_images(
                 self.ctx,
                 lookup_stream_id,
                 source_message_id=source_message_id,
                 source_image_base64=source_image_base64,
+                current_message=current_message if isinstance(current_message, dict) else None,
             )
-            source_image_bytes = decode_image_base64(image_base64)
+            source_image_bytes_list = [decode_image_base64(image_base64) for image_base64 in image_base64_list]
             await draw_service.review_prompt_or_raise(prompt.strip())
             quota_allowed, quota_message = self._consume_draw_quota(
                 normalized_user_id,
@@ -598,7 +600,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 resolved_model=resolved_model,
                 resolved_openai_mode=resolved_openai_mode,
                 provider_name=provider_name,
-                source_image_bytes_list=[source_image_bytes],
+                source_image_bytes_list=source_image_bytes_list,
                 matched_message_id=matched_message_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
