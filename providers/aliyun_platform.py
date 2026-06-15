@@ -69,11 +69,18 @@ class AliyunImage:
         )
         return await self._extract_images(response)
 
-    async def edit_images(self, prompt: str, model: str, image_bytes: bytes, n: int = 1) -> list[bytes]:
-        """调用阿里百炼图像编辑接口。"""
+    async def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
+        """调用阿里百炼图像编辑接口，支持一张或多张源图片。"""
 
-        mime_type = self._detect_mime_type(image_bytes)
-        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        if not image_bytes_list:
+            raise RuntimeError("没有可用于图生图的源图片")
+
+        content: list[dict[str, Any]] = []
+        for image_bytes in image_bytes_list:
+            mime_type = self._detect_mime_type(image_bytes)
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+            content.append({"image": f"data:{mime_type};base64,{image_base64}"})
+        content.append({"text": prompt})
         response = await self._post_json(
             url=f"{self.base_url}{self._MULTIMODAL_GENERATION_PATH}",
             payload={
@@ -82,14 +89,7 @@ class AliyunImage:
                     "messages": [
                         {
                             "role": "user",
-                            "content": [
-                                {
-                                    "image": f"data:{mime_type};base64,{image_base64}",
-                                },
-                                {
-                                    "text": prompt,
-                                },
-                            ],
+                            "content": content,
                         }
                     ]
                 },

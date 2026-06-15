@@ -76,11 +76,13 @@ class OpenaiImage:
 
         raise RuntimeError("自动兼容模式全部尝试失败: " + " | ".join(attempt_errors))
 
-    async def edit_images(self, prompt: str, model: str, image_bytes: bytes, n: int = 1) -> list[bytes]:
-        """手动调用 OpenAI 兼容图生图接口。"""
+    async def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
+        """手动调用 OpenAI 兼容图生图接口，支持一张或多张源图片。"""
+
+        if not image_bytes_list:
+            raise RuntimeError("没有可用于图生图的源图片")
 
         attempt_errors: list[str] = []
-        mime_type = self._detect_mime_type(image_bytes)
         for mode in self._resolve_edit_modes(model):
             try:
                 if mode == "chat_completions":
@@ -89,7 +91,7 @@ class OpenaiImage:
                         payload=self._build_chat_completions_edit_payload(
                             prompt=prompt,
                             model=model,
-                            image_bytes=image_bytes,
+                            image_bytes_list=image_bytes_list,
                             n=n,
                         ),
                     )
@@ -99,8 +101,7 @@ class OpenaiImage:
                     url=f"{self.base_url}/v1/images/edits",
                     model=model,
                     prompt=prompt,
-                    image_bytes=image_bytes,
-                    mime_type=mime_type,
+                    image_bytes_list=image_bytes_list,
                     n=n,
                 )
                 return await self._extract_images_auto(response)
@@ -271,48 +272,55 @@ class OpenaiImage:
         self,
         prompt: str,
         model: str,
-        image_bytes: bytes,
+        image_bytes_list: list[bytes],
         n: int,
     ) -> dict[str, Any]:
-        """构建 chat completions 兼容模式的图生图请求体。"""
+        """构建 chat completions 兼容模式的图生图请求体，支持多张源图片。"""
 
-        mime_type = self._detect_mime_type(image_bytes)
-        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-        data_url = f"data:{mime_type};base64,{image_base64}"
+        message_content: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": prompt,
+            }
+        ]
+        gemini_parts: list[dict[str, Any]] = [
+            {
+                "text": prompt,
+            }
+        ]
+        for image_bytes in image_bytes_list:
+            mime_type = self._detect_mime_type(image_bytes)
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+            data_url = f"data:{mime_type};base64,{image_base64}"
+            message_content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": data_url,
+                    },
+                }
+            )
+            gemini_parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": mime_type,
+                        "data": image_base64,
+                    }
+                }
+            )
         payload: dict[str, Any] = {
             "model": model,
             "messages": [
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": prompt,
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": data_url,
-                            },
-                        },
-                    ],
+                    "content": message_content,
                 }
             ],
             "stream": False,
             "contents": [
                 {
                     "role": "user",
-                    "parts": [
-                        {
-                            "text": prompt,
-                        },
-                        {
-                            "inlineData": {
-                                "mimeType": mime_type,
-                                "data": image_base64,
-                            }
-                        },
-                    ],
+                    "parts": gemini_parts,
                 }
             ],
         }
@@ -380,15 +388,18 @@ class OpenaiImage:
         url: str,
         model: str,
         prompt: str,
-        image_bytes: bytes,
-        mime_type: str,
+        image_bytes_list: list[bytes],
         n: int,
     ) -> dict[str, Any]:
-        """发送图片编辑表单，并自动兼容 image / image[] 两种字段名。"""
+        """发送图片编辑表单，并自动兼容 image / image[] 两种字段名。
+
+        多图编辑使用 image[] 字段一次提交全部源图片；单图字段 image 仅提交第一张
+        （OpenAI Images Edits 的 image 字段只接受单张图片）。
+        """
 
         attempt_errors: list[str] = []
-        filename = self._guess_filename_by_mime_type(mime_type)
         for field_name in ("image", "image[]"):
+            submitted_images = image_bytes_list if field_name == "image[]" else image_bytes_list[:1]
             try:
                 form = aiohttp.FormData()
                 form.add_field("model", model)
@@ -408,12 +419,14 @@ class OpenaiImage:
                 for key, value in self.extra_parameters.items():
                     if value is not None:
                         form.add_field(str(key), str(value))
-                form.add_field(
-                    field_name,
-                    image_bytes,
-                    filename=filename,
-                    content_type=mime_type,
-                )
+                for image_bytes in submitted_images:
+                    mime_type = self._detect_mime_type(image_bytes)
+                    form.add_field(
+                        field_name,
+                        image_bytes,
+                        filename=self._guess_filename_by_mime_type(mime_type),
+                        content_type=mime_type,
+                    )
                 return await self._post_form(url=url, form=form)
             except Exception as exc:
                 attempt_errors.append(f"{field_name}: {exc}")

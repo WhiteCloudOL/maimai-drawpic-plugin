@@ -7,14 +7,14 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.6.3-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.7.0-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
 
 ## 功能特性
 
-- **文生图与图生图**：根据提示词生成图片，也可以基于聊天中的真实图片继续编辑；回复/引用图片时会自动提取被引用的真实图片，编辑时会校验源图数据，避免把图片描述误当作源图。
+- **文生图与图生图**：`/绘图 文生图 <prompt>` 强制纯文本生图，`/绘图 图生图 <prompt>` 强制基于源图编辑。图生图既能识别命令消息中**直接附带的图片（非引用）**，也能识别**回复/引用的图片**，单条命令支持**多张图片**；在支持的平台（OpenAI、Google、阿里百炼）上多图一并提交，仅支持单图的平台（NovelAI、硅基流动）自动取第一张，不支持图生图的平台会给出切换提示。编辑前会逐张校验源图数据，避免把图片描述误当作源图。
 - **多平台模型**：支持 OpenAI Images API、OpenAI Chat Completion 兼容、Google Gemini、智谱、阿里百炼、硅基流动和 NovelAI / NovelAPI。
 - **平台参数配置**：各平台支持分辨率、生成数量、输出格式、随机种子、反向提示词、采样步数、引导强度和额外参数等常用配置，兼容不同上游能力差异。
 - **会话偏好**：群聊和私聊可分别保存模型与 OpenAI 兼容模式；新会话默认跟随全局默认模型。
@@ -399,7 +399,7 @@ OpenAI provider 面向 OpenAI 官方 Images API、NewAPI 等 OpenAI 兼容中转
 ### 权限与用户次数
 
 - `general.permission_enabled` 默认开启。开启后，切换会话模型、切换 OpenAI 兼容模式、调整用户次数都需要用户 ID 出现在 `general.admin_user_ids` 中。
-- `general.quota_enabled` 默认开启。普通用户使用 `/绘图 绘制 <prompt>` 或 LLM 工具调用发起绘图时，会消耗一次当前周期额度。
+- `general.quota_enabled` 默认开启。普通用户使用 `/绘图 文生图 <prompt>`、`/绘图 图生图 <prompt>` 或 LLM 工具调用发起绘图时，会消耗一次当前周期额度。
 - `general.quota_period` 支持 `daily`、`weekly`、`monthly`、`once`，分别表示每日、每周、每月、一次性额度。
 - 管理员不受绘图次数限制。
 
@@ -415,10 +415,13 @@ OpenAI provider 面向 OpenAI 官方 Images API、NewAPI 等 OpenAI 兼容中转
 | `/绘图 状态` | 查看当前会话绘图模型、兼容模式、当前绘图任务与用户剩余次数 |
 | `/绘图 兼容模式` | 查看 OpenAI 兼容模式说明 |
 | `/绘图 兼容模式 <模式>` | 设置 OpenAI 兼容模式，仅对 OpenAI 提供商生效，启用权限管理时仅管理员可用 |
-| `/绘图 绘制 <prompt>` | 强制发起文生图，`prompt` 可包含空格 |
+| `/绘图 文生图 <prompt>` | 强制发起文生图，`prompt` 可包含空格 |
+| `/绘图 图生图 <prompt>` | 强制发起图生图，需在同一条消息中附带或引用图片，支持多张；自动跳过当前模型平台不支持图生图的情况并给出提示 |
 | `/绘图 添加/减少/设置 用户ID 次数` | 管理员调整用户当前周期剩余次数 |
 
-> 旧版 `/绘图 <提示词>` 直接绘图入口已移除；请使用 `/绘图 绘制 <prompt>`。
+> `/绘图 图生图` 会优先使用本条命令直接附带的图片（非引用），其次合并引用/回复消息中的图片；多张源图片在支持的模型平台（OpenAI、Google、阿里百炼）上会一并提交，NovelAI、硅基流动等仅支持单图的平台只取第一张，智谱等不支持图生图的平台会直接提示切换模型。
+>
+> `/绘图 绘制 <prompt>` 作为 `/绘图 文生图 <prompt>` 的兼容别名仍然可用；旧版 `/绘图 <提示词>` 直接绘图入口已移除。
 
 命令回复默认使用简约粉色图片模板，也可以通过 `general.command_reply_mode = "文本"` 改为纯文本。除命令外，MaiBot LLM 也可以在合适场景通过工具调用自动发起绘图或图片编辑。
 

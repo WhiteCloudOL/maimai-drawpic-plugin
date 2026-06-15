@@ -42,10 +42,10 @@ class ZhipuImage:
         )
         return await self._extract_images(response)
 
-    async def edit_images(self, prompt: str, model: str, image_bytes: bytes, n: int = 1) -> list[bytes]:
+    async def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
         """智谱当前未接入图生图编辑接口。"""
 
-        del prompt, model, image_bytes, n
+        del prompt, model, image_bytes_list, n
         raise RuntimeError("智谱图片模型当前仅支持文生图，不支持图生图编辑")
 
     def _build_payload(self, prompt: str, model: str) -> dict[str, Any]:

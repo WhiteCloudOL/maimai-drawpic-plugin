@@ -57,10 +57,21 @@ class SiliconFlowImage:
         )
         return await self._extract_images(response)
 
-    async def edit_images(self, prompt: str, model: str, image_bytes: bytes, n: int = 1) -> list[bytes]:
-        """调用硅基流动图生图接口。"""
+    async def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
+        """调用硅基流动图生图接口。
+
+        硅基流动图生图接口仅接受单张源图片，传入多张时只使用第一张。
+        """
+
+        if not image_bytes_list:
+            raise RuntimeError("没有可用于图生图的源图片")
+        if len(image_bytes_list) > 1:
+            self._log_warning(
+                "硅基流动图生图仅支持单张源图片，已忽略多余的 %s 张", len(image_bytes_list) - 1
+            )
 
         payload = self._build_payload(prompt=prompt, model=model, n=n)
+        image_bytes = image_bytes_list[0]
         mime_type = self._detect_mime_type(image_bytes)
         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
         payload["image"] = f"data:{mime_type};base64,{image_base64}"
@@ -189,6 +200,12 @@ class SiliconFlowImage:
 
         if self.logger is not None:
             self.logger.info(message, *args)
+
+    def _log_warning(self, message: str, *args: Any) -> None:
+        """记录警告日志。"""
+
+        if self.logger is not None:
+            self.logger.warning(message, *args)
 
     def _log_error(self, message: str, *args: Any) -> None:
         """记录错误日志。"""

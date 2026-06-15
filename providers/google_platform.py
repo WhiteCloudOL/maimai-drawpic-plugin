@@ -197,19 +197,21 @@ class GoogleImage:
         self,
         prompt: str,
         model: str,
-        image_bytes: bytes,
+        image_bytes_list: list[bytes],
     ) -> list[bytes]:
-        """使用 Gemini generateContent 接口执行图生图。"""
+        """使用 Gemini generateContent 接口执行图生图，支持多张源图片。"""
+        contents: list[Any] = [
+            types.Part.from_bytes(
+                data=image_bytes,
+                mime_type=self._detect_mime_type(image_bytes),
+            )
+            for image_bytes in image_bytes_list
+        ]
+        contents.append(prompt)
         try:
             response = self.client.models.generate_content(
                 model=model,
-                contents=[
-                    types.Part.from_bytes(
-                        data=image_bytes,
-                        mime_type=self._detect_mime_type(image_bytes),
-                    ),
-                    prompt,
-                ],
+                contents=contents,
                 config=self._build_generate_content_config(),
             )
         except Exception as exc:
@@ -244,24 +246,30 @@ class GoogleImage:
                 image_bytes_list.append(image_bytes)
         return image_bytes_list
 
-    def edit_images(self, prompt: str, model: str, image_bytes: bytes, n: int = 1) -> list[bytes]:
-        """调用 Google 图生图接口。"""
+    def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
+        """调用 Google 图生图接口，支持一张或多张源图片。"""
+
+        if not image_bytes_list:
+            raise RuntimeError("没有可用于图生图的源图片")
 
         if self._uses_generate_content_api(model):
-            return self._edit_images_with_generate_content(prompt, model, image_bytes)
+            return self._edit_images_with_generate_content(prompt, model, image_bytes_list)
 
-        reference_image = types.RawReferenceImage(
-            reference_id=1,
-            reference_image=types.Image(
-                image_bytes=image_bytes,
-                mime_type=self._detect_mime_type(image_bytes),
-            ),
-        )
+        reference_images = [
+            types.RawReferenceImage(
+                reference_id=index,
+                reference_image=types.Image(
+                    image_bytes=image_bytes,
+                    mime_type=self._detect_mime_type(image_bytes),
+                ),
+            )
+            for index, image_bytes in enumerate(image_bytes_list, start=1)
+        ]
         try:
             response = self.client.models.edit_image(
                 model=model,
                 prompt=prompt,
-                reference_images=[reference_image],
+                reference_images=reference_images,
                 config=types.EditImageConfig(
                     **self._filter_config_kwargs(
                         types.EditImageConfig,

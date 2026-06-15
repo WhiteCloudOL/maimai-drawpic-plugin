@@ -16,8 +16,8 @@ class ImageProvider(Protocol):
     def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """根据文本提示生成图片。"""
 
-    def edit_images(self, prompt: str, model: str, image_bytes: bytes, n: int = 1) -> list[bytes]:
-        """基于输入图片执行编辑。"""
+    def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
+        """基于一张或多张输入图片执行编辑。"""
 
 
 class ProviderRouter:

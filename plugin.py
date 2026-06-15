@@ -9,6 +9,7 @@ from .core.draw_service import DrawService
 from .core.image_reply import PinkImageReplyRenderer
 from .core.message_utils import (
     cache_source_image_from_message,
+    collect_command_source_images,
     decode_image_base64,
     find_source_image,
 )
@@ -597,7 +598,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 resolved_model=resolved_model,
                 resolved_openai_mode=resolved_openai_mode,
                 provider_name=provider_name,
-                source_image_bytes=source_image_bytes,
+                source_image_bytes_list=[source_image_bytes],
                 matched_message_id=matched_message_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
@@ -672,8 +673,13 @@ class DrawpicPlugin(MaiBotPlugin):
             "model": "model",
             "兼容模式": "compatible-mode",
             "compatible-mode": "compatible-mode",
-            "绘制": "draw",
-            "draw": "draw",
+            # 文生图：强制走纯文本提示词绘图，"绘制" 为兼容旧版的别名
+            "文生图": "draw_text",
+            "绘制": "draw_text",
+            "draw": "draw_text",
+            # 图生图：强制走基于源图片的编辑流程
+            "图生图": "draw_image",
+            "edit": "draw_image",
             "次数": "times",
             "times": "times",
             "添加": "add",
@@ -759,6 +765,146 @@ class DrawpicPlugin(MaiBotPlugin):
             platform=platform,
         )
         return True, "已调整用户绘图次数", 2
+
+    async def _handle_draw_image_command(
+        self,
+        *,
+        rest_payload: str,
+        message: Any,
+        session_preference: dict[str, str],
+        stream_id: str,
+        user_id: str,
+        group_id: str,
+        platform: str,
+    ) -> tuple[bool, str, int]:
+        """处理 /绘图 图生图 命令，基于命令携带或引用的图片强制走图生图。"""
+
+        prompt = rest_payload.strip()
+        if not prompt:
+            await self._send_command_reply(
+                title="缺少图生图提示词",
+                body="请使用：/绘图 图生图 <prompt>，并在同一条消息中附带或引用至少一张图片。",
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "缺少提示词", 1
+
+        draw_service = self._require_draw_service()
+        router = self._require_router()
+        resolved_model = draw_service.resolve_model_name(session_preference["model"])
+        provider_name = router.get_model_provider(resolved_model)
+        if not provider_name:
+            await self._send_command_reply(
+                title="模型不可用",
+                body=f"当前会话绘图模型不可用：{resolved_model}",
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "模型不可用", 1
+
+        # 部分平台（如智谱）不支持图生图，提前给出清晰提示。
+        if not router.supports_image_edit(resolved_model):
+            await self._send_command_reply(
+                title="当前模型不支持图生图",
+                body=(
+                    f"当前会话模型 {provider_name}：{resolved_model} 所属平台不支持图生图。\n"
+                    "请先用 /绘图 模型 <模型名> 切换到支持图生图的模型，或改用 /绘图 文生图 <prompt>。"
+                ),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "当前模型不支持图生图", 1
+
+        # 解析真实可发送的聊天流，便于按消息 ID 回查图片。
+        lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
+            stream_id=stream_id,
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform,
+        )
+        command_message = message if isinstance(message, dict) else {}
+        try:
+            image_base64_list = await collect_command_source_images(
+                self.ctx,
+                lookup_stream_id,
+                command_message,
+            )
+        except Exception as exc:
+            self.ctx.logger.error("/绘图 图生图命令收集源图片失败: %s", exc, exc_info=True)
+            await self._send_command_reply(
+                title="读取源图片失败",
+                body=str(exc),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "读取源图片失败", 1
+
+        if not image_base64_list:
+            await self._send_command_reply(
+                title="未找到可用图片",
+                body="没有找到可用于图生图的图片。\n请在 /绘图 图生图 <prompt> 同一条消息中附带图片，或回复/引用包含图片的消息。",
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "未找到可用图片", 1
+
+        try:
+            source_image_bytes_list = [decode_image_base64(image_base64) for image_base64 in image_base64_list]
+            resolved_openai_mode = session_preference["openai_compatibility_mode"]
+            await draw_service.review_prompt_or_raise(prompt)
+            quota_allowed, quota_message = self._consume_draw_quota(user_id, group_id, stream_id)
+            if not quota_allowed:
+                await self._send_command_reply(
+                    title="绘图次数不足",
+                    body=f"{quota_message}。请联系管理员调整次数后再使用图生图。",
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return False, "绘图次数不足", 1
+            await draw_service.start_background_edit_request(
+                prompt=prompt,
+                stream_id=stream_id,
+                resolved_model=resolved_model,
+                resolved_openai_mode=resolved_openai_mode,
+                provider_name=provider_name,
+                source_image_bytes_list=source_image_bytes_list,
+                matched_message_id=str(command_message.get("message_id") or "").strip(),
+                user_id=user_id,
+                group_id=group_id,
+                platform_name=platform,
+            )
+        except Exception as exc:
+            self.ctx.logger.error("/绘图 图生图命令启动失败: %s", exc, exc_info=True)
+            await self._send_command_reply(
+                title="图生图请求未能启动",
+                body=str(exc),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "图生图命令执行失败", 1
+
+        self.ctx.logger.info(
+            "图生图任务已提交: stream_id=%s user_id=%s group_id=%s image_count=%s",
+            stream_id,
+            user_id,
+            group_id,
+            len(source_image_bytes_list),
+        )
+        return True, "已开始处理图生图命令", 2
 
     @Command("draw_command", description="绘图命令", pattern=r"^/(?:绘图|drawpic)(?:\s+(?P<content>[\s\S]+))?$")
     async def handle_draw_command(
@@ -934,12 +1080,12 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return True, "已切换 OpenAI 兼容模式", 2
 
-        if normalized_command == "draw":
+        if normalized_command == "draw_text":
             prompt = rest_payload.strip()
             if not prompt:
                 await self._send_command_reply(
                     title="缺少绘图提示词",
-                    body="请使用：/绘图 绘制 <prompt>",
+                    body="请使用：/绘图 文生图 <prompt>",
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
                     group_id=normalized_group_id,
@@ -956,7 +1102,7 @@ class DrawpicPlugin(MaiBotPlugin):
                     platform_name=normalized_platform,
                 )
             except Exception as exc:
-                self.ctx.logger.error("/绘图 绘制命令启动失败: %s", exc, exc_info=True)
+                self.ctx.logger.error("/绘图 文生图命令启动失败: %s", exc, exc_info=True)
                 await self._send_command_reply(
                     title="绘图请求未能启动",
                     body=str(exc),
@@ -968,12 +1114,23 @@ class DrawpicPlugin(MaiBotPlugin):
                 return False, "绘图命令执行失败", 1
 
             self.ctx.logger.info(
-                "绘图任务已提交: stream_id=%s user_id=%s group_id=%s",
+                "文生图任务已提交: stream_id=%s user_id=%s group_id=%s",
                 normalized_stream_id,
                 normalized_user_id,
                 normalized_group_id,
             )
-            return True, "已开始处理绘图命令", 2
+            return True, "已开始处理文生图命令", 2
+
+        if normalized_command == "draw_image":
+            return await self._handle_draw_image_command(
+                rest_payload=rest_payload,
+                message=kwargs.get("message"),
+                session_preference=session_preference,
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform=normalized_platform,
+            )
 
         if normalized_command == "times":
             return await self._handle_times_command(

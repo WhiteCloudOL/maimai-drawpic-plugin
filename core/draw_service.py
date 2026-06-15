@@ -500,7 +500,7 @@ class DrawService:
         stream_id: str,
         resolved_model: str,
         openai_compatibility_mode: str,
-        source_image_bytes: bytes,
+        source_image_bytes_list: list[bytes],
         matched_message_id: str,
         user_id: str = "",
         group_id: str = "",
@@ -534,7 +534,7 @@ class DrawService:
                 image_platform.edit_images,
                 provider_prompt,
                 resolved_model,
-                source_image_bytes,
+                source_image_bytes_list,
                 1,
             )
             if not image_bytes_list:
@@ -670,7 +670,7 @@ class DrawService:
         resolved_model: str,
         resolved_openai_mode: str,
         provider_name: str,
-        source_image_bytes: bytes,
+        source_image_bytes_list: list[bytes],
         matched_message_id: str,
         user_id: str = "",
         group_id: str = "",
@@ -678,6 +678,8 @@ class DrawService:
     ) -> dict[str, Any]:
         """启动后台图生图。"""
 
+        if not source_image_bytes_list:
+            raise ValueError("没有可用于图生图的源图片")
         if not self.router.supports_image_edit(resolved_model):
             raise ValueError(f"当前模型 {resolved_model} 不支持图生图编辑，请改用文生图 draw 工具")
 
@@ -702,7 +704,7 @@ class DrawService:
                 stream_id=stream_id,
                 resolved_model=resolved_model,
                 openai_compatibility_mode=resolved_openai_mode,
-                source_image_bytes=source_image_bytes,
+                source_image_bytes_list=source_image_bytes_list,
                 matched_message_id=matched_message_id,
                 user_id=user_id,
                 group_id=group_id,
@@ -721,6 +723,7 @@ class DrawService:
             "model": resolved_model,
             "openai_compatibility_mode": resolved_openai_mode,
             "source_message_id": matched_message_id,
+            "source_image_count": len(source_image_bytes_list),
             "timeout_seconds": self.resolve_request_timeout_seconds(),
             "task_id": task_record.task_id,
         }
