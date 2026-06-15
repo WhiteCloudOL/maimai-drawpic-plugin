@@ -13,6 +13,23 @@ _SOURCE_IMAGE_CACHE: dict[tuple[str, str], list[str]] = {}
 _SOURCE_IMAGE_CACHE_ORDER: list[tuple[str, str]] = []
 
 
+def _normalize_stream_ids(*stream_ids: Any) -> list[str]:
+    """整理图片查询用的聊天流候选 ID，保持顺序并去重。"""
+
+    normalized_stream_ids: list[str] = []
+    for stream_id in stream_ids:
+        if isinstance(stream_id, (list, tuple, set)):
+            for nested_stream_id in stream_id:
+                normalized_stream_ids.extend(_normalize_stream_ids(nested_stream_id))
+            continue
+        normalized_stream_id = str(stream_id or "").strip()
+        if normalized_stream_id not in normalized_stream_ids:
+            normalized_stream_ids.append(normalized_stream_id)
+    if "" not in normalized_stream_ids:
+        normalized_stream_ids.append("")
+    return normalized_stream_ids
+
+
 def _normalize_base64_value(value: Any) -> str:
     """将候选值规范化为可用的 Base64 字符串。"""
 
@@ -213,13 +230,14 @@ def extract_reply_target_message_ids(message: dict[str, Any]) -> list[str]:
     return target_message_ids
 
 
-def _remember_source_image(stream_id: str, message_id: str, image_base64_list: list[str]) -> None:
+def _remember_source_image(stream_id: str | list[str], message_id: str, image_base64_list: list[str]) -> None:
     """记录最近收到的真实图片列表，供 QQ 引用消息或命令编辑使用。"""
 
     if not image_base64_list:
         return
 
-    for cache_key in ((stream_id, message_id), ("", message_id)):
+    for normalized_stream_id in _normalize_stream_ids(stream_id):
+        cache_key = (normalized_stream_id, message_id)
         if cache_key not in _SOURCE_IMAGE_CACHE:
             _SOURCE_IMAGE_CACHE_ORDER.append(cache_key)
         _SOURCE_IMAGE_CACHE[cache_key] = list(image_base64_list)
@@ -260,7 +278,7 @@ def cache_source_image_from_message(stream_id: str, message: dict[str, Any]) -> 
     return message_id, len(normalized_list)
 
 
-def find_cached_source_image(stream_id: str, message_id: str) -> tuple[str, str] | None:
+def find_cached_source_image(stream_id: str | list[str], message_id: str) -> tuple[str, str] | None:
     """按消息 ID 从插件缓存中查找第一张真实图片。"""
 
     found = find_all_cached_source_images(stream_id, message_id)
@@ -270,29 +288,33 @@ def find_cached_source_image(stream_id: str, message_id: str) -> tuple[str, str]
     return image_base64_list[0], matched_message_id
 
 
-def find_all_cached_source_images(stream_id: str, message_id: str) -> tuple[list[str], str] | None:
+def find_all_cached_source_images(stream_id: str | list[str], message_id: str) -> tuple[list[str], str] | None:
     """按消息 ID 从插件缓存中查找全部真实图片。"""
 
     normalized_message_id = message_id.strip()
     if not normalized_message_id:
         return None
 
-    for cache_key in ((stream_id.strip(), normalized_message_id), ("", normalized_message_id)):
+    for normalized_stream_id in _normalize_stream_ids(stream_id):
+        cache_key = (normalized_stream_id, normalized_message_id)
         image_base64_list = _SOURCE_IMAGE_CACHE.get(cache_key)
         if image_base64_list:
             return list(image_base64_list), normalized_message_id
     return None
 
 
-async def get_message_by_id_for_image_lookup(ctx: Any, stream_id: str, message_id: str) -> dict[str, Any] | None:
+async def get_message_by_id_for_image_lookup(
+    ctx: Any,
+    stream_id: str | list[str],
+    message_id: str,
+) -> dict[str, Any] | None:
     """通过运行时能力读取消息，先限定会话，失败后再全局查询。"""
 
     normalized_message_id = message_id.strip()
     if not normalized_message_id:
         return None
 
-    lookup_chat_ids = [stream_id.strip(), ""]
-    for chat_id in lookup_chat_ids:
+    for chat_id in _normalize_stream_ids(stream_id):
         result = await ctx.call_capability(
             "message.get_by_id",
             message_id=normalized_message_id,
@@ -307,7 +329,7 @@ async def get_message_by_id_for_image_lookup(ctx: Any, stream_id: str, message_i
 
 async def find_image_from_message_by_id(
     ctx: Any,
-    stream_id: str,
+    stream_id: str | list[str],
     message_id: str,
     visited_message_ids: set[str] | None = None,
 ) -> tuple[str, str] | None:
@@ -333,7 +355,7 @@ async def find_image_from_message_by_id(
     image_base64_list = _validate_image_base64_list(extract_all_image_base64_from_message(message))
     if image_base64_list:
         matched_message_id = str(message.get("message_id") or normalized_message_id).strip()
-        _remember_source_image(stream_id.strip(), matched_message_id, image_base64_list)
+        _remember_source_image(stream_id, matched_message_id, image_base64_list)
         return image_base64_list[0], matched_message_id
 
     for target_message_id in extract_reply_target_message_ids(message):
@@ -346,7 +368,7 @@ async def find_image_from_message_by_id(
 
 async def find_all_images_from_message_by_id(
     ctx: Any,
-    stream_id: str,
+    stream_id: str | list[str],
     message_id: str,
     visited_message_ids: set[str] | None = None,
 ) -> tuple[list[str], str] | None:
@@ -385,7 +407,7 @@ async def find_all_images_from_message_by_id(
     image_base64_list = _validate_image_base64_list(extract_all_image_base64_from_message(message))
     if image_base64_list:
         direct_message_id = str(message.get("message_id") or normalized_message_id).strip()
-        _remember_source_image(stream_id.strip(), direct_message_id, image_base64_list)
+        _remember_source_image(stream_id, direct_message_id, image_base64_list)
         _add(image_base64_list)
         if not matched_message_id:
             matched_message_id = direct_message_id
@@ -405,7 +427,7 @@ async def find_all_images_from_message_by_id(
 
 async def extract_image_from_reply_message(
     ctx: Any,
-    stream_id: str,
+    stream_id: str | list[str],
     message: dict[str, Any],
 ) -> tuple[str, str] | None:
     """从一条回复/引用消息中提取被引用的真实图片。"""
@@ -469,7 +491,7 @@ def _unwrap_messages_result(result: Any) -> list[dict[str, Any]]:
 
 async def find_source_image(
     ctx: Any,
-    stream_id: str,
+    stream_id: str | list[str],
     source_message_id: str = "",
     source_image_base64: str = "",
 ) -> tuple[str, str]:
@@ -486,7 +508,7 @@ async def find_source_image(
 
 async def find_source_images(
     ctx: Any,
-    stream_id: str,
+    stream_id: str | list[str],
     source_message_id: str = "",
     source_image_base64: str = "",
     current_message: dict[str, Any] | None = None,
@@ -508,15 +530,21 @@ async def find_source_images(
         if found is not None:
             return found
 
-    recent_result = await ctx.call_capability(
-        "message.get_recent",
-        chat_id=stream_id,
-        limit=8,
-        include_binary_data=True,
-    )
+    recent_messages: list[dict[str, Any]] = []
+    for chat_id in _normalize_stream_ids(stream_id):
+        recent_result = await ctx.call_capability(
+            "message.get_recent",
+            chat_id=chat_id,
+            limit=8,
+            include_binary_data=True,
+        )
+        if not isinstance(recent_result, (dict, list)):
+            continue
+        recent_messages = _unwrap_messages_result(recent_result)
+        if recent_messages:
+            break
     if not isinstance(recent_result, (dict, list)):
         raise ValueError("无法读取最近消息，无法自动寻找待编辑图片")
-    recent_messages = _unwrap_messages_result(recent_result)
     if not recent_messages:
         raise ValueError("最近消息返回格式不正确，无法自动寻找待编辑图片")
 
@@ -530,7 +558,7 @@ async def find_source_images(
 
 async def collect_message_source_images(
     ctx: Any,
-    stream_id: str,
+    stream_id: str | list[str],
     message: dict[str, Any],
 ) -> tuple[list[str], str] | None:
     """收集单条消息直接携带及其回复/引用目标中的全部图片。"""
@@ -543,7 +571,7 @@ async def collect_message_source_images(
 
 async def collect_command_source_images(
     ctx: Any,
-    stream_id: str,
+    stream_id: str | list[str],
     message: dict[str, Any],
 ) -> list[str]:
     """收集 `/绘图 图生图` 命令携带的全部源图片 Base64。

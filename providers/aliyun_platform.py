@@ -81,24 +81,15 @@ class AliyunImage:
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
             content.append({"image": f"data:{mime_type};base64,{image_base64}"})
         content.append({"text": prompt})
-        response = await self._post_json(
-            url=f"{self.base_url}{self._MULTIMODAL_GENERATION_PATH}",
-            payload={
-                "model": model,
-                "input": {
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": content,
-                        }
-                    ]
-                },
-                "parameters": self._build_parameters(model, n),
-            },
+        response = await self._post_json_with_source_size_fallback(
+            model=model,
+            n=n,
+            content=content,
+            source_image_bytes=image_bytes_list[0],
         )
         return await self._extract_images(response)
 
-    def _build_parameters(self, model: str, n: int) -> dict[str, Any]:
+    def _build_parameters(self, model: str, n: int, size_override: str | None = None) -> dict[str, Any]:
         """构建阿里百炼图片处理参数。"""
 
         parameters: dict[str, Any] = {
@@ -111,7 +102,7 @@ class AliyunImage:
         normalized_model = model.strip()
         if normalized_model != "qwen-image-edit":
             parameters["prompt_extend"] = self.prompt_extend
-            resolved_size = self._resolve_size(normalized_model)
+            resolved_size = size_override if size_override is not None else self._resolve_size(normalized_model)
             if resolved_size:
                 parameters["size"] = resolved_size
         parameters.update(self.extra_parameters)
@@ -121,6 +112,71 @@ class AliyunImage:
         """按模型名解析分辨率配置。"""
 
         return self.model_size_overrides.get(model, self.default_size)
+
+    @staticmethod
+    def _detect_image_size(image_bytes: bytes) -> str:
+        """读取源图尺寸，阿里百炼 size 使用 宽*高。"""
+
+        with PILImage.open(BytesIO(image_bytes)) as image:
+            width, height = image.size
+        if width <= 0 or height <= 0:
+            return ""
+        return f"{width}*{height}"
+
+    async def _post_json_with_source_size_fallback(
+        self,
+        *,
+        model: str,
+        n: int,
+        content: list[dict[str, Any]],
+        source_image_bytes: bytes,
+    ) -> dict[str, Any]:
+        """图生图优先使用源图尺寸，接口不支持时回退默认尺寸。"""
+
+        normalized_model = model.strip()
+        default_size = self._resolve_size(normalized_model)
+        supports_size = normalized_model != "qwen-image-edit"
+        source_size = self._detect_image_size(source_image_bytes) if supports_size else ""
+        size_candidates = [source_size, default_size] if source_size and source_size != default_size else [default_size]
+        attempt_errors: list[str] = []
+
+        for size_index, size in enumerate(size_candidates):
+            if size_index == 0:
+                self._log_info(
+                    "阿里百炼图生图尺寸尝试: model=%s supports_size=%s source_size=%s request_size=%s default_size=%s image_count=%s",
+                    normalized_model,
+                    supports_size,
+                    source_size,
+                    size,
+                    default_size,
+                    len([item for item in content if "image" in item]),
+                )
+            if size_index > 0:
+                self._log_warning(
+                    "阿里百炼图生图源图尺寸不可用，回退默认尺寸: model=%s source_size=%s fallback_size=%s",
+                    normalized_model,
+                    source_size,
+                    size,
+                )
+            try:
+                return await self._post_json(
+                    url=f"{self.base_url}{self._MULTIMODAL_GENERATION_PATH}",
+                    payload={
+                        "model": normalized_model,
+                        "input": {
+                            "messages": [
+                                {
+                                    "role": "user",
+                                    "content": content,
+                                }
+                            ]
+                        },
+                        "parameters": self._build_parameters(normalized_model, n, size_override=size),
+                    },
+                )
+            except Exception as exc:
+                attempt_errors.append(f"size={size or 'default'}: {exc}")
+        raise RuntimeError("阿里百炼图生图请求失败: " + " | ".join(attempt_errors))
 
     @staticmethod
     def _detect_mime_type(image_bytes: bytes) -> str:
@@ -238,6 +294,12 @@ class AliyunImage:
 
         if self.logger is not None:
             self.logger.info(message, *args)
+
+    def _log_warning(self, message: str, *args: Any) -> None:
+        """记录警告日志。"""
+
+        if self.logger is not None:
+            self.logger.warning(message, *args)
 
     def _log_error(self, message: str, *args: Any) -> None:
         """记录错误日志。"""

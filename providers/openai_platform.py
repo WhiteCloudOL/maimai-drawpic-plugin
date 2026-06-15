@@ -208,6 +208,82 @@ class OpenaiImage:
 
         return self.model_size_overrides.get(model.strip(), self.default_size)
 
+    @staticmethod
+    def _detect_image_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
+        """读取源图尺寸，供图生图尽量保持原始尺寸。"""
+
+        with PILImage.open(BytesIO(image_bytes)) as image:
+            width, height = image.size
+        if width <= 0 or height <= 0:
+            return None
+        return width, height
+
+    @staticmethod
+    def _format_size(width: int, height: int) -> str:
+        """格式化 OpenAI Images API 的 size 字段。"""
+
+        return f"{max(int(width), 1)}x{max(int(height), 1)}"
+
+    @staticmethod
+    def _round_to_multiple(value: int, multiple: int = 16) -> int:
+        """将尺寸四舍五入到指定倍数。"""
+
+        return max(int(round(value / multiple) * multiple), multiple)
+
+    @classmethod
+    def _normalize_gpt_image_2_size(cls, dimensions: tuple[int, int]) -> str:
+        """将源图尺寸规范化到 gpt-image-2 支持的任意分辨率约束内。"""
+
+        width, height = dimensions
+        ratio = width / height
+        if ratio > 3:
+            width = height * 3
+        elif ratio < 1 / 3:
+            height = width * 3
+
+        max_edge = max(width, height)
+        if max_edge > 3840:
+            scale = 3840 / max_edge
+            width = int(width * scale)
+            height = int(height * scale)
+
+        width = cls._round_to_multiple(width)
+        height = cls._round_to_multiple(height)
+        pixels = width * height
+        if pixels < 655_360:
+            scale = (655_360 / pixels) ** 0.5
+            width = cls._round_to_multiple(int(width * scale))
+            height = cls._round_to_multiple(int(height * scale))
+        elif pixels > 8_294_400:
+            scale = (8_294_400 / pixels) ** 0.5
+            width = cls._round_to_multiple(int(width * scale))
+            height = cls._round_to_multiple(int(height * scale))
+        return cls._format_size(width, height)
+
+    @classmethod
+    def _resolve_closest_official_size(cls, dimensions: tuple[int, int]) -> str:
+        """按源图比例选择 OpenAI / NewAPI 兼容的官方枚举尺寸。"""
+
+        width, height = dimensions
+        ratio = width / height
+        candidates = (
+            (1024, 1024),
+            (1536, 1024),
+            (1024, 1536),
+        )
+        best_width, best_height = min(candidates, key=lambda item: abs((item[0] / item[1]) - ratio))
+        return cls._format_size(best_width, best_height)
+
+    def _resolve_source_edit_size(self, model: str, image_bytes: bytes) -> str:
+        """解析图生图首选尺寸，兼顾 OpenAI 官方与 OpenAI 兼容中转。"""
+
+        dimensions = self._detect_image_dimensions(image_bytes)
+        if dimensions is None:
+            return ""
+        if model.strip() == "gpt-image-2":
+            return self._normalize_gpt_image_2_size(dimensions)
+        return self._resolve_closest_official_size(dimensions)
+
     def _resolve_n(self, n: int) -> int:
         """解析最终请求图片数量。"""
 
@@ -397,39 +473,59 @@ class OpenaiImage:
         （OpenAI Images Edits 的 image 字段只接受单张图片）。
         """
 
+        default_size = self._resolve_size(model)
+        source_size = self._resolve_source_edit_size(model, image_bytes_list[0])
+        size_candidates = [source_size, default_size] if source_size and source_size != default_size else [default_size]
+
         attempt_errors: list[str] = []
-        for field_name in ("image", "image[]"):
-            submitted_images = image_bytes_list if field_name == "image[]" else image_bytes_list[:1]
-            try:
-                form = aiohttp.FormData()
-                form.add_field("model", model)
-                form.add_field("prompt", prompt)
-                form.add_field("n", str(self._resolve_n(n)))
-                size = self._resolve_size(model)
-                if size:
-                    form.add_field("size", size)
-                if self.quality:
-                    form.add_field("quality", self.quality)
-                if self.response_format:
-                    form.add_field("response_format", self.response_format)
-                if self.output_format:
-                    form.add_field("output_format", self.output_format)
-                if self.background:
-                    form.add_field("background", self.background)
-                for key, value in self.extra_parameters.items():
-                    if value is not None:
-                        form.add_field(str(key), str(value))
-                for image_bytes in submitted_images:
-                    mime_type = self._detect_mime_type(image_bytes)
-                    form.add_field(
-                        field_name,
-                        image_bytes,
-                        filename=self._guess_filename_by_mime_type(mime_type),
-                        content_type=mime_type,
-                    )
-                return await self._post_form(url=url, form=form)
-            except Exception as exc:
-                attempt_errors.append(f"{field_name}: {exc}")
+        for size_index, size in enumerate(size_candidates):
+            if size_index == 0:
+                self._log_info(
+                    "OpenAI 图生图尺寸尝试: model=%s source_size=%s request_size=%s default_size=%s image_count=%s",
+                    model,
+                    source_size,
+                    size,
+                    default_size,
+                    len(image_bytes_list),
+                )
+            if size_index > 0:
+                self._log_warning(
+                    "OpenAI 图生图源图尺寸不可用，回退默认尺寸: model=%s source_size=%s fallback_size=%s",
+                    model,
+                    source_size,
+                    size,
+                )
+            for field_name in ("image", "image[]"):
+                submitted_images = image_bytes_list if field_name == "image[]" else image_bytes_list[:1]
+                try:
+                    form = aiohttp.FormData()
+                    form.add_field("model", model)
+                    form.add_field("prompt", prompt)
+                    form.add_field("n", str(self._resolve_n(n)))
+                    if size:
+                        form.add_field("size", size)
+                    if self.quality:
+                        form.add_field("quality", self.quality)
+                    if self.response_format:
+                        form.add_field("response_format", self.response_format)
+                    if self.output_format:
+                        form.add_field("output_format", self.output_format)
+                    if self.background:
+                        form.add_field("background", self.background)
+                    for key, value in self.extra_parameters.items():
+                        if value is not None:
+                            form.add_field(str(key), str(value))
+                    for image_bytes in submitted_images:
+                        mime_type = self._detect_mime_type(image_bytes)
+                        form.add_field(
+                            field_name,
+                            image_bytes,
+                            filename=self._guess_filename_by_mime_type(mime_type),
+                            content_type=mime_type,
+                        )
+                    return await self._post_form(url=url, form=form)
+                except Exception as exc:
+                    attempt_errors.append(f"size={size or 'default'} {field_name}: {exc}")
         raise RuntimeError("图片编辑表单提交失败: " + " | ".join(attempt_errors))
 
     async def _extract_images(self, response: dict[str, Any]) -> list[bytes]:
@@ -654,3 +750,15 @@ class OpenaiImage:
 
         if self.logger is not None:
             self.logger.error(message, *args)
+
+    def _log_info(self, message: str, *args: Any) -> None:
+        """记录信息日志。"""
+
+        if self.logger is not None:
+            self.logger.info(message, *args)
+
+    def _log_warning(self, message: str, *args: Any) -> None:
+        """记录警告日志。"""
+
+        if self.logger is not None:
+            self.logger.warning(message, *args)

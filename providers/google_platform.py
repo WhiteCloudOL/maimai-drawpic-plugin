@@ -67,6 +67,41 @@ class GoogleImage:
         return mime_type_map.get(format_name, "image/png")
 
     @staticmethod
+    def _detect_image_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
+        """读取源图尺寸，用于选择最接近的输出比例。"""
+
+        with PILImage.open(BytesIO(image_bytes)) as image:
+            width, height = image.size
+        if width <= 0 or height <= 0:
+            return None
+        return width, height
+
+    @staticmethod
+    def _resolve_closest_aspect_ratio(dimensions: tuple[int, int]) -> str:
+        """按源图宽高比选择 Google 支持的标准比例。"""
+
+        width, height = dimensions
+        ratio = width / height
+        candidates = (
+            "1:1",
+            "2:3",
+            "3:2",
+            "3:4",
+            "4:3",
+            "4:5",
+            "5:4",
+            "9:16",
+            "16:9",
+            "21:9",
+        )
+
+        def ratio_distance(aspect_ratio: str) -> float:
+            ratio_width, ratio_height = aspect_ratio.split(":", maxsplit=1)
+            return abs((int(ratio_width) / int(ratio_height)) - ratio)
+
+        return min(candidates, key=ratio_distance)
+
+    @staticmethod
     def _extract_images_from_generate_content_response(response: Any) -> list[bytes]:
         """从 generate_content 响应中提取图片字节。"""
 
@@ -93,7 +128,7 @@ class GoogleImage:
             return {key: value for key, value in kwargs.items() if key in fields and value is not None}
         return {key: value for key, value in kwargs.items() if value is not None}
 
-    def _build_image_config_kwargs(self, n: int) -> dict[str, Any]:
+    def _build_image_config_kwargs(self, n: int, aspect_ratio_override: str | None = None) -> dict[str, Any]:
         """构建 Google 图片生成/编辑配置参数。"""
 
         kwargs: dict[str, Any] = {
@@ -101,8 +136,9 @@ class GoogleImage:
         }
         if self.output_mime_type:
             kwargs["output_mime_type"] = self.output_mime_type
-        if self.aspect_ratio:
-            kwargs["aspect_ratio"] = self.aspect_ratio
+        aspect_ratio = aspect_ratio_override if aspect_ratio_override is not None else self.aspect_ratio
+        if aspect_ratio:
+            kwargs["aspect_ratio"] = aspect_ratio
         if self.person_generation:
             kwargs["person_generation"] = self.person_generation
         if self.negative_prompt:
@@ -115,7 +151,7 @@ class GoogleImage:
         kwargs.update(self.extra_parameters)
         return kwargs
 
-    def _build_generate_content_config(self) -> types.GenerateContentConfig:
+    def _build_generate_content_config(self, aspect_ratio_override: str | None = None) -> types.GenerateContentConfig:
         """构建 Gemini generateContent 图片配置。"""
 
         config_kwargs: dict[str, Any] = {
@@ -125,7 +161,10 @@ class GoogleImage:
         if image_config_class is not None:
             image_config_kwargs = {
                 key: value
-                for key, value in self._build_image_config_kwargs(1).items()
+                for key, value in self._build_image_config_kwargs(
+                    1,
+                    aspect_ratio_override=aspect_ratio_override,
+                ).items()
                 if key not in {"number_of_images", "add_watermark"}
             }
             filtered_image_config_kwargs = self._filter_config_kwargs(image_config_class, image_config_kwargs)
@@ -181,6 +220,18 @@ class GoogleImage:
         if self.logger is not None:
             self.logger.error(message, *args)
 
+    def _log_info(self, message: str, *args: Any) -> None:
+        """记录信息日志。"""
+
+        if self.logger is not None:
+            self.logger.info(message, *args)
+
+    def _log_warning(self, message: str, *args: Any) -> None:
+        """记录警告日志。"""
+
+        if self.logger is not None:
+            self.logger.warning(message, *args)
+
     def _generate_images_with_generate_content(self, prompt: str, model: str) -> list[bytes]:
         """使用 Gemini generateContent 接口执行文生图。"""
         try:
@@ -209,6 +260,12 @@ class GoogleImage:
         ]
         contents.append(prompt)
         try:
+            self._log_info(
+                "Google generateContent 图生图尺寸策略: model=%s image_count=%s aspect_ratio=%s",
+                model,
+                len(image_bytes_list),
+                self.aspect_ratio or "默认跟随输入图",
+            )
             response = self.client.models.generate_content(
                 model=model,
                 contents=contents,
@@ -265,20 +322,50 @@ class GoogleImage:
             )
             for index, image_bytes in enumerate(image_bytes_list, start=1)
         ]
-        try:
-            response = self.client.models.edit_image(
-                model=model,
-                prompt=prompt,
-                reference_images=reference_images,
-                config=types.EditImageConfig(
-                    **self._filter_config_kwargs(
-                        types.EditImageConfig,
-                        self._build_image_config_kwargs(n),
-                    )
-                ),
-            )
-        except Exception as exc:
-            raise self._wrap_google_error(exc, model, "图生图") from exc
+        dimensions = self._detect_image_dimensions(image_bytes_list[0])
+        source_aspect_ratio = self._resolve_closest_aspect_ratio(dimensions) if dimensions is not None else ""
+        aspect_ratio_candidates = (
+            [source_aspect_ratio, self.aspect_ratio]
+            if source_aspect_ratio and source_aspect_ratio != self.aspect_ratio
+            else [self.aspect_ratio]
+        )
+        attempt_errors: list[str] = []
+        response = None
+        for aspect_index, aspect_ratio in enumerate(aspect_ratio_candidates):
+            if aspect_index == 0:
+                self._log_info(
+                    "Google edit_image 图生图比例尝试: model=%s source_dimensions=%s request_aspect_ratio=%s default_aspect_ratio=%s image_count=%s",
+                    model,
+                    f"{dimensions[0]}x{dimensions[1]}" if dimensions is not None else "",
+                    aspect_ratio,
+                    self.aspect_ratio,
+                    len(image_bytes_list),
+                )
+            else:
+                self._log_warning(
+                    "Google edit_image 图生图源图比例不可用，回退默认比例: model=%s source_aspect_ratio=%s fallback_aspect_ratio=%s",
+                    model,
+                    source_aspect_ratio,
+                    aspect_ratio,
+                )
+            try:
+                response = self.client.models.edit_image(
+                    model=model,
+                    prompt=prompt,
+                    reference_images=reference_images,
+                    config=types.EditImageConfig(
+                        **self._filter_config_kwargs(
+                            types.EditImageConfig,
+                            self._build_image_config_kwargs(n, aspect_ratio_override=aspect_ratio),
+                        )
+                    ),
+                )
+                break
+            except Exception as exc:
+                attempt_errors.append(f"aspect_ratio={aspect_ratio or 'default'}: {exc}")
+
+        if response is None:
+            raise self._wrap_google_error(RuntimeError(" | ".join(attempt_errors)), model, "图生图")
 
         image_bytes_list: list[bytes] = []
         for generated_image in response.generated_images or []:

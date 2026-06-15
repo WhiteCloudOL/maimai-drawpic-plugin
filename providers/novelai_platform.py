@@ -3,6 +3,8 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 
+from PIL import Image as PILImage
+
 import aiohttp
 import base64
 import json
@@ -87,24 +89,25 @@ class NovelAIImage:
             )
 
         image_bytes = image_bytes_list[0]
-        payload = self._build_payload(prompt=prompt, model=model, action="img2img", n=n)
-        payload["parameters"].update(
-            {
-                "image": base64.b64encode(image_bytes).decode("utf-8"),
-                "strength": self.img2img_strength,
-                "noise": self.img2img_noise,
-            }
-        )
-        content, content_type = await self._post_generation(
-            url=f"{self.base_url}/ai/generate-image",
-            payload=payload,
+        content, content_type = await self._post_img2img_with_source_size_fallback(
+            prompt=prompt,
+            model=model,
+            image_bytes=image_bytes,
+            n=n,
         )
         return await self._extract_images(content, content_type)
 
-    def _build_payload(self, prompt: str, model: str, action: str, n: int) -> dict[str, Any]:
+    def _build_payload(
+        self,
+        prompt: str,
+        model: str,
+        action: str,
+        n: int,
+        size_override: tuple[int, int] | None = None,
+    ) -> dict[str, Any]:
         """构建 NovelAI 图片请求体。"""
 
-        width, height = self._resolve_size(model)
+        width, height = size_override if size_override is not None else self._resolve_size(model)
         parameters: dict[str, Any] = {
             "width": width,
             "height": height,
@@ -145,6 +148,77 @@ class NovelAIImage:
             return max(int(width_text.strip()), 1), max(int(height_text.strip()), 1)
         except ValueError:
             return max(self.width, 1), max(self.height, 1)
+
+    @staticmethod
+    def _detect_image_size(image_bytes: bytes) -> tuple[int, int] | None:
+        """读取源图尺寸。"""
+
+        with PILImage.open(BytesIO(image_bytes)) as image:
+            width, height = image.size
+        if width <= 0 or height <= 0:
+            return None
+        return width, height
+
+    async def _post_img2img_with_source_size_fallback(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        image_bytes: bytes,
+        n: int,
+    ) -> tuple[bytes, str]:
+        """图生图优先使用源图尺寸，接口不支持时回退默认尺寸。"""
+
+        default_size = self._resolve_size(model)
+        source_size = self._detect_image_size(image_bytes)
+        size_candidates: list[tuple[int, int]] = []
+        if source_size is not None and source_size != default_size:
+            size_candidates.append(source_size)
+        size_candidates.append(default_size)
+        attempt_errors: list[str] = []
+
+        for size_index, (width, height) in enumerate(size_candidates):
+            if size_index == 0:
+                self._log_info(
+                    "NovelAI 图生图尺寸尝试: model=%s source_size=%s request_size=%sx%s default_size=%sx%s image_count=1",
+                    model,
+                    f"{source_size[0]}x{source_size[1]}" if source_size is not None else "",
+                    width,
+                    height,
+                    default_size[0],
+                    default_size[1],
+                )
+            if size_index > 0 and source_size is not None:
+                self._log_warning(
+                    "NovelAI 图生图源图尺寸不可用，回退默认尺寸: model=%s source_size=%sx%s fallback_size=%sx%s",
+                    model,
+                    source_size[0],
+                    source_size[1],
+                    width,
+                    height,
+                )
+            payload = self._build_payload(
+                prompt=prompt,
+                model=model,
+                action="img2img",
+                n=n,
+                size_override=(width, height),
+            )
+            payload["parameters"].update(
+                {
+                    "image": base64.b64encode(image_bytes).decode("utf-8"),
+                    "strength": self.img2img_strength,
+                    "noise": self.img2img_noise,
+                }
+            )
+            try:
+                return await self._post_generation(
+                    url=f"{self.base_url}/ai/generate-image",
+                    payload=payload,
+                )
+            except Exception as exc:
+                attempt_errors.append(f"size={width}x{height}: {exc}")
+        raise RuntimeError("NovelAI 图生图请求失败: " + " | ".join(attempt_errors))
 
     def _resolve_seed(self) -> int:
         """解析 NovelAI seed；负数表示每次随机。"""

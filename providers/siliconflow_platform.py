@@ -70,14 +70,15 @@ class SiliconFlowImage:
                 "硅基流动图生图仅支持单张源图片，已忽略多余的 %s 张", len(image_bytes_list) - 1
             )
 
-        payload = self._build_payload(prompt=prompt, model=model, n=n)
         image_bytes = image_bytes_list[0]
         mime_type = self._detect_mime_type(image_bytes)
         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-        payload["image"] = f"data:{mime_type};base64,{image_base64}"
-        response = await self._post_json(
-            url=f"{self.base_url}/v1/images/generations",
-            payload=payload,
+        response = await self._post_json_with_source_size_fallback(
+            prompt=prompt,
+            model=model,
+            n=n,
+            image_data_url=f"data:{mime_type};base64,{image_base64}",
+            source_image_bytes=image_bytes,
         )
         return await self._extract_images(response)
 
@@ -86,7 +87,60 @@ class SiliconFlowImage:
 
         return self.model_size_overrides.get(model.strip(), self.image_size)
 
-    def _build_payload(self, prompt: str, model: str, n: int) -> dict[str, Any]:
+    @staticmethod
+    def _detect_image_size(image_bytes: bytes) -> str:
+        """读取源图尺寸，硅基流动 image_size 使用 宽x高。"""
+
+        with PILImage.open(BytesIO(image_bytes)) as image:
+            width, height = image.size
+        if width <= 0 or height <= 0:
+            return ""
+        return f"{width}x{height}"
+
+    async def _post_json_with_source_size_fallback(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        n: int,
+        image_data_url: str,
+        source_image_bytes: bytes,
+    ) -> dict[str, Any]:
+        """图生图优先使用源图尺寸，接口不支持时回退默认尺寸。"""
+
+        default_size = self._resolve_size(model)
+        source_size = self._detect_image_size(source_image_bytes)
+        size_candidates = [source_size, default_size] if source_size and source_size != default_size else [default_size]
+        attempt_errors: list[str] = []
+
+        for size_index, size in enumerate(size_candidates):
+            if size_index == 0:
+                self._log_info(
+                    "硅基流动图生图尺寸尝试: model=%s source_size=%s request_size=%s default_size=%s image_count=1",
+                    model,
+                    source_size,
+                    size,
+                    default_size,
+                )
+            if size_index > 0:
+                self._log_warning(
+                    "硅基流动图生图源图尺寸不可用，回退默认尺寸: model=%s source_size=%s fallback_size=%s",
+                    model,
+                    source_size,
+                    size,
+                )
+            payload = self._build_payload(prompt=prompt, model=model, n=n, image_size_override=size)
+            payload["image"] = image_data_url
+            try:
+                return await self._post_json(
+                    url=f"{self.base_url}/v1/images/generations",
+                    payload=payload,
+                )
+            except Exception as exc:
+                attempt_errors.append(f"image_size={size or 'default'}: {exc}")
+        raise RuntimeError("硅基流动图生图请求失败: " + " | ".join(attempt_errors))
+
+    def _build_payload(self, prompt: str, model: str, n: int, image_size_override: str | None = None) -> dict[str, Any]:
         """构建硅基流动图片生成请求体。"""
 
         payload: dict[str, Any] = {
@@ -94,7 +148,7 @@ class SiliconFlowImage:
             "prompt": prompt,
             "batch_size": min(max(int(n), 1), self.batch_size),
         }
-        image_size = self._resolve_size(model)
+        image_size = image_size_override if image_size_override is not None else self._resolve_size(model)
         if image_size:
             payload["image_size"] = image_size
         if self.seed >= 0:

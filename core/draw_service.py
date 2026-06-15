@@ -421,10 +421,12 @@ class DrawService:
                 resolved_model,
             )
             self.ctx.logger.info(
-                "开始画图: task_id=%s provider=%s model=%s prompt=%s",
+                "开始图生图: task_id=%s provider=%s model=%s source_image_count=%s source_image_bytes_lengths=%s prompt=%s",
                 task_id,
                 provider_name,
                 resolved_model,
+                len(source_image_bytes_list),
+                [len(image_bytes) for image_bytes in source_image_bytes_list],
                 provider_prompt[:120],
             )
             image_bytes_list = await self.run_provider_call(

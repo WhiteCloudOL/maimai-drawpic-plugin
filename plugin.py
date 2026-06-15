@@ -1,5 +1,8 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
+
+import json
 
 from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, HookHandler, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
 from maibot_sdk.types import HookMode, ToolParameterInfo, ToolParamType
@@ -40,6 +43,7 @@ class DrawpicPlugin(MaiBotPlugin):
         self._session_preferences_path = self._data_dir / "session_preferences.json"
         self._task_store_path = self._data_dir / "draw_tasks.json"
         self._usage_store_path = self._data_dir / "user_quotas.json"
+        self._raw_message_log_path = self._data_dir / "logs.txt"
         self._router: ProviderRouter | None = None
         self._session_store: SessionPreferenceStore | None = None
         self._stream_service: ChatStreamService | None = None
@@ -219,6 +223,185 @@ class DrawpicPlugin(MaiBotPlugin):
         if not isinstance(message, dict):
             return ""
         return str(message.get("session_id") or "").strip()
+
+    @staticmethod
+    def _build_image_lookup_stream_ids(*stream_ids: Any, message: Any = None) -> list[str]:
+        """构建图片查询用的聊天流候选 ID。"""
+
+        lookup_stream_ids: list[str] = []
+
+        def _add(value: Any) -> None:
+            if isinstance(value, (list, tuple, set)):
+                for item in value:
+                    _add(item)
+                return
+            normalized_value = str(value or "").strip()
+            if normalized_value and normalized_value not in lookup_stream_ids:
+                lookup_stream_ids.append(normalized_value)
+
+        if isinstance(message, dict):
+            _add(message.get("session_id"))
+        for stream_id in stream_ids:
+            _add(stream_id)
+        if not lookup_stream_ids:
+            lookup_stream_ids.append("")
+        return lookup_stream_ids
+
+    @staticmethod
+    def _truncate_raw_message_value(value: Any, key_hint: str = "") -> Any:
+        """递归裁剪原始消息中的图片 Base64，其他字段尽量完整保留。"""
+
+        normalized_key_hint = key_hint.lower()
+        if isinstance(value, dict):
+            return {
+                str(key): DrawpicPlugin._truncate_raw_message_value(item, str(key))
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [DrawpicPlugin._truncate_raw_message_value(item, key_hint) for item in value]
+        if isinstance(value, tuple):
+            return [DrawpicPlugin._truncate_raw_message_value(item, key_hint) for item in value]
+        if isinstance(value, str):
+            should_truncate = (
+                "base64" in normalized_key_hint
+                or normalized_key_hint in {"binary_data", "file_base64", "image_base64"}
+                or value.startswith("data:image/")
+            )
+            if should_truncate and len(value) > 100:
+                return f"{value[:100]}...<truncated length={len(value)}>"
+            return value
+        if isinstance(value, bytes):
+            preview = value[:100].hex()
+            return f"<bytes length={len(value)} hex_preview={preview}>"
+        try:
+            json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return repr(value)
+        return value
+
+    def _append_raw_message_log(self, payload: dict[str, Any]) -> None:
+        """追加写入测试用原始消息日志。"""
+
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        sanitized_payload = self._truncate_raw_message_value(payload)
+        log_text = json.dumps(sanitized_payload, ensure_ascii=False, indent=2)
+        with self._raw_message_log_path.open("a", encoding="utf-8") as log_file:
+            log_file.write(log_text)
+            log_file.write("\n\n")
+
+    @staticmethod
+    def _extract_text_command_from_raw_message(message: Any) -> str:
+        """从原始消息文本段中提取被 reply/at 前缀遮挡的绘图命令。"""
+
+        if not isinstance(message, dict):
+            return ""
+        text_parts: list[str] = []
+        raw_message = message.get("raw_message")
+        if isinstance(raw_message, list):
+            for segment in raw_message:
+                if not isinstance(segment, dict):
+                    continue
+                if str(segment.get("type") or "").strip() != "text":
+                    continue
+                text_parts.append(str(segment.get("data") or ""))
+        command_text = "".join(text_parts).strip()
+        if command_text.startswith("/绘图") or command_text.startswith("/drawpic"):
+            return command_text
+        return ""
+
+    @staticmethod
+    def _extract_message_context(message: dict[str, Any]) -> dict[str, str]:
+        """从 Hook 原始消息中提取命令处理需要的上下文字段。"""
+
+        message_info = message.get("message_info")
+        if not isinstance(message_info, dict):
+            message_info = {}
+        user_info = message_info.get("user_info")
+        if not isinstance(user_info, dict):
+            user_info = {}
+        group_info = message_info.get("group_info")
+        if not isinstance(group_info, dict):
+            group_info = {}
+
+        return {
+            "stream_id": str(message.get("session_id") or "").strip(),
+            "user_id": str(user_info.get("user_id") or "").strip(),
+            "group_id": str(group_info.get("group_id") or "").strip(),
+            "platform": str(message.get("platform") or "qq").strip() or "qq",
+        }
+
+    @HookHandler(
+        "chat.receive.before_process",
+        name="prefixed_draw_command_fallback",
+        description="处理 reply/at 前缀导致普通命令系统无法识别的 /绘图 命令",
+    )
+    async def handle_prefixed_draw_command_fallback(self, message: Any = None, stream_id: str = "", **kwargs: Any):
+        """兜底处理原始文本段中实际以 /绘图 开头的命令。"""
+
+        del kwargs
+        if not isinstance(message, dict):
+            return {"success": True, "action": "continue"}
+
+        processed_plain_text = str(message.get("processed_plain_text") or "").strip()
+        if processed_plain_text.startswith("/绘图") or processed_plain_text.startswith("/drawpic"):
+            return {"success": True, "action": "continue"}
+
+        command_text = self._extract_text_command_from_raw_message(message)
+        if not command_text:
+            return {"success": True, "action": "continue"}
+
+        command_payload = command_text.split(maxsplit=1)[1] if " " in command_text else ""
+        context = self._extract_message_context(message)
+        normalized_stream_id = stream_id.strip() or context["stream_id"]
+        if not normalized_stream_id:
+            self.ctx.logger.warning("兜底绘图命令缺少 session_id，无法执行: %s", command_text)
+            return {"success": True, "action": "continue"}
+
+        success, response, intercept_message_level = await self.handle_draw_command(
+            stream_id=normalized_stream_id,
+            matched_groups={"content": command_payload},
+            message=message,
+            user_id=context["user_id"],
+            group_id=context["group_id"],
+            platform=context["platform"],
+        )
+        action = "abort" if intercept_message_level else "continue"
+        self.ctx.logger.info(
+            "已通过兜底 Hook 处理绘图命令: success=%s response=%s intercept=%s",
+            success,
+            response,
+            intercept_message_level,
+        )
+        return {
+            "success": True,
+            "action": action,
+            "custom_result": {
+                "success": success,
+                "response": response,
+                "intercept_message_level": intercept_message_level,
+            },
+        }
+
+    @HookHandler(
+        "chat.receive.before_process",
+        name="raw_message_debug_logger",
+        description="测试用：将所有入站消息原始字段写入插件 data/logs.txt",
+        mode=HookMode.OBSERVE,
+    )
+    async def handle_raw_message_debug_log(self, message: Any = None, stream_id: str = "", **kwargs: Any):
+        """测试用原始消息日志，直接输出所有 Hook 字段。"""
+
+        payload = {
+            "logged_at": datetime.now().isoformat(timespec="seconds"),
+            "stream_id": stream_id,
+            "message": message,
+            "kwargs": kwargs,
+        }
+        try:
+            self._append_raw_message_log(payload)
+        except Exception as exc:
+            self.ctx.logger.warning("写入原始消息测试日志失败: %s", exc)
+        return True, True, None, None, None
 
     @HookHandler(
         "chat.receive.before_process",
@@ -575,14 +758,27 @@ class DrawpicPlugin(MaiBotPlugin):
                 platform=platform_name,
             )
             current_message = kwargs.get("message")
+            lookup_stream_ids = self._build_image_lookup_stream_ids(
+                lookup_stream_id,
+                normalized_stream_id,
+                message=current_message,
+            )
             image_base64_list, matched_message_id = await find_source_images(
                 self.ctx,
-                lookup_stream_id,
+                lookup_stream_ids,
                 source_message_id=source_message_id,
                 source_image_base64=source_image_base64,
                 current_message=current_message if isinstance(current_message, dict) else None,
             )
             source_image_bytes_list = [decode_image_base64(image_base64) for image_base64 in image_base64_list]
+            self.ctx.logger.info(
+                "edit_image 工具已收集源图: stream_id=%s lookup_stream_ids=%s source_base64_count=%s source_bytes_count=%s matched_message_id=%s",
+                normalized_stream_id,
+                lookup_stream_ids,
+                len(image_base64_list),
+                len(source_image_bytes_list),
+                matched_message_id,
+            )
             await draw_service.review_prompt_or_raise(prompt.strip())
             quota_allowed, quota_message = self._consume_draw_quota(
                 normalized_user_id,
@@ -831,10 +1027,15 @@ class DrawpicPlugin(MaiBotPlugin):
             platform=platform,
         )
         command_message = message if isinstance(message, dict) else {}
+        lookup_stream_ids = self._build_image_lookup_stream_ids(
+            lookup_stream_id,
+            stream_id,
+            message=command_message,
+        )
         try:
             image_base64_list = await collect_command_source_images(
                 self.ctx,
-                lookup_stream_id,
+                lookup_stream_ids,
                 command_message,
             )
         except Exception as exc:
@@ -862,6 +1063,14 @@ class DrawpicPlugin(MaiBotPlugin):
 
         try:
             source_image_bytes_list = [decode_image_base64(image_base64) for image_base64 in image_base64_list]
+            self.ctx.logger.info(
+                "/绘图 图生图已收集源图: stream_id=%s lookup_stream_ids=%s source_base64_count=%s source_bytes_count=%s message_id=%s",
+                stream_id,
+                lookup_stream_ids,
+                len(image_base64_list),
+                len(source_image_bytes_list),
+                str(command_message.get("message_id") or "").strip(),
+            )
             resolved_openai_mode = session_preference["openai_compatibility_mode"]
             await draw_service.review_prompt_or_raise(prompt)
             quota_allowed, quota_message = self._consume_draw_quota(user_id, group_id, stream_id)
