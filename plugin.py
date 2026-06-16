@@ -360,12 +360,12 @@ class DrawpicPlugin(MaiBotPlugin):
             return True, True, None, None, None
 
         if cached is not None:
-            message_id, image_base64_len = cached
+            message_id, source_image_count = cached
             self.ctx.logger.info(
-                "已缓存入站图片: stream_id=%s message_id=%s image_base64_len=%s",
+                "已缓存入站源图: stream_id=%s message_id=%s source_image_count=%s",
                 resolved_stream_id,
                 message_id,
-                image_base64_len,
+                source_image_count,
             )
         return True, True, None, None, None
 
@@ -442,6 +442,7 @@ class DrawpicPlugin(MaiBotPlugin):
             self._require_session_store().normalize_all()
             self._require_session_store().save()
             self._task_store.load()
+            self._usage_store.load()
             router = self._require_router()
             moderation_service = self._require_moderation_service()
             self.ctx.logger.info(
@@ -461,21 +462,24 @@ class DrawpicPlugin(MaiBotPlugin):
                 self._task_store.get_task_count(),
             )
 
-    async def _start_background_draw_request(
+    async def _start_background_image_request(
         self,
         *,
         prompt: str,
         stream_id: str,
         requested_model: str = "",
         requested_openai_compatibility_mode: str = "",
+        source_image_bytes_list: list[bytes] | None = None,
+        matched_message_id: str = "",
         user_id: str = "",
         group_id: str = "",
         platform_name: str = "qq",
         notify_start: bool = True,
     ) -> dict[str, Any]:
-        """按当前会话设置启动后台文生图。"""
+        """按当前会话设置启动后台绘图，源图为空时文生图，存在源图时图生图。"""
 
         draw_service = self._require_draw_service()
+        normalized_source_images = source_image_bytes_list or []
         session_preference = self._get_session_preference(stream_id, user_id, group_id, platform_name)
         resolved_model = draw_service.resolve_model_name(
             requested_model or session_preference["model"],
@@ -487,12 +491,15 @@ class DrawpicPlugin(MaiBotPlugin):
         provider_name = self._require_router().get_model_provider(resolved_model)
         if not provider_name:
             raise ValueError(f"指定模型不可用：{resolved_model}")
+        image_edit_unsupported_reason = self._require_router().get_image_edit_unsupported_reason(resolved_model)
+        if normalized_source_images and image_edit_unsupported_reason:
+            raise ValueError(f"{image_edit_unsupported_reason}。请改用 /绘图 文生图 <prompt>，或切换到支持图生图的模型")
 
         await draw_service.review_prompt_or_raise(prompt)
         quota_allowed, quota_message = self._consume_draw_quota(user_id, group_id, stream_id)
         if not quota_allowed:
             raise PermissionError(quota_message)
-        return await draw_service.start_background_draw_request(
+        return await draw_service.start_background_image_request(
             prompt=prompt,
             stream_id=stream_id,
             resolved_model=resolved_model,
@@ -501,6 +508,8 @@ class DrawpicPlugin(MaiBotPlugin):
             user_id=user_id,
             group_id=group_id,
             platform_name=platform_name,
+            source_image_bytes_list=normalized_source_images,
+            matched_message_id=matched_message_id,
             notify_start=notify_start,
         )
 
@@ -564,7 +573,7 @@ class DrawpicPlugin(MaiBotPlugin):
             return {"success": False, "message": "当前聊天流 ID 为空，无法回传图片"}
 
         try:
-            return await self._start_background_draw_request(
+            return await self._start_background_image_request(
                 prompt=prompt.strip(),
                 stream_id=stream_id.strip(),
                 requested_model=model.strip(),
@@ -676,12 +685,13 @@ class DrawpicPlugin(MaiBotPlugin):
             provider_name = router.get_model_provider(resolved_model)
             if not provider_name:
                 return {"success": False, "message": f"指定模型不可用：{resolved_model}"}
-            if not router.supports_image_edit(resolved_model):
+            image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(resolved_model)
+            if image_edit_unsupported_reason:
                 return {
                     "success": False,
                     "message": (
-                        f"当前模型 {resolved_model} 所属平台不支持图片编辑，无法调用 edit_image 图生图。"
-                        "请自然告知用户当前只能文生图，不能基于已有图片修改。"
+                        f"{image_edit_unsupported_reason}，无法调用 edit_image 图生图。"
+                        "请自然告知用户当前只能文生图，不能基于已有图片修改，或提示切换到支持图生图的模型。"
                     ),
                 }
             lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
@@ -705,36 +715,29 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             source_image_bytes_list = [decode_image_base64(image_base64) for image_base64 in image_base64_list]
             self.ctx.logger.info(
-                "edit_image 工具已收集源图: stream_id=%s lookup_stream_ids=%s source_base64_count=%s source_bytes_count=%s matched_message_id=%s",
+                "edit_image 已收集源图: stream_id=%s lookup_stream_ids=%s source_image_count=%s matched_message_id=%s",
                 normalized_stream_id,
                 lookup_stream_ids,
-                len(image_base64_list),
                 len(source_image_bytes_list),
                 matched_message_id,
             )
-            await draw_service.review_prompt_or_raise(prompt.strip())
-            quota_allowed, quota_message = self._consume_draw_quota(
-                normalized_user_id,
-                normalized_group_id,
-                normalized_stream_id,
-            )
-            if not quota_allowed:
-                return {
-                    "success": False,
-                    "message": f"{quota_message}。请自然告知用户当前无法继续绘图，并提示联系管理员调整次数。",
-                }
-            return await draw_service.start_background_edit_request(
+            return await self._start_background_image_request(
                 prompt=prompt.strip(),
                 stream_id=normalized_stream_id,
-                resolved_model=resolved_model,
-                resolved_openai_mode=resolved_openai_mode,
-                provider_name=provider_name,
+                requested_model=resolved_model,
+                requested_openai_compatibility_mode=resolved_openai_mode,
                 source_image_bytes_list=source_image_bytes_list,
                 matched_message_id=matched_message_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
                 platform_name=platform_name,
+                notify_start=True,
             )
+        except PermissionError as exc:
+            return {
+                "success": False,
+                "message": f"{exc}。请自然告知用户当前无法继续绘图，并提示联系管理员调整次数。",
+            }
         except ValueError as exc:
             return {
                 "success": False,
@@ -937,12 +940,13 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return False, "模型不可用", 1
 
-        # 部分平台（如智谱）不支持图生图，提前给出清晰提示。
-        if not router.supports_image_edit(resolved_model):
+        # 部分平台或模型不支持图生图，提前给出清晰提示，且不创建后台任务。
+        image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(resolved_model)
+        if image_edit_unsupported_reason:
             await self._send_command_reply(
                 title="当前模型不支持图生图",
                 body=(
-                    f"当前会话模型 {provider_name}：{resolved_model} 所属平台不支持图生图。\n"
+                    f"{image_edit_unsupported_reason}。\n"
                     "请先用 /绘图 模型 <模型名> 切换到支持图生图的模型，或改用 /绘图 文生图 <prompt>。"
                 ),
                 stream_id=stream_id,
@@ -952,24 +956,13 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return False, "当前模型不支持图生图", 1
 
-        # 解析真实可发送的聊天流，便于按消息 ID 回查图片。
-        lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
-            stream_id=stream_id,
-            user_id=user_id,
-            group_id=group_id,
-            platform=platform,
-        )
-        command_message = message if isinstance(message, dict) else {}
-        lookup_stream_ids = self._build_image_lookup_stream_ids(
-            lookup_stream_id,
-            stream_id,
-            message=command_message,
-        )
         try:
-            image_base64_list = await collect_command_source_images(
-                self.ctx,
-                lookup_stream_ids,
-                command_message,
+            image_base64_list, lookup_stream_ids, matched_message_id = await self._collect_forced_command_source_images(
+                message=message,
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
             )
         except Exception as exc:
             self.ctx.logger.error("/绘图 图生图命令收集源图片失败: %s", exc, exc_info=True)
@@ -997,38 +990,34 @@ class DrawpicPlugin(MaiBotPlugin):
         try:
             source_image_bytes_list = [decode_image_base64(image_base64) for image_base64 in image_base64_list]
             self.ctx.logger.info(
-                "/绘图 图生图已收集源图: stream_id=%s lookup_stream_ids=%s source_base64_count=%s source_bytes_count=%s message_id=%s",
+                "/绘图 图生图已收集源图: stream_id=%s lookup_stream_ids=%s source_image_count=%s message_id=%s",
                 stream_id,
                 lookup_stream_ids,
-                len(image_base64_list),
                 len(source_image_bytes_list),
-                str(command_message.get("message_id") or "").strip(),
+                matched_message_id,
             )
-            resolved_openai_mode = session_preference["openai_compatibility_mode"]
-            await draw_service.review_prompt_or_raise(prompt)
-            quota_allowed, quota_message = self._consume_draw_quota(user_id, group_id, stream_id)
-            if not quota_allowed:
-                await self._send_command_reply(
-                    title="绘图次数不足",
-                    body=f"{quota_message}。请联系管理员调整次数后再使用图生图。",
-                    stream_id=stream_id,
-                    user_id=user_id,
-                    group_id=group_id,
-                    platform=platform,
-                )
-                return False, "绘图次数不足", 1
-            await draw_service.start_background_edit_request(
+            start_result = await self._start_background_image_request(
                 prompt=prompt,
                 stream_id=stream_id,
-                resolved_model=resolved_model,
-                resolved_openai_mode=resolved_openai_mode,
-                provider_name=provider_name,
+                requested_model=resolved_model,
+                requested_openai_compatibility_mode=session_preference["openai_compatibility_mode"],
                 source_image_bytes_list=source_image_bytes_list,
-                matched_message_id=str(command_message.get("message_id") or "").strip(),
+                matched_message_id=matched_message_id,
                 user_id=user_id,
                 group_id=group_id,
                 platform_name=platform,
+                notify_start=True,
             )
+        except PermissionError as exc:
+            await self._send_command_reply(
+                title="绘图次数不足",
+                body=f"{exc}。请联系管理员调整次数后再使用图生图。",
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "绘图次数不足", 1
         except Exception as exc:
             self.ctx.logger.error("/绘图 图生图命令启动失败: %s", exc, exc_info=True)
             await self._send_command_reply(
@@ -1042,13 +1031,45 @@ class DrawpicPlugin(MaiBotPlugin):
             return False, "图生图命令执行失败", 1
 
         self.ctx.logger.info(
-            "图生图任务已提交: stream_id=%s user_id=%s group_id=%s image_count=%s",
+            "图生图任务已提交: task_id=%s stream_id=%s user_id=%s group_id=%s source_image_count=%s",
+            start_result.get("task_id"),
             stream_id,
             user_id,
             group_id,
             len(source_image_bytes_list),
         )
         return True, "已开始处理图生图命令", 2
+
+    async def _collect_forced_command_source_images(
+        self,
+        *,
+        message: Any,
+        stream_id: str,
+        user_id: str,
+        group_id: str,
+        platform: str,
+    ) -> tuple[list[str], list[str], str]:
+        """收集强制绘图命令显式携带或引用的源图。"""
+
+        lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
+            stream_id=stream_id,
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform,
+        )
+        command_message = message if isinstance(message, dict) else {}
+        lookup_stream_ids = self._build_image_lookup_stream_ids(
+            lookup_stream_id,
+            stream_id,
+            message=command_message,
+        )
+        image_base64_list = await collect_command_source_images(
+            self.ctx,
+            lookup_stream_ids,
+            command_message,
+        )
+        matched_message_id = str(command_message.get("message_id") or "").strip()
+        return image_base64_list, lookup_stream_ids, matched_message_id
 
     @Command("draw_command", description="绘图命令", pattern=r"^/(?:绘图|drawpic)(?:\s+(?P<content>[\s\S]+))?$")
     async def handle_draw_command(
@@ -1238,7 +1259,51 @@ class DrawpicPlugin(MaiBotPlugin):
                 return False, "缺少提示词", 1
 
             try:
-                await self._start_background_draw_request(
+                try:
+                    image_base64_list, lookup_stream_ids, matched_message_id = await self._collect_forced_command_source_images(
+                        message=kwargs.get("message"),
+                        stream_id=normalized_stream_id,
+                        user_id=normalized_user_id,
+                        group_id=normalized_group_id,
+                        platform=normalized_platform,
+                    )
+                except Exception as exc:
+                    self.ctx.logger.error("/绘图 文生图检查源图失败: %s", exc, exc_info=True)
+                    await self._send_command_reply(
+                        title="无法确认绘图模式",
+                        body=(
+                            "当前使用的是 /绘图 文生图，但插件无法确认这条消息或引用消息中是否包含图片。\n"
+                            "如果要纯文字生成，请不要引用或附带图片后重试；如果要基于图片修改，请使用：/绘图 图生图 <prompt>。"
+                        ),
+                        stream_id=normalized_stream_id,
+                        user_id=normalized_user_id,
+                        group_id=normalized_group_id,
+                        platform=normalized_platform,
+                    )
+                    return False, "文生图指令源图检查失败", 1
+
+                if image_base64_list:
+                    self.ctx.logger.info(
+                        "/绘图 文生图检测到源图，拒绝强制文生图: stream_id=%s lookup_stream_ids=%s source_image_count=%s message_id=%s",
+                        normalized_stream_id,
+                        lookup_stream_ids,
+                        len(image_base64_list),
+                        matched_message_id,
+                    )
+                    await self._send_command_reply(
+                        title="绘图模式不匹配",
+                        body=(
+                            "当前指令是 /绘图 文生图，但消息中检测到了图片或引用图片。\n"
+                            "如果要基于图片修改，请使用：/绘图 图生图 <prompt>；如果只想按文字生成，请不要附带或引用图片。"
+                        ),
+                        stream_id=normalized_stream_id,
+                        user_id=normalized_user_id,
+                        group_id=normalized_group_id,
+                        platform=normalized_platform,
+                    )
+                    return False, "文生图指令检测到源图", 1
+
+                start_result = await self._start_background_image_request(
                     prompt=prompt,
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
@@ -1258,7 +1323,8 @@ class DrawpicPlugin(MaiBotPlugin):
                 return False, "绘图命令执行失败", 1
 
             self.ctx.logger.info(
-                "文生图任务已提交: stream_id=%s user_id=%s group_id=%s",
+                "文生图任务已提交: task_id=%s stream_id=%s user_id=%s group_id=%s",
+                start_result.get("task_id"),
                 normalized_stream_id,
                 normalized_user_id,
                 normalized_group_id,

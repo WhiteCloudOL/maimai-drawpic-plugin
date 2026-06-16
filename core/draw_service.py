@@ -391,7 +391,7 @@ class DrawService:
             platform=platform,
         )
 
-    async def _background_draw(
+    async def _background_image_request(
         self,
         *,
         task_id: str,
@@ -399,49 +399,78 @@ class DrawService:
         stream_id: str,
         resolved_model: str,
         openai_compatibility_mode: str = "",
+        source_image_bytes_list: list[bytes] | None = None,
+        matched_message_id: str = "",
         user_id: str = "",
         group_id: str = "",
         platform_name: str = "qq",
     ) -> None:
-        """后台执行文生图。"""
+        """后台执行绘图任务，源图为空时文生图，存在源图时图生图。"""
 
+        normalized_source_images = source_image_bytes_list or []
+        is_image_edit = bool(normalized_source_images)
+        task_type = "edit_image" if is_image_edit else "draw"
+        running_message = "图片正在编辑中" if is_image_edit else "图片正在生成中"
+        timeout_message = "图片编辑超时" if is_image_edit else "图片生成超时"
         try:
             self.task_store.update_task(
                 task_id,
                 status="running",
-                message="图片正在生成中",
+                message=running_message,
             )
             image_platform, provider_name = self.router.require_platform_for_model(
                 resolved_model,
                 openai_compatibility_mode,
             )
+            image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(resolved_model)
+            if is_image_edit and image_edit_unsupported_reason:
+                raise ValueError(f"{image_edit_unsupported_reason}。请改用文生图，或切换到支持图生图的模型")
             provider_prompt = await self.rewrite_prompt_to_english_if_needed(
                 prompt,
                 provider_name,
                 resolved_model,
             )
-            self.ctx.logger.info(
-                "开始图生图: task_id=%s provider=%s model=%s source_image_count=%s source_image_bytes_lengths=%s prompt=%s",
-                task_id,
-                provider_name,
-                resolved_model,
-                len(source_image_bytes_list),
-                [len(image_bytes) for image_bytes in source_image_bytes_list],
-                provider_prompt[:120],
-            )
-            image_bytes_list = await self.run_provider_call(
-                image_platform.generate_images,
-                provider_prompt,
-                resolved_model,
-                1,
-            )
+            if is_image_edit:
+                self.ctx.logger.info(
+                    "开始绘图任务: task_id=%s task_type=%s provider=%s model=%s source_image_count=%s source_image_bytes_lengths=%s matched_message_id=%s prompt=%s",
+                    task_id,
+                    task_type,
+                    provider_name,
+                    resolved_model,
+                    len(normalized_source_images),
+                    [len(image_bytes) for image_bytes in normalized_source_images],
+                    matched_message_id,
+                    provider_prompt[:120],
+                )
+                image_bytes_list = await self.run_provider_call(
+                    image_platform.edit_images,
+                    provider_prompt,
+                    resolved_model,
+                    normalized_source_images,
+                    1,
+                )
+            else:
+                self.ctx.logger.info(
+                    "开始绘图任务: task_id=%s task_type=%s provider=%s model=%s source_image_count=0 prompt=%s",
+                    task_id,
+                    task_type,
+                    provider_name,
+                    resolved_model,
+                    provider_prompt[:120],
+                )
+                image_bytes_list = await self.run_provider_call(
+                    image_platform.generate_images,
+                    provider_prompt,
+                    resolved_model,
+                    1,
+                )
             if not image_bytes_list:
                 self.task_store.update_task(
                     task_id,
                     status="failed",
                     message="图片平台没有返回任何图片结果",
                 )
-                self.ctx.logger.error("画图失败: task_id=%s provider=%s model=%s error=%s", task_id, provider_name, resolved_model, "图片平台没有返回任何图片结果")
+                self.ctx.logger.error("绘图任务失败: task_id=%s task_type=%s provider=%s model=%s error=%s", task_id, task_type, provider_name, resolved_model, "图片平台没有返回任何图片结果")
                 return
 
             reviewed_images, rejected_reasons = await self.filter_reviewed_images(prompt, image_bytes_list)
@@ -452,7 +481,7 @@ class DrawService:
                     status="rejected",
                     message=review_reason_text,
                 )
-                self.ctx.logger.error("画图失败: task_id=%s provider=%s model=%s error=%s", task_id, provider_name, resolved_model, review_reason_text)
+                self.ctx.logger.error("绘图任务审核未通过: task_id=%s task_type=%s provider=%s model=%s error=%s", task_id, task_type, provider_name, resolved_model, review_reason_text)
                 return
 
             sent_count = await self.stream_service.send_generated_images_with_fallback(
@@ -472,8 +501,9 @@ class DrawService:
                 sent_count=sent_count,
             )
             self.ctx.logger.info(
-                "画图成功: task_id=%s provider=%s model=%s count=%s",
+                "绘图任务完成: task_id=%s task_type=%s provider=%s model=%s sent_count=%s",
                 task_id,
+                task_type,
                 provider_name,
                 resolved_model,
                 sent_count,
@@ -483,120 +513,111 @@ class DrawService:
             self.task_store.update_task(
                 task_id,
                 status="failed",
-                message=f"图片生成超时，超过 {timeout_seconds} 秒",
+                message=f"{timeout_message}，超过 {timeout_seconds} 秒",
             )
-            self.ctx.logger.error("画图失败: task_id=%s model=%s error=%s", task_id, resolved_model, f"图片生成超时，超过 {timeout_seconds} 秒")
+            self.ctx.logger.error("绘图任务失败: task_id=%s task_type=%s model=%s error=%s", task_id, task_type, resolved_model, f"{timeout_message}，超过 {timeout_seconds} 秒")
         except Exception as exc:
             self.task_store.update_task(
                 task_id,
                 status="failed",
                 message=str(exc),
             )
-            self.ctx.logger.error("画图失败: task_id=%s model=%s error=%s", task_id, resolved_model, exc, exc_info=True)
+            self.ctx.logger.error("绘图任务失败: task_id=%s task_type=%s model=%s error=%s", task_id, task_type, resolved_model, exc, exc_info=True)
 
-    async def _background_edit_image(
+    async def start_background_image_request(
         self,
         *,
-        task_id: str,
         prompt: str,
         stream_id: str,
         resolved_model: str,
-        openai_compatibility_mode: str,
-        source_image_bytes_list: list[bytes],
-        matched_message_id: str,
+        resolved_openai_mode: str,
+        provider_name: str,
         user_id: str = "",
         group_id: str = "",
         platform_name: str = "qq",
-    ) -> None:
-        """后台执行图生图编辑。"""
+        source_image_bytes_list: list[bytes] | None = None,
+        matched_message_id: str = "",
+        notify_start: bool = False,
+    ) -> dict[str, Any]:
+        """启动后台绘图任务，源图为空时文生图，存在源图时图生图。"""
 
-        try:
-            self.task_store.update_task(
-                task_id,
-                status="running",
-                message="图片正在编辑中",
-            )
-            image_platform, provider_name = self.router.require_platform_for_model(
-                resolved_model,
-                openai_compatibility_mode,
-            )
-            provider_prompt = await self.rewrite_prompt_to_english_if_needed(
-                prompt,
-                provider_name,
-                resolved_model,
-            )
+        normalized_source_images = source_image_bytes_list or []
+        is_image_edit = bool(normalized_source_images)
+        image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(resolved_model)
+        if is_image_edit and image_edit_unsupported_reason:
             self.ctx.logger.info(
-                "开始画图: task_id=%s provider=%s model=%s prompt=%s",
-                task_id,
-                provider_name,
+                "拒绝提交图生图任务: model=%s stream_id=%s user_id=%s group_id=%s platform=%s source_image_count=%s reason=%s",
                 resolved_model,
-                provider_prompt[:120],
+                stream_id,
+                user_id,
+                group_id,
+                platform_name,
+                len(normalized_source_images),
+                image_edit_unsupported_reason,
             )
-            image_bytes_list = await self.run_provider_call(
-                image_platform.edit_images,
-                provider_prompt,
-                resolved_model,
-                source_image_bytes_list,
-                1,
-            )
-            if not image_bytes_list:
-                self.task_store.update_task(
-                    task_id,
-                    status="failed",
-                    message="图片平台没有返回任何图片结果",
-                )
-                self.ctx.logger.error("画图失败: task_id=%s provider=%s model=%s error=%s", task_id, provider_name, resolved_model, "图片平台没有返回任何图片结果")
-                return
+            raise ValueError(f"{image_edit_unsupported_reason}。请改用文生图，或切换到支持图生图的模型")
 
-            reviewed_images, rejected_reasons = await self.filter_reviewed_images(prompt, image_bytes_list)
-            if not reviewed_images:
-                review_reason_text = "；".join(rejected_reasons) if rejected_reasons else "审核未通过"
-                self.task_store.update_task(
-                    task_id,
-                    status="rejected",
-                    message=review_reason_text,
-                )
-                self.ctx.logger.error("画图失败: task_id=%s provider=%s model=%s error=%s", task_id, provider_name, resolved_model, review_reason_text)
-                return
-
-            sent_count = await self.stream_service.send_generated_images_with_fallback(
+        task_type = "edit_image" if is_image_edit else "draw"
+        task_record = self.task_store.create_task(
+            session_key=self.build_session_key(
                 stream_id=stream_id,
-                image_bytes_list=reviewed_images,
                 user_id=user_id,
                 group_id=group_id,
                 platform=platform_name,
-                task_id=task_id,
-                provider=provider_name,
-                model=resolved_model,
+            ),
+            stream_id=stream_id,
+            task_type=task_type,
+            prompt=prompt,
+            model=resolved_model,
+            provider=provider_name,
+            message="任务已创建，等待后台执行",
+        )
+        background_task = asyncio.create_task(
+            self._background_image_request(
+                task_id=task_record.task_id,
+                prompt=prompt,
+                stream_id=stream_id,
+                resolved_model=resolved_model,
+                openai_compatibility_mode=resolved_openai_mode,
+                source_image_bytes_list=normalized_source_images,
+                matched_message_id=matched_message_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform_name=platform_name,
             )
-            self.task_store.update_task(
-                task_id,
-                status="completed",
-                message=f"图片已发送，数量={sent_count}",
-                sent_count=sent_count,
-            )
+        )
+        self.track_background_task(background_task, task_record.task_id)
+        if notify_start:
             self.ctx.logger.info(
-                "画图成功: task_id=%s provider=%s model=%s count=%s",
-                task_id,
-                provider_name,
+                "绘图任务已提交: task_id=%s task_type=%s model=%s stream_id=%s user_id=%s group_id=%s platform=%s source_image_count=%s",
+                task_record.task_id,
+                task_type,
                 resolved_model,
-                sent_count,
+                stream_id,
+                user_id,
+                group_id,
+                platform_name,
+                len(normalized_source_images),
             )
-        except TimeoutError:
-            timeout_seconds = self.resolve_request_timeout_seconds()
-            self.task_store.update_task(
-                task_id,
-                status="failed",
-                message=f"图片编辑超时，超过 {timeout_seconds} 秒",
-            )
-            self.ctx.logger.error("画图失败: task_id=%s model=%s error=%s", task_id, resolved_model, f"图片编辑超时，超过 {timeout_seconds} 秒")
-        except Exception as exc:
-            self.task_store.update_task(
-                task_id,
-                status="failed",
-                message=str(exc),
-            )
-            self.ctx.logger.error("画图失败: task_id=%s model=%s error=%s", task_id, resolved_model, exc, exc_info=True)
+        message_action = "编辑图片" if is_image_edit else "生成图片"
+        payload = {
+            "success": True,
+            "message": (
+                f"已开始后台{message_action}，task_id={task_record.task_id}。"
+                "这是异步任务。当前不要立刻反复调用 draw_status；请根据对话上下文自然回复用户任务已开始，"
+                f"至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查询状态。"
+            ),
+            "provider": provider_name,
+            "model": resolved_model,
+            "openai_compatibility_mode": resolved_openai_mode,
+            "task_type": task_type,
+            "timeout_seconds": self.resolve_request_timeout_seconds(),
+            "task_id": task_record.task_id,
+        }
+        if is_image_edit:
+            payload["source_message_id"] = matched_message_id
+            payload["source_image_count"] = len(normalized_source_images)
+        return payload
 
     async def start_background_draw_request(
         self,
@@ -613,56 +634,17 @@ class DrawService:
     ) -> dict[str, Any]:
         """启动后台文生图。"""
 
-        task_record = self.task_store.create_task(
-            session_key=self.build_session_key(
-                stream_id=stream_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
-            ),
-            stream_id=stream_id,
-            task_type="draw",
+        return await self.start_background_image_request(
             prompt=prompt,
-            model=resolved_model,
-            provider=provider_name,
-            message="任务已创建，等待后台执行",
+            stream_id=stream_id,
+            resolved_model=resolved_model,
+            resolved_openai_mode=resolved_openai_mode,
+            provider_name=provider_name,
+            user_id=user_id,
+            group_id=group_id,
+            platform_name=platform_name,
+            notify_start=notify_start,
         )
-        background_task = asyncio.create_task(
-            self._background_draw(
-                task_id=task_record.task_id,
-                prompt=prompt,
-                stream_id=stream_id,
-                resolved_model=resolved_model,
-                openai_compatibility_mode=resolved_openai_mode,
-                user_id=user_id,
-                group_id=group_id,
-                platform_name=platform_name,
-            )
-        )
-        self.track_background_task(background_task, task_record.task_id)
-        if notify_start:
-            self.ctx.logger.info(
-                "绘图任务已提交: task_id=%s model=%s stream_id=%s user_id=%s group_id=%s platform=%s",
-                task_record.task_id,
-                resolved_model,
-                stream_id,
-                user_id,
-                group_id,
-                platform_name,
-            )
-        return {
-            "success": True,
-            "message": (
-                f"已开始后台生成图片，task_id={task_record.task_id}。"
-                "这是异步任务。当前不要立刻反复调用 draw_status；请根据对话上下文自然回复用户任务已开始，"
-                f"至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查询状态。"
-            ),
-            "provider": provider_name,
-            "model": resolved_model,
-            "openai_compatibility_mode": resolved_openai_mode,
-            "timeout_seconds": self.resolve_request_timeout_seconds(),
-            "task_id": task_record.task_id,
-        }
 
     async def start_background_edit_request(
         self,
@@ -682,50 +664,15 @@ class DrawService:
 
         if not source_image_bytes_list:
             raise ValueError("没有可用于图生图的源图片")
-        if not self.router.supports_image_edit(resolved_model):
-            raise ValueError(f"当前模型 {resolved_model} 不支持图生图编辑，请改用文生图 draw 工具")
-
-        task_record = self.task_store.create_task(
-            session_key=self.build_session_key(
-                stream_id=stream_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform=platform_name,
-            ),
-            stream_id=stream_id,
-            task_type="edit_image",
+        return await self.start_background_image_request(
             prompt=prompt,
-            model=resolved_model,
-            provider=provider_name,
-            message="任务已创建，等待后台执行",
+            stream_id=stream_id,
+            resolved_model=resolved_model,
+            resolved_openai_mode=resolved_openai_mode,
+            provider_name=provider_name,
+            user_id=user_id,
+            group_id=group_id,
+            platform_name=platform_name,
+            source_image_bytes_list=source_image_bytes_list,
+            matched_message_id=matched_message_id,
         )
-        background_task = asyncio.create_task(
-            self._background_edit_image(
-                task_id=task_record.task_id,
-                prompt=prompt,
-                stream_id=stream_id,
-                resolved_model=resolved_model,
-                openai_compatibility_mode=resolved_openai_mode,
-                source_image_bytes_list=source_image_bytes_list,
-                matched_message_id=matched_message_id,
-                user_id=user_id,
-                group_id=group_id,
-                platform_name=platform_name,
-            )
-        )
-        self.track_background_task(background_task, task_record.task_id)
-        return {
-            "success": True,
-            "message": (
-                f"已开始后台编辑图片，task_id={task_record.task_id}。"
-                "这是异步任务。当前不要立刻反复调用 draw_status；请根据对话上下文自然回复用户任务已开始，"
-                f"至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查询状态。"
-            ),
-            "provider": provider_name,
-            "model": resolved_model,
-            "openai_compatibility_mode": resolved_openai_mode,
-            "source_message_id": matched_message_id,
-            "source_image_count": len(source_image_bytes_list),
-            "timeout_seconds": self.resolve_request_timeout_seconds(),
-            "task_id": task_record.task_id,
-        }

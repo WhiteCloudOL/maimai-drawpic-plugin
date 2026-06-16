@@ -531,6 +531,7 @@ async def find_source_images(
             return found
 
     recent_messages: list[dict[str, Any]] = []
+    has_recent_result = False
     for chat_id in _normalize_stream_ids(stream_id):
         recent_result = await ctx.call_capability(
             "message.get_recent",
@@ -540,10 +541,11 @@ async def find_source_images(
         )
         if not isinstance(recent_result, (dict, list)):
             continue
+        has_recent_result = True
         recent_messages = _unwrap_messages_result(recent_result)
         if recent_messages:
             break
-    if not isinstance(recent_result, (dict, list)):
+    if not has_recent_result:
         raise ValueError("无法读取最近消息，无法自动寻找待编辑图片")
     if not recent_messages:
         raise ValueError("最近消息返回格式不正确，无法自动寻找待编辑图片")

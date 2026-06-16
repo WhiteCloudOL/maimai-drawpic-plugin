@@ -279,7 +279,10 @@ class GoogleImage:
         """调用 Google 文生图接口。"""
 
         if self._uses_generate_content_api(model):
-            return self._generate_images_with_generate_content(prompt, model)
+            image_bytes_list = self._generate_images_with_generate_content(prompt, model)
+            if not image_bytes_list:
+                raise RuntimeError(f"Google generateContent 文生图未返回图片：model={model}")
+            return image_bytes_list
 
         try:
             response = self.client.models.generate_images(
@@ -301,6 +304,8 @@ class GoogleImage:
             image_bytes = getattr(image, "image_bytes", None)
             if image_bytes:
                 image_bytes_list.append(image_bytes)
+        if not image_bytes_list:
+            raise RuntimeError(f"Google 文生图响应中没有可用图片数据：model={model}")
         return image_bytes_list
 
     def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
@@ -310,7 +315,10 @@ class GoogleImage:
             raise RuntimeError("没有可用于图生图的源图片")
 
         if self._uses_generate_content_api(model):
-            return self._edit_images_with_generate_content(prompt, model, image_bytes_list)
+            generated_bytes_list = self._edit_images_with_generate_content(prompt, model, image_bytes_list)
+            if not generated_bytes_list:
+                raise RuntimeError(f"Google generateContent 图生图未返回图片：model={model}")
+            return generated_bytes_list
 
         reference_images = [
             types.RawReferenceImage(
@@ -373,4 +381,6 @@ class GoogleImage:
             generated_bytes = getattr(image, "image_bytes", None)
             if generated_bytes:
                 image_bytes_list.append(generated_bytes)
+        if not image_bytes_list:
+            raise RuntimeError(f"Google 图生图响应中没有可用图片数据：model={model}")
         return image_bytes_list

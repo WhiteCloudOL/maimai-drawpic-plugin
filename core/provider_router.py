@@ -268,7 +268,29 @@ class ProviderRouter:
     def supports_image_edit(self, model: str) -> bool:
         """判断模型是否支持图生图编辑。"""
 
-        return self.get_model_provider(model) != "zhipu"
+        return not self.get_image_edit_unsupported_reason(model)
+
+    def get_image_edit_unsupported_reason(self, model: str) -> str:
+        """返回模型不支持图生图的原因，空字符串表示支持。"""
+
+        normalized_model = model.strip()
+        if not normalized_model:
+            return "当前未解析到可用绘图模型，无法提交图生图任务"
+
+        configured_unsupported_models = {
+            configured_model.strip()
+            for configured_model in self.config.general.image_edit_unsupported_models
+            if configured_model.strip()
+        }
+        if normalized_model in configured_unsupported_models:
+            return f"当前模型 {normalized_model} 已在配置中标记为不支持图生图"
+
+        provider_name = self.get_model_provider(normalized_model)
+        if not provider_name:
+            return f"当前模型 {normalized_model} 未归属于任何已配置图片平台，无法判断图生图能力"
+        if provider_name == "zhipu":
+            return f"当前模型 {normalized_model} 属于智谱平台；该平台当前仅支持文生图，不支持图生图编辑"
+        return ""
 
     def require_platform_for_model(
         self,

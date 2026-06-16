@@ -223,10 +223,13 @@ class ChatStreamService:
         try:
             sent_count = await self.send_generated_images(resolved_stream_id, image_bytes_list)
             self.ctx.logger.info(
-                "发送成功: task_id=%s provider=%s model=%s count=%s",
+                "发送绘图结果成功: task_id=%s provider=%s model=%s original_stream_id=%s resolved_stream_id=%s platform=%s count=%s",
                 task_id,
                 provider,
                 model,
+                stream_id,
+                resolved_stream_id,
+                platform,
                 sent_count,
             )
             return sent_count
@@ -252,10 +255,13 @@ class ChatStreamService:
             )
             sent_count = await self.send_generated_images(fallback_stream_id, image_bytes_list)
             self.ctx.logger.info(
-                "发送成功: task_id=%s provider=%s model=%s count=%s",
+                "发送绘图结果成功: task_id=%s provider=%s model=%s original_stream_id=%s resolved_stream_id=%s platform=%s count=%s",
                 task_id,
                 provider,
                 model,
+                stream_id,
+                fallback_stream_id,
+                platform,
                 sent_count,
             )
             return sent_count

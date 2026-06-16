@@ -7,14 +7,14 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.7.1-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.7.2-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 </div>
 
 ## 功能特性
 
-- **文生图与图生图**：`/绘图 文生图 <prompt>` 强制纯文本生图，`/绘图 图生图 <prompt>` 强制基于源图编辑。图生图既能识别命令消息中**直接附带的图片（非引用）**，也能识别**回复/引用的图片**，单条命令支持**多张图片**；在支持的平台（OpenAI、Google、阿里百炼）上多图一并提交，仅支持单图的平台（NovelAI、硅基流动）自动取第一张，不支持图生图的平台会给出切换提示。编辑前会逐张校验源图数据，避免把图片描述误当作源图。
+- **文生图与图生图**：`/绘图 文生图 <prompt>` 强制纯文本生图，如果同条消息附带或引用图片会提示改用图生图；`/绘图 图生图 <prompt>` 强制基于源图编辑，未找到真实源图时会提示补充图片，不会自动降级成文生图。图生图既能识别命令消息中**直接附带的图片（非引用）**，也能识别**回复/引用的图片**，单条命令支持**多张图片**；在支持的平台（OpenAI、Google、阿里百炼）上多图一并提交，仅支持单图的平台（NovelAI、硅基流动）自动取第一张，不支持图生图的平台会给出切换提示。编辑前会逐张校验源图数据，避免把图片描述误当作源图。
 - **多平台模型**：支持 OpenAI Images API、OpenAI Chat Completion 兼容、Google Gemini、智谱、阿里百炼、硅基流动和 NovelAI / NovelAPI。
 - **编辑尺寸适配**：图生图会尽量沿用源图尺寸或比例；OpenAI 官方 `gpt-image-2` 会按官方约束规范化原图尺寸，OpenAI 兼容中转（如 NewAPI）会按源图比例选择兼容枚举尺寸，接口不支持时自动回退到配置的默认尺寸。
 - **平台参数配置**：各平台支持分辨率、生成数量、输出格式、随机种子、反向提示词、采样步数、引导强度和额外参数等常用配置，兼容不同上游能力差异。
@@ -61,7 +61,7 @@ uv pip install -r plugins/maimai-drawpic-plugin/requirements.txt
 # 是否启用插件
 enabled = true
 # 配置版本（请勿随意修改，由插件用于升级迁移）
-config_version = "2.12.0"
+config_version = "2.13.0"
 
 [general]
 # 默认使用的模型名称，插件会自动在各平台模型列表中查找
@@ -80,6 +80,8 @@ quota_enabled = true
 quota_period = "daily"
 # 普通用户在当前周期内默认可用绘图次数
 default_quota = 5
+# 额外标记为不支持图生图的模型名列表；命中后强制图生图和 edit_image 会提前拒绝提交任务
+image_edit_unsupported_models = []
 
 [prompt_review]
 # 是否启用提示词审核（调用 MaiBot 当前配置的 replyer 模型）
@@ -315,6 +317,7 @@ rewrite_prompt_to_english = true
 | `[general]` | `command_reply_mode` | 聊天命令返回形式，可选 `图片` / `文本`，默认 `图片` |
 | `[general]` | `permission_enabled` / `admin_user_ids` | 权限管理开关与插件管理员用户 ID 列表 |
 | `[general]` | `quota_enabled` / `quota_period` / `default_quota` | 用户绘图次数管理开关、周期与默认可用次数 |
+| `[general]` | `image_edit_unsupported_models` | 额外标记为不支持图生图的模型名列表；命中后不会创建后台图生图任务 |
 | `[aliyun]` | `base_url` / `api_key` / `models` | 阿里百炼图片接口的基础 URL、密钥与模型列表（支持文生图与图像编辑） |
 | `[aliyun]` | `default_size` / `model_size_overrides` | 阿里百炼默认分辨率和按模型覆盖分辨率，覆盖项格式为 `模型名=宽*高` |
 | `[aliyun]` | `negative_prompt` / `prompt_extend` / `watermark` | 阿里百炼反向提示词、提示词智能改写和水印开关 |
@@ -372,7 +375,7 @@ rewrite_prompt_to_english = true
 
 OpenAI provider 面向 OpenAI 官方 Images API、NewAPI 等 OpenAI 兼容中转，以及部分用 Chat Completion 返回图片的网关。NovelAI 官方图片接口或兼容 NovelAI payload 的 NovelAPI 网关，建议使用独立的 `[novelai]` 配置段，不再依赖 OpenAI 兼容模式。
 
-使用阿里百炼、Google、智谱、硅基流动或 NovelAI 模型时，`openai_compatibility_mode` 不生效，插件会走对应平台的图片接口。智谱模型当前仅支持文生图，不能用于 `edit_image` 图生图编辑。
+使用阿里百炼、Google、智谱、硅基流动或 NovelAI 模型时，`openai_compatibility_mode` 不生效，插件会走对应平台的图片接口。智谱模型当前仅支持文生图，不能用于 `edit_image` 图生图编辑。若某个兼容平台中的具体模型只能文生图，可将模型名加入 `[general].image_edit_unsupported_models`，插件会在提交后台任务前拒绝图生图请求并返回明确提示。
 
 ### 平台适配说明
 
@@ -417,11 +420,12 @@ OpenAI provider 面向 OpenAI 官方 Images API、NewAPI 等 OpenAI 兼容中转
 | `/绘图 状态` | 查看当前会话绘图模型、兼容模式、当前绘图任务与用户剩余次数 |
 | `/绘图 兼容模式` | 查看 OpenAI 兼容模式说明 |
 | `/绘图 兼容模式 <模式>` | 设置 OpenAI 兼容模式，仅对 OpenAI 提供商生效，启用权限管理时仅管理员可用 |
-| `/绘图 文生图 <prompt>` | 强制发起文生图，`prompt` 可包含空格 |
-| `/绘图 图生图 <prompt>` | 强制发起图生图，需在同一条消息中附带或引用图片，支持多张；自动跳过当前模型平台不支持图生图的情况并给出提示 |
+| `/绘图 文生图 <prompt>` | 强制发起文生图，`prompt` 可包含空格；同条消息附带或引用图片时会提示改用图生图 |
+| `/绘图 图生图 <prompt>` | 强制发起图生图，需在同一条消息中附带或引用图片，支持多张；当前模型或平台不支持图生图时会提前拒绝提交任务并给出提示 |
 | `/绘图 添加/减少/设置 用户ID 次数` | 管理员调整用户当前周期剩余次数 |
 
 > `/绘图 图生图` 会优先使用本条命令直接附带的图片（非引用），其次合并引用/回复消息中的图片；多张源图片在支持的模型平台（OpenAI、Google、阿里百炼）上会一并提交，NovelAI、硅基流动等仅支持单图的平台只取第一张，智谱等不支持图生图的平台会直接提示切换模型。
+> `/绘图 文生图` 是强制纯文本生图；如果消息中包含或引用了图片，会直接提示模式不匹配，不会把图片传给文生图任务。
 >
 > `/绘图 绘制 <prompt>` 作为 `/绘图 文生图 <prompt>` 的兼容别名仍然可用；旧版 `/绘图 <提示词>` 直接绘图入口已移除。
 
@@ -481,6 +485,23 @@ plugins/maimai-drawpic-plugin/
     ├── siliconflow_platform.py # 硅基流动图片接口调用
     └── zhipu_platform.py   # 智谱图片生成接口调用
 ```
+
+## 更新日志
+
+### 1.7.2
+
+用户感知功能侧：
+
+- 绘图命令：`/绘图 文生图` 检测到同条消息或引用消息中包含图片时，会提示改用 `/绘图 图生图`，不再误传源图。
+- 绘图命令：`/绘图 图生图` 未找到真实源图时会明确提示补充图片，不会降级成文生图。
+- 图生图：当前模型或平台不支持图生图时，会在提交后台任务前拒绝并返回明确原因。
+- 配置：新增 `[general].image_edit_unsupported_models`，可标记只能文生图的具体模型。
+
+开发侧：
+
+- 任务调度：统一文生图与图生图后台提交链路，避免文生图路径引用图生图变量。
+- 日志：统一任务提交、开始执行、失败、审核拦截和发送成功日志字段，便于按 `task_id` 排查。
+- 稳定性：修复最近消息源图查找的异常判断，并为 Google 空图片响应提供明确错误。
 
 ## 许可证
 

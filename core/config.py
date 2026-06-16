@@ -23,7 +23,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.12.0",
+        default="2.13.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -108,6 +108,15 @@ class GeneralConfig(PluginConfigBase):
             "label": "默认可用次数",
             "hint": "普通用户在所选周期内默认可用的绘图次数",
             "order": 7,
+        },
+    )
+    image_edit_unsupported_models: list[str] = Field(
+        default=[],
+        description="额外标记为不支持图生图的模型名列表。命中后强制图生图和 edit_image 会提前拒绝提交任务",
+        json_schema_extra={
+            "label": "不支持图生图模型",
+            "hint": "每行一个模型名。用于标记平台列表中存在但只能文生图的模型，命中后不会创建后台图生图任务",
+            "order": 8,
         },
     )
 

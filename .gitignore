@@ -218,6 +218,8 @@ __marimo__/
 #maimai
 !_manifest.json
 config.toml
+AGENTS.md
+agents.md
 data/
 session_preferences.json
 config_back/
