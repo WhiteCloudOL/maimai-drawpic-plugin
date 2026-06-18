@@ -24,7 +24,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.15.0",
+        default="2.16.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -188,11 +188,13 @@ class GeneralConfig(PluginConfigBase):
 class OpenAICompatibleInstanceConfig(PluginConfigBase):
     """OpenAI 兼容接口实例配置。"""
 
+    # 必填项：缺一项实例就无法正常调用
     enabled: bool = Field(
         default=True,
         description="是否启用该 OpenAI 兼容接口实例",
         json_schema_extra={
             "label": "启用",
+            "order": 0,
         },
     )
     name: str = Field(
@@ -200,7 +202,8 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         description="实例名称，仅用于菜单和日志中区分不同中转站",
         json_schema_extra={
             "label": "实例名称",
-            "placeholder": "例如 yunwu、newapi-1",
+            "placeholder": "例如 platform-1、newapi-1",
+            "order": 1,
         },
     )
     base_url: str = Field(
@@ -209,6 +212,7 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         json_schema_extra={
             "label": "基础 URL",
             "placeholder": "https://api.example.com",
+            "order": 2,
         },
     )
     api_key: str = Field(
@@ -218,25 +222,31 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
             "label": "API 密钥",
             "input_type": "password",
             "placeholder": "sk-...",
+            "order": 3,
         },
     )
     models: str = Field(
         default="gpt-image-2",
-        description="该实例可用模型。多个模型可用换行、逗号或分号分隔；需要同一上游模型走多个中转时使用 显示名=上游模型名",
+        description="该实例可用模型。WebUI 对象列表单项内只能填写单行文本，多个模型可用英文逗号、中文逗号或分号分隔；需要同一上游模型走多个中转时使用 显示名=上游模型名",
         json_schema_extra={
             "label": "模型列表",
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 3,
-            "placeholder": "gpt-image-2 或 yunwu-gpt=gpt-image-2",
+            "placeholder": "gpt-image-2, platform-gpt=gpt-image-2",
+            "hint": "WebUI 内为单行输入，多个模型用 , 或 ， 分隔；TOML 源代码模式可换行",
+            "order": 4,
         },
     )
+
+    # 常用项：影响调用方式与默认输出，多数场景需要关注
     default_openai_compatibility_mode: str = Field(
         default="auto",
         description="该实例默认 OpenAI 兼容模式",
         json_schema_extra={
             "label": "兼容模式",
             "placeholder": "auto / images_api / chat_completions / novelai_images_api",
+            "order": 5,
         },
     )
     default_size: str = Field(
@@ -245,17 +255,39 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         json_schema_extra={
             "label": "默认分辨率",
             "placeholder": "1024x1024",
+            "order": 6,
         },
     )
+    rewrite_prompt_to_english: bool = Field(
+        default=False,
+        description="是否在调用该实例前将提示词改写为英文",
+        json_schema_extra={
+            "label": "英文提示词改写",
+            "hint": "使用 Stable Diffusion / NovelAI 兼容模型时建议开启，避免中文提示词导致效果差或请求失败",
+            "order": 7,
+        },
+    )
+
+    # 细化项：按需填写，覆盖默认行为
     model_size_overrides: str = Field(
         default="",
-        description="该实例按模型覆盖分辨率。每行一个 模型名=宽x高",
+        description="该实例按模型覆盖分辨率。WebUI 对象列表单项内只能填写单行文本，多条可用英文逗号、中文逗号或分号分隔，每条格式为 模型名=宽x高",
         json_schema_extra={
             "label": "按模型覆盖分辨率",
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 3,
-            "placeholder": "gpt-image-2=1024x1024",
+            "placeholder": "gpt-image-2=1024x1024, gemini-image=1536x1024",
+            "hint": "WebUI 内为单行输入，多条用 , 或 ， 分隔；TOML 源代码模式可换行",
+            "order": 8,
+        },
+    )
+    max_images: int = Field(
+        default=1,
+        description="单次 OpenAI 请求生成图片数量上限",
+        json_schema_extra={
+            "label": "单次图片数量",
+            "order": 9,
         },
     )
     quality: str = Field(
@@ -264,14 +296,18 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         json_schema_extra={
             "label": "质量",
             "placeholder": "auto / low / medium / high",
+            "order": 10,
         },
     )
+
+    # 高级项：OpenAI Images API 细节参数，多数中转不需要
     response_format: str = Field(
         default="",
         description="OpenAI Images API 响应格式",
         json_schema_extra={
             "label": "响应格式",
             "placeholder": "b64_json / url",
+            "order": 11,
         },
     )
     output_format: str = Field(
@@ -280,6 +316,7 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         json_schema_extra={
             "label": "输出格式",
             "placeholder": "png / jpeg / webp",
+            "order": 12,
         },
     )
     background: str = Field(
@@ -288,6 +325,7 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         json_schema_extra={
             "label": "背景",
             "placeholder": "transparent / opaque / auto",
+            "order": 13,
         },
     )
     moderation: str = Field(
@@ -296,31 +334,22 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         json_schema_extra={
             "label": "审核强度",
             "placeholder": "auto / low",
+            "order": 14,
         },
     )
-    max_images: int = Field(
-        default=1,
-        description="单次 OpenAI 请求生成图片数量上限",
-        json_schema_extra={
-            "label": "单次图片数量",
-        },
-    )
+
+    # 扩展项：兼容中转自定义字段
     extra_parameters: str = Field(
         default="",
-        description="OpenAI 兼容接口额外 JSON 参数。每行一个 key=value",
+        description="OpenAI 兼容接口额外 JSON 参数。WebUI 对象列表单项内只能填写单行文本，多条可用英文逗号、中文逗号或分号分隔，每条格式为 key=value",
         json_schema_extra={
             "label": "额外参数",
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 3,
-            "placeholder": "custom_field=true",
-        },
-    )
-    rewrite_prompt_to_english: bool = Field(
-        default=False,
-        description="是否在调用该实例前将提示词改写为英文",
-        json_schema_extra={
-            "label": "英文提示词改写",
+            "placeholder": "custom_field=true, extra_option=auto",
+            "hint": "WebUI 内为单行输入，多条用 , 或 ， 分隔；TOML 源代码模式可换行",
+            "order": 15,
         },
     )
 

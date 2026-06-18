@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.8.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.8.1-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -84,7 +84,7 @@ models = "relay-gpt-image=gpt-image-2"
 | **`general`** | `image_edit_unsupported_models` | 仅支持文生图的模型黑名单，命中后直接拦截图生图请求。 |
 | **`general`** | `prompt_review_enabled` / `image_review_enabled` | 启用文本/图片审核，配合 `replyer` 和 `vlm` 任务模型保障内容安全。 |
 | **`openai`** | `default_openai_compatibility_mode` | 兼容模式 (`auto` / `images_api` / `chat_completions` / `novelai_images_api`)。 |
-| **`openai.instances`** | `name` / `base_url` / `api_key` / `models` | 额外 OpenAI 兼容实例；`models` 支持 `显示名=上游模型名`，适合多个中转站使用同名模型。 |
+| **`openai.instances`** | `name` / `base_url` / `api_key` / `models` | 额外 OpenAI 兼容实例；`models` 支持 `显示名=上游模型名`，适合多个中转站使用同名模型。WebUI 内为单行输入，多个模型用 `,` 或 `，` 分隔。 |
 | **通用平台** | `api_key` / `models` | 对应服务商的鉴权密钥与允许使用的模型名列表。 |
 | **通用平台** | `base_url` | 适用于 OpenAI、Google、NovelAI 的网关地址（其余平台使用内置官方地址）。 |
 | **通用平台** | `rewrite_prompt_to_english` | 开启后，调用接口前将使用 MaiBot 的 `replyer` 模型自动翻译并规范化提示词标点。 |
@@ -160,7 +160,15 @@ plugins/maimai-drawpic-plugin/
 
 ```
 
-## 📝 近期更新 (v1.8.0)
+## 📝 近期更新
+
+### v1.8.1
+
+* **WebUI 配置修复**：说明额外 OpenAI 兼容实例中 `模型列表` / `按模型覆盖分辨率` / `额外参数` 在 WebUI 对象列表单项内只能填写单行文本，现明确可用英文逗号 `,`、中文逗号 `，` 或分号 `;` 分隔多条；TOML 源代码模式仍可换行。
+* **配置排序优化**：额外 OpenAI 兼容实例的配置项按重要性重新分组排序（必填项 → 常用项 → 细化项 → 高级项 → 扩展项），方便快速填写。
+* **示例清理**：移除配置示例里的具体中转站名，统一改用 `platform` 占位。
+
+### v1.8.0
 
 * **平台适配**：新增火山引擎 / 方舟即梦 AI、豆包生图接入，并内置智谱、阿里百炼、硅基流动官方接口地址。
 * **配置优化**：WebUI 支持额外 OpenAI 兼容实例列表，可为多个中转站分别配置 `BaseURL`、`API Key` 和模型映射。
