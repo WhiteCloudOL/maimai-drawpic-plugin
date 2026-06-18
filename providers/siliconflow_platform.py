@@ -14,10 +14,11 @@ import time
 class SiliconFlowImage:
     """硅基流动图片生成接口封装。"""
 
+    _BASE_URL = "https://api.siliconflow.cn"
+
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.siliconflow.cn",
         logger: Any | None = None,
         request_timeout_seconds: int = 20,
         image_size: str = "1024x1024",
@@ -31,7 +32,6 @@ class SiliconFlowImage:
         extra_parameters: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
         self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
         self.image_size = image_size.strip()
@@ -52,7 +52,7 @@ class SiliconFlowImage:
         """调用硅基流动文生图接口。"""
 
         response = await self._post_json(
-            url=f"{self.base_url}/v1/images/generations",
+            url=f"{self._BASE_URL}/v1/images/generations",
             payload=self._build_payload(prompt=prompt, model=model, n=n),
         )
         return await self._extract_images(response)
@@ -133,7 +133,7 @@ class SiliconFlowImage:
             payload["image"] = image_data_url
             try:
                 return await self._post_json(
-                    url=f"{self.base_url}/v1/images/generations",
+                    url=f"{self._BASE_URL}/v1/images/generations",
                     payload=payload,
                 )
             except Exception as exc:

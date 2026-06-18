@@ -41,6 +41,7 @@ def build_model_text(router: ProviderRouter, session_preference: dict[str, str])
         ("OpenAI", router.get_openai_models()),
         ("Google", router.get_google_models()),
         ("智谱", router.get_zhipu_models()),
+        ("火山引擎", router.get_volcengine_models()),
         ("硅基流动", router.get_siliconflow_models()),
         ("NovelAI / NovelAPI", router.get_novelai_models()),
     ]
@@ -67,12 +68,13 @@ def build_session_status_text(
     model_name = session_preference["model"] or router.resolve_default_model()
     provider_name = router.get_model_provider(model_name) or "unknown"
     lock_status = "已锁定" if session_preference["model"] else "未锁定，跟随默认模型"
+    openai_mode_text = session_preference["openai_compatibility_mode"] or "未锁定，跟随模型配置"
     task_text = _format_task(latest_task)
     return "\n".join(
         [
             f"当前绘图模型：{provider_name}：{model_name}",
             f"会话模型状态：{lock_status}",
-            f"OpenAI 兼容模式：{session_preference['openai_compatibility_mode']}（仅对 OpenAI 提供商生效）",
+            f"OpenAI 兼容模式：{openai_mode_text}（仅对 OpenAI 提供商生效）",
             f"默认模型：{router.resolve_default_model()}",
             f"当前绘图任务：{task_text}",
             f"用户次数：{quota_text}",
@@ -83,9 +85,10 @@ def build_session_status_text(
 def build_compatible_mode_text(current_mode: str) -> str:
     """构建兼容模式说明。"""
 
+    mode_text = current_mode.strip() or "未锁定，跟随模型配置"
     return "\n".join(
         [
-            f"当前 OpenAI 兼容模式：{current_mode}",
+            f"当前 OpenAI 兼容模式：{mode_text}",
             "该设置仅对 OpenAI 提供商生效。",
             "",
             "可选模式：",
@@ -94,6 +97,8 @@ def build_compatible_mode_text(current_mode: str) -> str:
             "chat_completions：Chat Completion 返回图片",
             "novelai_images_api：旧版 NovelAI 风格 OpenAI 兼容接口",
             "",
+            "不设置会话兼容模式时，会跟随当前模型所属实例的默认兼容模式。",
+            "使用 /绘图 兼容模式 跟随 可清空会话设置。",
             "示例：/绘图 兼容模式 images_api",
         ]
     )

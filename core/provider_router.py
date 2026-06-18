@@ -1,23 +1,70 @@
+from dataclasses import dataclass
 from typing import Any, Literal, Protocol
+
+import re
 
 from ..providers.aliyun_platform import AliyunImage
 from ..providers.google_platform import GoogleImage
 from ..providers.novelai_platform import NovelAIImage
 from ..providers.openai_platform import OpenaiImage
 from ..providers.siliconflow_platform import SiliconFlowImage
+from ..providers.volcengine_platform import VolcengineImage
 from ..providers.zhipu_platform import ZhipuImage
 from .config import DrawpicConfig, OpenAICompatibilityMode
 from .provider_options import parse_key_value_options, parse_model_value_overrides
 
-ProviderName = Literal["aliyun", "openai", "google", "zhipu", "siliconflow", "novelai"]
+ProviderName = Literal["aliyun", "openai", "google", "zhipu", "volcengine", "siliconflow", "novelai"]
+OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
+
+
+@dataclass(frozen=True, slots=True)
+class OpenAIModelRoute:
+    """OpenAI 兼容模型到具体实例的路由。"""
+
+    display_model: str
+    upstream_model: str
+    instance_name: str
+    api_key: str
+    base_url: str
+    compatibility_mode: str
+    default_size: str
+    model_size_overrides: dict[str, str]
+    quality: str
+    response_format: str
+    output_format: str
+    background: str
+    moderation: str
+    max_images: int
+    extra_parameters: dict[str, Any]
+    rewrite_prompt_to_english: bool
 
 
 class ImageProvider(Protocol):
-    def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
+    async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """根据文本提示生成图片。"""
 
-    def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
+    async def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
         """基于一张或多张输入图片执行编辑。"""
+
+
+class RoutedOpenAIImage:
+    """把用户可见模型名映射到 OpenAI 兼容实例的上游模型名。"""
+
+    def __init__(self, provider: OpenaiImage, upstream_model: str) -> None:
+        self.provider = provider
+        self.upstream_model = upstream_model
+
+    async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
+        """使用上游模型名执行文生图。"""
+
+        del model
+        return await self.provider.generate_images(prompt, self.upstream_model, n)
+
+    async def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
+        """使用上游模型名执行图生图。"""
+
+        del model
+        return await self.provider.edit_images(prompt, self.upstream_model, image_bytes_list, n)
 
 
 class ProviderRouter:
@@ -27,34 +74,166 @@ class ProviderRouter:
         self.config = config
         self.logger = logger
 
+    @staticmethod
+    def _split_inline_items(value: str) -> list[str]:
+        """按换行、逗号或分号拆分 WebUI 对象列表内的复合字符串字段。"""
+
+        return [item.strip() for item in re.split(r"[\n,;；，]+", str(value or "")) if item.strip()]
+
+    @classmethod
+    def _parse_model_routes(cls, value: str) -> list[tuple[str, str]]:
+        """解析模型映射，支持 显示名=上游模型名。"""
+
+        routes: list[tuple[str, str]] = []
+        for item in cls._split_inline_items(value):
+            if "=" in item:
+                display_model, upstream_model = item.split("=", maxsplit=1)
+                display_model = display_model.strip()
+                upstream_model = upstream_model.strip()
+            else:
+                display_model = item
+                upstream_model = item
+            if display_model and upstream_model:
+                routes.append((display_model, upstream_model))
+        return routes
+
+    @classmethod
+    def _parse_key_value_text(cls, value: str) -> list[str]:
+        """解析对象列表内的 key=value 多行字段为字符串列表。"""
+
+        return cls._split_inline_items(value)
+
+    @staticmethod
+    def _normalize_openai_compatibility_mode(mode: str) -> OpenAICompatibilityMode:
+        """规范化 OpenAI 兼容模式。"""
+
+        normalized_mode = mode.strip()
+        if normalized_mode in OPENAI_COMPATIBILITY_MODES:
+            return normalized_mode  # type: ignore[return-value]
+        return "auto"
+
+    def _iter_openai_routes(self) -> list[OpenAIModelRoute]:
+        """展开主 OpenAI 配置和额外 OpenAI 兼容实例。"""
+
+        routes: list[OpenAIModelRoute] = []
+        if self.config.openai.enabled:
+            for model in self.config.openai.models:
+                normalized_model = model.strip()
+                if not normalized_model:
+                    continue
+                routes.append(
+                    OpenAIModelRoute(
+                        display_model=normalized_model,
+                        upstream_model=normalized_model,
+                        instance_name="OpenAI",
+                        api_key=self.config.openai.api_key,
+                        base_url=self.config.openai.base_url,
+                        compatibility_mode=self.config.openai.default_openai_compatibility_mode,
+                        default_size=self.config.openai.default_size,
+                        model_size_overrides=parse_model_value_overrides(self.config.openai.model_size_overrides),
+                        quality=self.config.openai.quality,
+                        response_format=self.config.openai.response_format,
+                        output_format=self.config.openai.output_format,
+                        background=self.config.openai.background,
+                        moderation=self.config.openai.moderation,
+                        max_images=self.config.openai.max_images,
+                        extra_parameters=parse_key_value_options(self.config.openai.extra_parameters),
+                        rewrite_prompt_to_english=self.config.openai.rewrite_prompt_to_english,
+                    )
+                )
+
+        for instance in self.config.openai.instances:
+            if not instance.enabled:
+                continue
+            instance_name = instance.name.strip() or "OpenAI 兼容实例"
+            instance_model_size_overrides = parse_model_value_overrides(
+                self._parse_key_value_text(instance.model_size_overrides)
+            )
+            instance_extra_parameters = parse_key_value_options(self._parse_key_value_text(instance.extra_parameters))
+            for display_model, upstream_model in self._parse_model_routes(instance.models):
+                model_size_overrides = dict(instance_model_size_overrides)
+                if display_model != upstream_model and display_model in model_size_overrides:
+                    model_size_overrides.setdefault(upstream_model, model_size_overrides[display_model])
+                routes.append(
+                    OpenAIModelRoute(
+                        display_model=display_model,
+                        upstream_model=upstream_model,
+                        instance_name=instance_name,
+                        api_key=instance.api_key,
+                        base_url=instance.base_url,
+                        compatibility_mode=self._normalize_openai_compatibility_mode(
+                            instance.default_openai_compatibility_mode
+                        ),
+                        default_size=instance.default_size,
+                        model_size_overrides=model_size_overrides,
+                        quality=instance.quality,
+                        response_format=instance.response_format,
+                        output_format=instance.output_format,
+                        background=instance.background,
+                        moderation=instance.moderation,
+                        max_images=instance.max_images,
+                        extra_parameters=instance_extra_parameters,
+                        rewrite_prompt_to_english=instance.rewrite_prompt_to_english,
+                    )
+                )
+        return routes
+
+    def resolve_openai_model_route(self, model: str) -> OpenAIModelRoute | None:
+        """解析 OpenAI 显示模型名对应的具体实例。"""
+
+        normalized_model = model.strip()
+        if not normalized_model:
+            return None
+        for route in self._iter_openai_routes():
+            if route.display_model == normalized_model:
+                return route
+        return None
+
     def get_openai_models(self) -> list[str]:
         """获取 OpenAI 模型列表。"""
 
-        return [model.strip() for model in self.config.openai.models if model.strip()]
+        return [route.display_model for route in self._iter_openai_routes()]
 
     def get_aliyun_models(self) -> list[str]:
         """获取阿里百炼模型列表。"""
 
+        if not self.config.aliyun.enabled:
+            return []
         return [model.strip() for model in self.config.aliyun.models if model.strip()]
 
     def get_google_models(self) -> list[str]:
         """获取 Google 模型列表。"""
 
+        if not self.config.google.enabled:
+            return []
         return [model.strip() for model in self.config.google.models if model.strip()]
 
     def get_zhipu_models(self) -> list[str]:
         """获取智谱模型列表。"""
 
+        if not self.config.zhipu.enabled:
+            return []
         return [model.strip() for model in self.config.zhipu.models if model.strip()]
+
+    def get_volcengine_models(self) -> list[str]:
+        """获取火山引擎模型列表。"""
+
+        if not self.config.volcengine.enabled:
+            return []
+        return [model.strip() for model in self.config.volcengine.models if model.strip()]
 
     def get_siliconflow_models(self) -> list[str]:
         """获取硅基流动模型列表。"""
 
+        if not self.config.siliconflow.enabled:
+            return []
         return [model.strip() for model in self.config.siliconflow.models if model.strip()]
 
     def get_novelai_models(self) -> list[str]:
         """获取 NovelAI / NovelAPI 模型列表。"""
 
+        if not self.config.novelai.enabled:
+            return []
         return [model.strip() for model in self.config.novelai.models if model.strip()]
 
     def get_all_models(self) -> list[str]:
@@ -65,6 +244,7 @@ class ProviderRouter:
             + self.get_openai_models()
             + self.get_google_models()
             + self.get_zhipu_models()
+            + self.get_volcengine_models()
             + self.get_siliconflow_models()
             + self.get_novelai_models()
         )
@@ -75,12 +255,14 @@ class ProviderRouter:
         normalized_model = model.strip()
         if normalized_model in self.get_aliyun_models():
             return "aliyun"
-        if normalized_model in self.get_openai_models():
+        if self.resolve_openai_model_route(normalized_model) is not None:
             return "openai"
         if normalized_model in self.get_google_models():
             return "google"
         if normalized_model in self.get_zhipu_models():
             return "zhipu"
+        if normalized_model in self.get_volcengine_models():
+            return "volcengine"
         if normalized_model in self.get_siliconflow_models():
             return "siliconflow"
         if normalized_model in self.get_novelai_models():
@@ -99,16 +281,19 @@ class ProviderRouter:
             return all_models[0]
         raise ValueError("当前未配置任何可用图片模型")
 
-    def resolve_openai_compatibility_mode(self, mode: str = "") -> OpenAICompatibilityMode:
+    def resolve_openai_compatibility_mode(self, mode: str = "", model: str = "") -> OpenAICompatibilityMode:
         """解析最终使用的 OpenAI 兼容模式。"""
 
         normalized_mode = mode.strip()
-        if normalized_mode in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
+        if normalized_mode in OPENAI_COMPATIBILITY_MODES:
             return normalized_mode  # type: ignore[return-value]
 
-        default_mode = self.config.openai.default_openai_compatibility_mode
-        if default_mode in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
-            return default_mode
+        if model:
+            route = self.resolve_openai_model_route(model)
+            if route is not None:
+                return self._normalize_openai_compatibility_mode(route.compatibility_mode)
+        if self.config.openai.default_openai_compatibility_mode in OPENAI_COMPATIBILITY_MODES:
+            return self.config.openai.default_openai_compatibility_mode
         return "auto"
 
     def resolve_request_timeout_seconds(self) -> int:
@@ -121,18 +306,23 @@ class ProviderRouter:
             return 600
         return timeout_seconds
 
-    def should_rewrite_prompt_to_english(self, provider_name: str) -> bool:
+    def should_rewrite_prompt_to_english(self, provider_name: str, model: str = "") -> bool:
         """判断指定提供商是否需要先把提示词改写为英文。"""
 
         normalized_provider = provider_name.strip().lower()
         if normalized_provider == "aliyun":
             return self.config.aliyun.rewrite_prompt_to_english
         if normalized_provider == "openai":
+            route = self.resolve_openai_model_route(model)
+            if route is not None:
+                return route.rewrite_prompt_to_english
             return self.config.openai.rewrite_prompt_to_english
         if normalized_provider == "google":
             return self.config.google.rewrite_prompt_to_english
         if normalized_provider == "zhipu":
             return self.config.zhipu.rewrite_prompt_to_english
+        if normalized_provider == "volcengine":
+            return self.config.volcengine.rewrite_prompt_to_english
         if normalized_provider == "siliconflow":
             return self.config.siliconflow.rewrite_prompt_to_english
         if normalized_provider == "novelai":
@@ -154,7 +344,6 @@ class ProviderRouter:
 
         return AliyunImage(
             api_key=self.config.aliyun.api_key,
-            base_url=self.config.aliyun.base_url,
             logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
             default_size=self.config.aliyun.default_size,
@@ -166,25 +355,47 @@ class ProviderRouter:
             extra_parameters=parse_key_value_options(self.config.aliyun.extra_parameters),
         )
 
-    def create_openai_provider(self, compatibility_mode: OpenAICompatibilityMode) -> OpenaiImage:
+    def create_openai_provider(self, compatibility_mode: OpenAICompatibilityMode, model: str = "") -> ImageProvider:
         """创建 OpenAI 图片提供商实例。"""
 
-        return OpenaiImage(
-            api_key=self.config.openai.api_key,
-            base_url=self.config.openai.base_url,
+        route = self.resolve_openai_model_route(model)
+        if route is None:
+            route = OpenAIModelRoute(
+                display_model=model.strip(),
+                upstream_model=model.strip(),
+                instance_name="OpenAI",
+                api_key=self.config.openai.api_key,
+                base_url=self.config.openai.base_url,
+                compatibility_mode=self.config.openai.default_openai_compatibility_mode,
+                default_size=self.config.openai.default_size,
+                model_size_overrides=parse_model_value_overrides(self.config.openai.model_size_overrides),
+                quality=self.config.openai.quality,
+                response_format=self.config.openai.response_format,
+                output_format=self.config.openai.output_format,
+                background=self.config.openai.background,
+                moderation=self.config.openai.moderation,
+                max_images=self.config.openai.max_images,
+                extra_parameters=parse_key_value_options(self.config.openai.extra_parameters),
+                rewrite_prompt_to_english=self.config.openai.rewrite_prompt_to_english,
+            )
+
+        provider = OpenaiImage(
+            api_key=route.api_key,
+            base_url=route.base_url,
             compatibility_mode=compatibility_mode,
             logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
-            default_size=self.config.openai.default_size,
-            model_size_overrides=parse_model_value_overrides(self.config.openai.model_size_overrides),
-            quality=self.config.openai.quality,
-            response_format=self.config.openai.response_format,
-            output_format=self.config.openai.output_format,
-            background=self.config.openai.background,
-            moderation=self.config.openai.moderation,
-            max_images=self.config.openai.max_images,
-            extra_parameters=parse_key_value_options(self.config.openai.extra_parameters),
+            default_size=route.default_size,
+            model_size_overrides=route.model_size_overrides,
+            quality=route.quality,
+            response_format=route.response_format,
+            output_format=route.output_format,
+            background=route.background,
+            moderation=route.moderation,
+            max_images=route.max_images,
+            extra_parameters=route.extra_parameters,
         )
+        return RoutedOpenAIImage(provider, route.upstream_model)
 
     def create_google_provider(self) -> GoogleImage:
         """创建 Google 图片提供商实例。"""
@@ -210,7 +421,6 @@ class ProviderRouter:
 
         return ZhipuImage(
             api_key=self.config.zhipu.api_key,
-            base_url=self.config.zhipu.base_url,
             logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
             size=self.config.zhipu.size,
@@ -219,12 +429,29 @@ class ProviderRouter:
             extra_parameters=parse_key_value_options(self.config.zhipu.extra_parameters),
         )
 
+    def create_volcengine_provider(self) -> VolcengineImage:
+        """创建火山引擎图片提供商实例。"""
+
+        return VolcengineImage(
+            api_key=self.config.volcengine.api_key,
+            logger=self.logger,
+            request_timeout_seconds=self.resolve_request_timeout_seconds(),
+            default_size=self.config.volcengine.default_size,
+            model_size_overrides=parse_model_value_overrides(self.config.volcengine.model_size_overrides),
+            model_endpoint_overrides=parse_model_value_overrides(self.config.volcengine.model_endpoint_overrides),
+            response_format=self.config.volcengine.response_format,
+            guidance_scale=self.config.volcengine.guidance_scale,
+            seed=self.config.volcengine.seed,
+            watermark=self.config.volcengine.watermark,
+            max_images=self.config.volcengine.max_images,
+            extra_parameters=parse_key_value_options(self.config.volcengine.extra_parameters),
+        )
+
     def create_siliconflow_provider(self) -> SiliconFlowImage:
         """创建硅基流动图片提供商实例。"""
 
         return SiliconFlowImage(
             api_key=self.config.siliconflow.api_key,
-            base_url=self.config.siliconflow.base_url,
             logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
             image_size=self.config.siliconflow.image_size,
@@ -290,6 +517,8 @@ class ProviderRouter:
             return f"当前模型 {normalized_model} 未归属于任何已配置图片平台，无法判断图生图能力"
         if provider_name == "zhipu":
             return f"当前模型 {normalized_model} 属于智谱平台；该平台当前仅支持文生图，不支持图生图编辑"
+        if provider_name == "volcengine" and normalized_model.lower().endswith("-t2i"):
+            return f"当前模型 {normalized_model} 属于火山引擎文生图模型；请切换到 i2i/edit 类模型后再使用图生图"
         return ""
 
     def require_platform_for_model(
@@ -306,12 +535,15 @@ class ProviderRouter:
             return self.create_google_provider(), "google"
         if provider_type == "zhipu":
             return self.create_zhipu_provider(), "zhipu"
+        if provider_type == "volcengine":
+            return self.create_volcengine_provider(), "volcengine"
         if provider_type == "siliconflow":
             return self.create_siliconflow_provider(), "siliconflow"
         if provider_type == "novelai":
             return self.create_novelai_provider(), "novelai"
         if provider_type == "openai":
             return self.create_openai_provider(
-                self.resolve_openai_compatibility_mode(openai_compatibility_mode)
+                self.resolve_openai_compatibility_mode(openai_compatibility_mode, model),
+                model,
             ), "openai"
         raise RuntimeError(f"模型未归属于任何已配置提供商：{model}")

@@ -1,4 +1,5 @@
-from typing import Literal
+from collections.abc import Mapping
+from typing import Any, Literal
 
 from maibot_sdk import Field, PluginConfigBase
 
@@ -23,7 +24,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.13.0",
+        default="2.15.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -119,6 +120,209 @@ class GeneralConfig(PluginConfigBase):
             "order": 8,
         },
     )
+    prompt_review_enabled: bool = Field(
+        default=False,
+        description="是否启用提示词审核。启用后会调用 MaiBot 当前配置的 replyer 模型进行识别",
+        json_schema_extra={
+            "label": "启用提示词审核",
+            "hint": "启用后，文生图和图生图的提示词会先交给 MaiBot 的 replyer 模型审核",
+            "order": 9,
+        },
+    )
+    prompt_review_prompt: str = Field(
+        default=(
+            "你是绘图提示词审核器。请判断下面的绘图提示词是否适合继续交给绘图模型生成。\n"
+            "审核要求：\n"
+            "1. 如果提示词涉及明显违法、暴力犯罪、血腥猎奇、未成年人色情、仇恨歧视、现实人物色情深度伪造等高风险内容，必须拒绝。\n"
+            "2. 如果提示词内容普通、安全、可接受，则允许通过。\n"
+            "3. 你的回复必须严格使用以下格式，不要输出多余内容：\n"
+            "结论：PASS 或 REJECT\n"
+            "原因：一句简短中文说明\n"
+            "\n"
+            "待审核提示词：\n"
+            "{user_prompt}\n"
+        ),
+        description="提示词审核模板，支持 {user_prompt} 占位符",
+        json_schema_extra={
+            "label": "提示词审核模板",
+            "hint": "支持 {user_prompt} 占位符；建议要求模型只返回 PASS 或 REJECT 及简短原因",
+            "x-widget": "textarea",
+            "rows": 8,
+            "order": 10,
+        },
+    )
+    image_review_enabled: bool = Field(
+        default=False,
+        description="是否启用生成图片审核。启用后会调用 MaiBot 当前配置的 vlm 模型进行识别",
+        json_schema_extra={
+            "label": "启用生成图片审核",
+            "hint": "启用后，生成完成的图片会先交给 MaiBot 的 vlm 模型审核，再决定是否发送",
+            "order": 11,
+        },
+    )
+    image_review_prompt: str = Field(
+        default=(
+            "你是绘图结果审核器。请审核这张图片是否适合直接发送给普通聊天场景。\n"
+            "审核要求：\n"
+            "1. 如果图片包含明显违法、暴力犯罪、血腥猎奇、未成年人色情、仇恨歧视、现实人物色情深度伪造等高风险内容，必须拒绝。\n"
+            "2. 如果图片内容普通、安全、可接受，则允许通过。\n"
+            "3. 结合本次生成提示词一起判断。\n"
+            "4. 你的回复必须严格使用以下格式，不要输出多余内容：\n"
+            "结论：PASS 或 REJECT\n"
+            "原因：一句简短中文说明\n"
+            "\n"
+            "本次生成提示词：\n"
+            "{user_prompt}\n"
+        ),
+        description="生成图片审核模板，支持 {user_prompt} 占位符",
+        json_schema_extra={
+            "label": "生成图片审核模板",
+            "hint": "支持 {user_prompt} 占位符；建议要求模型只返回 PASS 或 REJECT 及简短原因",
+            "x-widget": "textarea",
+            "rows": 8,
+            "order": 12,
+        },
+    )
+
+
+class OpenAICompatibleInstanceConfig(PluginConfigBase):
+    """OpenAI 兼容接口实例配置。"""
+
+    enabled: bool = Field(
+        default=True,
+        description="是否启用该 OpenAI 兼容接口实例",
+        json_schema_extra={
+            "label": "启用",
+        },
+    )
+    name: str = Field(
+        default="openai-compatible",
+        description="实例名称，仅用于菜单和日志中区分不同中转站",
+        json_schema_extra={
+            "label": "实例名称",
+            "placeholder": "例如 yunwu、newapi-1",
+        },
+    )
+    base_url: str = Field(
+        default="https://api.openai.com",
+        description="OpenAI 兼容服务基础 URL。可填写根地址，粘贴带 /v1 的地址时插件会自动兼容",
+        json_schema_extra={
+            "label": "基础 URL",
+            "placeholder": "https://api.example.com",
+        },
+    )
+    api_key: str = Field(
+        default="your-openai-compatible-api-key",
+        description="OpenAI 兼容服务的 API 密钥",
+        json_schema_extra={
+            "label": "API 密钥",
+            "input_type": "password",
+            "placeholder": "sk-...",
+        },
+    )
+    models: str = Field(
+        default="gpt-image-2",
+        description="该实例可用模型。多个模型可用换行、逗号或分号分隔；需要同一上游模型走多个中转时使用 显示名=上游模型名",
+        json_schema_extra={
+            "label": "模型列表",
+            "input_type": "textarea",
+            "x-widget": "textarea",
+            "rows": 3,
+            "placeholder": "gpt-image-2 或 yunwu-gpt=gpt-image-2",
+        },
+    )
+    default_openai_compatibility_mode: str = Field(
+        default="auto",
+        description="该实例默认 OpenAI 兼容模式",
+        json_schema_extra={
+            "label": "兼容模式",
+            "placeholder": "auto / images_api / chat_completions / novelai_images_api",
+        },
+    )
+    default_size: str = Field(
+        default="1024x1024",
+        description="该实例默认分辨率",
+        json_schema_extra={
+            "label": "默认分辨率",
+            "placeholder": "1024x1024",
+        },
+    )
+    model_size_overrides: str = Field(
+        default="",
+        description="该实例按模型覆盖分辨率。每行一个 模型名=宽x高",
+        json_schema_extra={
+            "label": "按模型覆盖分辨率",
+            "input_type": "textarea",
+            "x-widget": "textarea",
+            "rows": 3,
+            "placeholder": "gpt-image-2=1024x1024",
+        },
+    )
+    quality: str = Field(
+        default="",
+        description="OpenAI Images API 质量参数",
+        json_schema_extra={
+            "label": "质量",
+            "placeholder": "auto / low / medium / high",
+        },
+    )
+    response_format: str = Field(
+        default="",
+        description="OpenAI Images API 响应格式",
+        json_schema_extra={
+            "label": "响应格式",
+            "placeholder": "b64_json / url",
+        },
+    )
+    output_format: str = Field(
+        default="",
+        description="OpenAI Images API 输出图片格式",
+        json_schema_extra={
+            "label": "输出格式",
+            "placeholder": "png / jpeg / webp",
+        },
+    )
+    background: str = Field(
+        default="",
+        description="OpenAI Images API 背景参数",
+        json_schema_extra={
+            "label": "背景",
+            "placeholder": "transparent / opaque / auto",
+        },
+    )
+    moderation: str = Field(
+        default="",
+        description="OpenAI Images API 审核强度参数",
+        json_schema_extra={
+            "label": "审核强度",
+            "placeholder": "auto / low",
+        },
+    )
+    max_images: int = Field(
+        default=1,
+        description="单次 OpenAI 请求生成图片数量上限",
+        json_schema_extra={
+            "label": "单次图片数量",
+        },
+    )
+    extra_parameters: str = Field(
+        default="",
+        description="OpenAI 兼容接口额外 JSON 参数。每行一个 key=value",
+        json_schema_extra={
+            "label": "额外参数",
+            "input_type": "textarea",
+            "x-widget": "textarea",
+            "rows": 3,
+            "placeholder": "custom_field=true",
+        },
+    )
+    rewrite_prompt_to_english: bool = Field(
+        default=False,
+        description="是否在调用该实例前将提示词改写为英文",
+        json_schema_extra={
+            "label": "英文提示词改写",
+        },
+    )
 
 
 class OpenAIModelConfig(PluginConfigBase):
@@ -127,12 +331,21 @@ class OpenAIModelConfig(PluginConfigBase):
     __ui_label__ = "OpenAI 配置"
     __ui_order__ = 2
 
+    enabled: bool = Field(
+        default=True,
+        description="是否启用本节主 OpenAI 配置。关闭后不影响下方额外 OpenAI 兼容实例",
+        json_schema_extra={
+            "label": "启用主 OpenAI 配置",
+            "hint": "关闭后，本节 base_url/api_key/models 不参与模型路由；下方额外实例仍可单独启用",
+            "order": -1,
+        },
+    )
     base_url: str = Field(
         default="https://api.openai.com",
-        description="OpenAI兼容服务基础 URL。手动接口填写根地址，不要带 /v1",
+        description="OpenAI兼容服务基础 URL。可填写根地址，粘贴带 /v1 的地址时插件会自动兼容",
         json_schema_extra={
             "label": "OpenAI 基础 URL",
-            "hint": "OpenAI兼容服务基础 URL。手动接口填写根地址，不要带 /v1",
+            "hint": "OpenAI兼容服务基础 URL。建议填写根地址；如果粘贴了带 /v1 的地址，插件会自动去重处理",
             "order": 0,
         },
     )
@@ -254,6 +467,15 @@ class OpenAIModelConfig(PluginConfigBase):
             "order": 13,
         },
     )
+    instances: list[OpenAICompatibleInstanceConfig] = Field(
+        default_factory=list,
+        description="额外 OpenAI 兼容接口实例列表",
+        json_schema_extra={
+            "label": "额外 OpenAI 兼容实例",
+            "hint": "用于同时接入多个 OpenAI 兼容中转站。模型可写 显示名=上游模型名，避免多个实例使用同名模型时无法区分",
+            "order": 14,
+        },
+    )
 
 
 class GoogleModelConfig(PluginConfigBase):
@@ -262,6 +484,15 @@ class GoogleModelConfig(PluginConfigBase):
     __ui_label__ = "Google 配置"
     __ui_order__ = 3
 
+    enabled: bool = Field(
+        default=True,
+        description="是否启用 Google 平台",
+        json_schema_extra={
+            "label": "启用 Google 平台",
+            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "order": -1,
+        },
+    )
     base_url: str = Field(
         default="https://generativelanguage.googleapis.com",
         description="Google Gemini 服务基础 URL。使用官方服务时可留空，使用兼容网关时按网关要求填写",
@@ -389,13 +620,13 @@ class ZhipuModelConfig(PluginConfigBase):
     __ui_label__ = "智谱配置"
     __ui_order__ = 4
 
-    base_url: str = Field(
-        default="https://open.bigmodel.cn",
-        description="智谱服务基础 URL。请填写根地址，不要带具体接口路径",
+    enabled: bool = Field(
+        default=True,
+        description="是否启用智谱平台",
         json_schema_extra={
-            "label": "智谱基础 URL",
-            "hint": "智谱服务基础 URL。请填写根地址，不要带具体接口路径",
-            "order": 0,
+            "label": "启用智谱平台",
+            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "order": -1,
         },
     )
     api_key: str = Field(
@@ -405,7 +636,7 @@ class ZhipuModelConfig(PluginConfigBase):
             "label": "智谱 API 密钥",
             "hint": "填入智谱开放平台的 API 密钥",
             "input_type": "password",
-            "order": 1,
+            "order": 0,
         },
     )
     models: list[str] = Field(
@@ -414,7 +645,7 @@ class ZhipuModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "智谱模型列表",
             "hint": "这里填写属于智谱图像生成接口的模型；当前仅支持文生图，不支持图生图编辑",
-            "order": 2,
+            "order": 1,
         },
     )
     size: str = Field(
@@ -423,7 +654,7 @@ class ZhipuModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "分辨率",
             "hint": "常见值：1024x1024、1280x1280、768x1344、1344x768；以官方/模型实际支持为准",
-            "order": 3,
+            "order": 2,
         },
     )
     response_format: str = Field(
@@ -432,7 +663,7 @@ class ZhipuModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "响应格式",
             "hint": "常见值：url、b64_json；留空则不传",
-            "order": 4,
+            "order": 3,
         },
     )
     user: str = Field(
@@ -441,7 +672,7 @@ class ZhipuModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "用户标识",
             "hint": "可选，用于上游安全审计；留空则不传",
-            "order": 5,
+            "order": 4,
         },
     )
     extra_parameters: list[str] = Field(
@@ -450,7 +681,7 @@ class ZhipuModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "额外参数",
             "hint": "每行一个 key=value，值支持 true/false、数字或 JSON；用于兼容新模型参数",
-            "order": 6,
+            "order": 5,
         },
     )
     rewrite_prompt_to_english: bool = Field(
@@ -459,7 +690,7 @@ class ZhipuModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "英文提示词改写",
             "hint": "开启后会调用 MaiBot replyer 模型，将非英文提示词改写为英文单词和 NovelAI 友好的英文标点。使用 NovelAI/StableDiffusion 兼容模型时必须开启，否则可能生图失败",
-            "order": 7,
+            "order": 6,
         },
     )
 
@@ -470,13 +701,13 @@ class AliyunModelConfig(PluginConfigBase):
     __ui_label__ = "阿里百炼配置"
     __ui_order__ = 5
 
-    base_url: str = Field(
-        default="https://dashscope.aliyuncs.com",
-        description="阿里百炼服务基础 URL。北京地域使用 dashscope.aliyuncs.com，新加坡地域使用 dashscope-intl.aliyuncs.com",
+    enabled: bool = Field(
+        default=True,
+        description="是否启用阿里百炼平台",
         json_schema_extra={
-            "label": "阿里百炼基础 URL",
-            "hint": "填写百炼根地址，不要带具体接口路径；北京地域默认 https://dashscope.aliyuncs.com",
-            "order": 0,
+            "label": "启用阿里百炼平台",
+            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "order": -1,
         },
     )
     api_key: str = Field(
@@ -486,7 +717,7 @@ class AliyunModelConfig(PluginConfigBase):
             "label": "阿里百炼 API 密钥",
             "hint": "填入阿里百炼（DashScope / Model Studio）的 API 密钥",
             "input_type": "password",
-            "order": 1,
+            "order": 0,
         },
     )
     models: list[str] = Field(
@@ -502,7 +733,7 @@ class AliyunModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "阿里百炼模型列表",
             "hint": "这里填写属于阿里百炼图片接口的模型，例如 qwen-image-2.0、qwen-image-2.0-pro、qwen-image-edit-max",
-            "order": 2,
+            "order": 1,
         },
     )
     default_size: str = Field(
@@ -511,7 +742,7 @@ class AliyunModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "默认分辨率",
             "hint": "格式为 宽*高，例如 2048*2048。不同模型支持范围不同，建议优先通过按模型覆盖分辨率配置",
-            "order": 3,
+            "order": 2,
         },
     )
     model_size_overrides: list[str] = Field(
@@ -527,7 +758,7 @@ class AliyunModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "按模型覆盖分辨率",
             "hint": "每行填写一个 模型名=宽*高，例如 qwen-image-plus=1328*1328。qwen-image-2.0 系列支持自由宽高，总像素需在 512*512 至 2048*2048",
-            "order": 4,
+            "order": 3,
         },
     )
     negative_prompt: str = Field(
@@ -537,7 +768,7 @@ class AliyunModelConfig(PluginConfigBase):
             "label": "反向提示词",
             "hint": "留空则不传 negative_prompt；百炼限制长度不超过 500 个字符",
             "input_type": "textarea",
-            "order": 5,
+            "order": 4,
         },
     )
     prompt_extend: bool = Field(
@@ -546,7 +777,7 @@ class AliyunModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "启用提示词智能改写",
             "hint": "开启后百炼会优化正向提示词；不会修改反向提示词",
-            "order": 6,
+            "order": 5,
         },
     )
     watermark: bool = Field(
@@ -555,7 +786,7 @@ class AliyunModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "添加水印",
             "hint": "关闭时请求参数 watermark=false",
-            "order": 7,
+            "order": 6,
         },
     )
     max_images: int = Field(
@@ -564,7 +795,7 @@ class AliyunModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "单次图片数量",
             "hint": "插件当前默认请求 1 张；这里限制工具未来传入 n 时的最大值",
-            "order": 8,
+            "order": 7,
         },
     )
     extra_parameters: list[str] = Field(
@@ -573,7 +804,7 @@ class AliyunModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "额外参数",
             "hint": "每行一个 key=value，值支持 true/false、数字或 JSON；会合并到 parameters",
-            "order": 9,
+            "order": 8,
         },
     )
     rewrite_prompt_to_english: bool = Field(
@@ -582,7 +813,136 @@ class AliyunModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "英文提示词改写",
             "hint": "开启后会调用 MaiBot replyer 模型，将非英文提示词改写为英文单词和 NovelAI 友好的英文标点。使用 NovelAI/StableDiffusion 兼容模型时必须开启，否则可能生图失败",
+            "order": 9,
+        },
+    )
+
+
+class VolcengineModelConfig(PluginConfigBase):
+    """火山引擎方舟模型配置。"""
+
+    __ui_label__ = "火山引擎配置"
+    __ui_order__ = 6
+
+    enabled: bool = Field(
+        default=True,
+        description="是否启用火山引擎平台",
+        json_schema_extra={
+            "label": "启用火山引擎平台",
+            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "order": -1,
+        },
+    )
+    api_key: str = Field(
+        default="your-volcengine-api-key",
+        description="火山引擎方舟 API Key",
+        json_schema_extra={
+            "label": "火山引擎 API Key",
+            "hint": "填入火山方舟 API Key。接口地址由插件内置，不需要配置 BaseURL",
+            "input_type": "password",
+            "order": 0,
+        },
+    )
+    models: list[str] = Field(
+        default=[
+            "doubao-seedream-3-0-t2i",
+            "doubao-seedream-3-0-i2i",
+        ],
+        description="火山引擎方舟图片模型列表",
+        json_schema_extra={
+            "label": "火山引擎模型列表",
+            "hint": "填写火山方舟控制台中的即梦 AI / 豆包生图模型或 endpoint 名称",
+            "order": 1,
+        },
+    )
+    default_size: str = Field(
+        default="1024x1024",
+        description="火山引擎图片默认分辨率",
+        json_schema_extra={
+            "label": "默认分辨率",
+            "hint": "常见值：1024x1024、1328x1328、2048x2048；以模型实际支持为准",
+            "order": 2,
+        },
+    )
+    model_size_overrides: list[str] = Field(
+        default=[],
+        description="火山引擎按模型覆盖分辨率。每项格式为 模型名=宽x高",
+        json_schema_extra={
+            "label": "按模型覆盖分辨率",
+            "hint": "每行填写一个 模型名=宽x高，例如 doubao-seedream-3-0-t2i=1024x1024",
+            "order": 3,
+        },
+    )
+    model_endpoint_overrides: list[str] = Field(
+        default=[],
+        description="火山引擎按模型覆盖接口地址。每项格式为 模型名=URL或路径",
+        json_schema_extra={
+            "label": "按模型覆盖接口地址",
+            "hint": "通常留空。不同模型需要特殊地址时，每行填写 模型名=完整URL 或 模型名=api/v3/...",
+            "order": 4,
+        },
+    )
+    response_format: str = Field(
+        default="url",
+        description="火山引擎图片响应格式",
+        json_schema_extra={
+            "label": "响应格式",
+            "hint": "常见值：url、b64_json；留空则不传",
+            "order": 5,
+        },
+    )
+    guidance_scale: float = Field(
+        default=0.0,
+        description="火山引擎提示词引导强度。0 表示不传",
+        json_schema_extra={
+            "label": "引导强度",
+            "hint": "大于 0 时传入 guidance_scale；仅模型支持时生效",
+            "order": 6,
+        },
+    )
+    seed: int = Field(
+        default=-1,
+        description="火山引擎随机种子。负数表示不传",
+        json_schema_extra={
+            "label": "随机种子",
+            "hint": "非负整数会传入 seed；仅模型支持时生效",
+            "order": 7,
+        },
+    )
+    watermark: bool = Field(
+        default=False,
+        description="火山引擎是否添加水印",
+        json_schema_extra={
+            "label": "添加水印",
+            "hint": "关闭时请求参数 watermark=false",
+            "order": 8,
+        },
+    )
+    max_images: int = Field(
+        default=1,
+        description="单次火山引擎请求生成图片数量上限",
+        json_schema_extra={
+            "label": "单次图片数量",
+            "hint": "插件当前默认请求 1 张；这里限制工具未来传入 n 时的最大值",
+            "order": 9,
+        },
+    )
+    extra_parameters: list[str] = Field(
+        default=[],
+        description="火山引擎图片生成额外 JSON 参数。每项格式为 key=value",
+        json_schema_extra={
+            "label": "额外参数",
+            "hint": "每行一个 key=value，值支持 true/false、数字或 JSON；用于兼容平台新增参数",
             "order": 10,
+        },
+    )
+    rewrite_prompt_to_english: bool = Field(
+        default=False,
+        description="是否在调用火山引擎提供商前将提示词改写为英文",
+        json_schema_extra={
+            "label": "英文提示词改写",
+            "hint": "开启后会调用 MaiBot replyer 模型将非英文提示词改写为英文；多数即梦/豆包模型可直接使用中文",
+            "order": 11,
         },
     )
 
@@ -591,15 +951,15 @@ class SiliconFlowModelConfig(PluginConfigBase):
     """硅基流动模型配置。"""
 
     __ui_label__ = "硅基流动配置"
-    __ui_order__ = 6
+    __ui_order__ = 7
 
-    base_url: str = Field(
-        default="https://api.siliconflow.cn",
-        description="硅基流动服务基础 URL。请填写根地址，不要带 /v1",
+    enabled: bool = Field(
+        default=True,
+        description="是否启用硅基流动平台",
         json_schema_extra={
-            "label": "硅基流动基础 URL",
-            "hint": "官方默认 https://api.siliconflow.cn；兼容网关可按实际根地址填写",
-            "order": 0,
+            "label": "启用硅基流动平台",
+            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "order": -1,
         },
     )
     api_key: str = Field(
@@ -609,7 +969,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
             "label": "硅基流动 API 密钥",
             "hint": "填入硅基流动 API 密钥",
             "input_type": "password",
-            "order": 1,
+            "order": 0,
         },
     )
     models: list[str] = Field(
@@ -621,7 +981,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "硅基流动模型列表",
             "hint": "这里填写属于硅基流动图片生成接口的模型",
-            "order": 2,
+            "order": 1,
         },
     )
     image_size: str = Field(
@@ -630,7 +990,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "图片尺寸",
             "hint": "官方参数 image_size；可填 1024x1024 等固定尺寸，或模型支持的枚举值",
-            "order": 3,
+            "order": 2,
         },
     )
     model_size_overrides: list[str] = Field(
@@ -639,7 +999,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "按模型覆盖图片尺寸",
             "hint": "每行填写一个 模型名=宽x高，例如 Kwai-Kolors/Kolors=1024x1024。",
-            "order": 4,
+            "order": 3,
         },
     )
     batch_size: int = Field(
@@ -648,7 +1008,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "生成数量",
             "hint": "会写入 batch_size；插件当前默认请求 1 张，可按平台模型支持调整",
-            "order": 5,
+            "order": 4,
         },
     )
     seed: int = Field(
@@ -657,7 +1017,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "随机种子",
             "hint": "负数表示不固定；非负整数会传入 seed",
-            "order": 6,
+            "order": 5,
         },
     )
     num_inference_steps: int = Field(
@@ -666,7 +1026,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "采样步数",
             "hint": "常见值 20 到 50；留 0 或负数则不传。",
-            "order": 7,
+            "order": 6,
         },
     )
     guidance_scale: float = Field(
@@ -675,7 +1035,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "引导强度",
             "hint": "常见值 3 到 12；0 或负数则不传",
-            "order": 8,
+            "order": 7,
         },
     )
     negative_prompt: str = Field(
@@ -685,7 +1045,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
             "label": "反向提示词",
             "hint": "留空则不传 negative_prompt",
             "input_type": "textarea",
-            "order": 9,
+            "order": 8,
         },
     )
     output_format: str = Field(
@@ -694,7 +1054,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "输出格式",
             "hint": "官方参数 output_format；常见值 png、jpeg、webp",
-            "order": 10,
+            "order": 9,
         },
     )
     extra_parameters: list[str] = Field(
@@ -703,7 +1063,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "额外参数",
             "hint": "每行一个 key=value，值支持 true/false、数字或 JSON；用于兼容平台新增参数",
-            "order": 11,
+            "order": 10,
         },
     )
     rewrite_prompt_to_english: bool = Field(
@@ -712,7 +1072,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "英文提示词改写",
             "hint": "使用 Stable Diffusion 类模型时建议开启。",
-            "order": 12,
+            "order": 11,
         },
     )
 
@@ -721,8 +1081,17 @@ class NovelAIModelConfig(PluginConfigBase):
     """NovelAI / NovelAPI 模型配置。"""
 
     __ui_label__ = "NovelAI / NovelAPI 配置"
-    __ui_order__ = 7
+    __ui_order__ = 8
 
+    enabled: bool = Field(
+        default=True,
+        description="是否启用 NovelAI / NovelAPI 平台",
+        json_schema_extra={
+            "label": "启用 NovelAI / NovelAPI 平台",
+            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "order": -1,
+        },
+    )
     base_url: str = Field(
         default="https://image.novelai.net",
         description="NovelAI 官方图片接口基础 URL，或兼容 NovelAI payload 的 NovelAPI 网关根地址。",
@@ -924,7 +1293,7 @@ class PromptModerationConfig(PluginConfigBase):
     """提示词审核配置。"""
 
     __ui_label__ = "提示词审核"
-    __ui_order__ = 8
+    __ui_order__ = 9
 
     enabled: bool = Field(
         default=False,
@@ -962,7 +1331,7 @@ class ImageModerationConfig(PluginConfigBase):
     """生成图片审核配置。"""
 
     __ui_label__ = "生成图片审核"
-    __ui_order__ = 9
+    __ui_order__ = 10
 
     enabled: bool = Field(
         default=False,
@@ -1008,5 +1377,34 @@ class DrawpicConfig(PluginConfigBase):
     google: GoogleModelConfig = Field(default_factory=GoogleModelConfig)
     zhipu: ZhipuModelConfig = Field(default_factory=ZhipuModelConfig)
     aliyun: AliyunModelConfig = Field(default_factory=AliyunModelConfig)
+    volcengine: VolcengineModelConfig = Field(default_factory=VolcengineModelConfig)
     siliconflow: SiliconFlowModelConfig = Field(default_factory=SiliconFlowModelConfig)
     novelai: NovelAIModelConfig = Field(default_factory=NovelAIModelConfig)
+
+
+def migrate_legacy_review_config(config_data: Mapping[str, Any]) -> dict[str, Any]:
+    """将旧版独立审核配置节迁移到通用配置。"""
+
+    migrated_config = {
+        str(section_name): dict(section_value) if isinstance(section_value, Mapping) else section_value
+        for section_name, section_value in config_data.items()
+    }
+    general_config = migrated_config.setdefault("general", {})
+    if not isinstance(general_config, dict):
+        return migrated_config
+
+    prompt_review_config = migrated_config.pop("prompt_review", None)
+    if isinstance(prompt_review_config, Mapping):
+        if "prompt_review_enabled" not in general_config and "enabled" in prompt_review_config:
+            general_config["prompt_review_enabled"] = prompt_review_config["enabled"]
+        if "prompt_review_prompt" not in general_config and "review_prompt" in prompt_review_config:
+            general_config["prompt_review_prompt"] = prompt_review_config["review_prompt"]
+
+    image_review_config = migrated_config.pop("image_review", None)
+    if isinstance(image_review_config, Mapping):
+        if "image_review_enabled" not in general_config and "enabled" in image_review_config:
+            general_config["image_review_enabled"] = image_review_config["enabled"]
+        if "image_review_prompt" not in general_config and "review_prompt" in image_review_config:
+            general_config["image_review_prompt"] = image_review_config["review_prompt"]
+
+    return migrated_config

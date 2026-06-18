@@ -10,10 +10,11 @@ import time
 class ZhipuImage:
     """智谱图像生成接口封装。"""
 
+    _BASE_URL = "https://open.bigmodel.cn"
+
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://open.bigmodel.cn",
         logger: Any | None = None,
         request_timeout_seconds: int = 20,
         size: str = "1280x1280",
@@ -22,7 +23,6 @@ class ZhipuImage:
         extra_parameters: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
         self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
         self.size = size.strip()
@@ -37,7 +37,7 @@ class ZhipuImage:
             raise RuntimeError("智谱图像生成接口当前仅按单张图片流程接入")
 
         response = await self._post_json(
-            url=f"{self.base_url}/api/paas/v4/images/generations",
+            url=f"{self._BASE_URL}/api/paas/v4/images/generations",
             payload=self._build_payload(prompt=prompt, model=model),
         )
         return await self._extract_images(response)

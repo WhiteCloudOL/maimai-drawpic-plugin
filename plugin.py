@@ -1,10 +1,11 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
 from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, HookHandler, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
 from maibot_sdk.types import HookMode, ToolParameterInfo, ToolParamType
 
-from .core.config import DrawpicConfig
+from .core.config import DrawpicConfig, migrate_legacy_review_config
 from .core.draw_service import DrawService
 from .core.image_reply import PinkImageReplyRenderer
 from .core.message_utils import (
@@ -48,6 +49,47 @@ class DrawpicPlugin(MaiBotPlugin):
         self._usage_store = UserQuotaStore(path=self._usage_store_path)
         self._image_reply_renderer = PinkImageReplyRenderer()
         self._draw_service: DrawService | None = None
+
+    def normalize_plugin_config(self, config_data: Mapping[str, Any] | None) -> tuple[dict[str, Any], bool]:
+        """归一化配置，并把旧版独立审核节迁移到通用配置。"""
+
+        migrated_config = migrate_legacy_review_config(config_data or {})
+        normalized_config, changed = super().normalize_plugin_config(migrated_config)
+        normalized_config.pop("prompt_review", None)
+        normalized_config.pop("image_review", None)
+        return normalized_config, changed or normalized_config != dict(config_data or {})
+
+    def get_default_config(self) -> dict[str, Any]:
+        """返回默认配置，不再展示旧版独立审核节。"""
+
+        default_config = super().get_default_config()
+        default_config.pop("prompt_review", None)
+        default_config.pop("image_review", None)
+        return default_config
+
+    def get_webui_config_schema(
+        self,
+        *,
+        plugin_id: str = "",
+        plugin_name: str = "",
+        plugin_version: str = "",
+        plugin_description: str = "",
+        plugin_author: str = "",
+    ) -> dict[str, Any]:
+        """返回不包含旧审核节的 WebUI 配置 Schema。"""
+
+        schema = super().get_webui_config_schema(
+            plugin_id=plugin_id,
+            plugin_name=plugin_name,
+            plugin_version=plugin_version,
+            plugin_description=plugin_description,
+            plugin_author=plugin_author,
+        )
+        sections = schema.get("sections")
+        if isinstance(sections, dict):
+            sections.pop("prompt_review", None)
+            sections.pop("image_review", None)
+        return schema
 
     def _prepare_data_dir(self) -> None:
         """准备插件运行时数据目录，并迁移旧位置的数据文件。"""
@@ -409,13 +451,14 @@ class DrawpicPlugin(MaiBotPlugin):
         router = self._require_router()
         moderation_service = self._require_moderation_service()
         self.ctx.logger.info(
-            "麦麦绘图插件已加载: default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
+            "麦麦绘图插件已加载: default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
             router.resolve_default_model(),
             router.resolve_request_timeout_seconds(),
             len(router.get_aliyun_models()),
             len(router.get_openai_models()),
             len(router.get_google_models()),
             len(router.get_zhipu_models()),
+            len(router.get_volcengine_models()),
             len(router.get_siliconflow_models()),
             len(router.get_novelai_models()),
             moderation_service.is_prompt_review_enabled(),
@@ -446,7 +489,7 @@ class DrawpicPlugin(MaiBotPlugin):
             router = self._require_router()
             moderation_service = self._require_moderation_service()
             self.ctx.logger.info(
-                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s task_count=%s",
+                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s task_count=%s",
                 scope,
                 version,
                 router.resolve_default_model(),
@@ -455,6 +498,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 len(router.get_openai_models()),
                 len(router.get_google_models()),
                 len(router.get_zhipu_models()),
+                len(router.get_volcengine_models()),
                 len(router.get_siliconflow_models()),
                 len(router.get_novelai_models()),
                 moderation_service.is_prompt_review_enabled(),
@@ -486,7 +530,8 @@ class DrawpicPlugin(MaiBotPlugin):
             allow_unknown_model=False,
         )
         resolved_openai_mode = self._require_router().resolve_openai_compatibility_mode(
-            requested_openai_compatibility_mode or session_preference["openai_compatibility_mode"]
+            requested_openai_compatibility_mode or session_preference["openai_compatibility_mode"],
+            resolved_model,
         )
         provider_name = self._require_router().get_model_provider(resolved_model)
         if not provider_name:
@@ -1214,7 +1259,10 @@ class DrawpicPlugin(MaiBotPlugin):
                 )
                 return False, "权限不足", 1
 
-            if compatibility_mode not in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
+            clear_mode_aliases = {"默认", "跟随", "清空", "default", "unset", "clear"}
+            if compatibility_mode in clear_mode_aliases:
+                compatibility_mode = ""
+            elif compatibility_mode not in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
                 await self._send_command_reply(
                     title="兼容模式无效",
                     body=build_compatible_mode_text(session_preference["openai_compatibility_mode"]),
@@ -1235,7 +1283,8 @@ class DrawpicPlugin(MaiBotPlugin):
             await self._send_command_reply(
                 title="兼容模式已切换",
                 body=(
-                    f"当前会话 OpenAI 兼容模式：{next_preference['openai_compatibility_mode']}\n"
+                    "当前会话 OpenAI 兼容模式："
+                    f"{next_preference['openai_compatibility_mode'] or '跟随模型配置'}\n"
                     "该设置仅对 OpenAI 提供商生效。"
                 ),
                 stream_id=normalized_stream_id,

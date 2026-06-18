@@ -5,6 +5,8 @@ import json
 
 from .provider_router import ProviderRouter
 
+OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
+
 
 class SessionPreferenceStore:
     """管理会话级模型配置。"""
@@ -85,8 +87,8 @@ class SessionPreferenceStore:
             openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
             normalized_preferences[session_key] = {
                 "model": model if model and self.router.get_model_provider(model) else "",
-                "openai_compatibility_mode": self.router.resolve_openai_compatibility_mode(
-                    openai_compatibility_mode
+                "openai_compatibility_mode": (
+                    openai_compatibility_mode if openai_compatibility_mode in OPENAI_COMPATIBILITY_MODES else ""
                 ),
             }
         self.preferences = normalized_preferences
@@ -103,10 +105,11 @@ class SessionPreferenceStore:
         session_key = self.resolve_session_key(stream_id, user_id, group_id, platform)
         session_value = self.preferences.get(session_key, {})
         model = str(session_value.get("model") or "").strip()
+        openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
         resolved_preference = {
             "model": self.router.resolve_model_name(model, allow_unknown_model=False) if model else "",
-            "openai_compatibility_mode": self.router.resolve_openai_compatibility_mode(
-                str(session_value.get("openai_compatibility_mode") or "")
+            "openai_compatibility_mode": (
+                openai_compatibility_mode if openai_compatibility_mode in OPENAI_COMPATIBILITY_MODES else ""
             ),
         }
         return resolved_preference
@@ -132,8 +135,9 @@ class SessionPreferenceStore:
         if model is not None:
             next_value["model"] = self.router.resolve_model_name(model, allow_unknown_model=False)
         if openai_compatibility_mode is not None:
-            next_value["openai_compatibility_mode"] = self.router.resolve_openai_compatibility_mode(
-                openai_compatibility_mode
+            normalized_mode = openai_compatibility_mode.strip()
+            next_value["openai_compatibility_mode"] = (
+                normalized_mode if normalized_mode in OPENAI_COMPATIBILITY_MODES else ""
             )
         self.preferences[session_key] = next_value
         self.save()

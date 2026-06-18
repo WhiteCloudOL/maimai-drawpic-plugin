@@ -156,7 +156,7 @@ class DrawService:
     ) -> str:
         """按提供商配置把提示词改写为英文。"""
 
-        if not self.router.should_rewrite_prompt_to_english(provider_name):
+        if not self.router.should_rewrite_prompt_to_english(provider_name, model):
             return prompt
 
         rewritten_prompt = ""

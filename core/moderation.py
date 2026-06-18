@@ -30,12 +30,12 @@ class DrawpicModerationService:
     def is_prompt_review_enabled(self) -> bool:
         """是否启用提示词审核。"""
 
-        return bool(self.config.prompt_review.enabled)
+        return bool(self.config.general.prompt_review_enabled)
 
     def is_image_review_enabled(self) -> bool:
         """是否启用图片审核。"""
 
-        return bool(self.config.image_review.enabled)
+        return bool(self.config.general.image_review_enabled)
 
     async def review_prompt(self, prompt: str) -> ModerationResult:
         """审核用户提示词。"""
@@ -44,7 +44,7 @@ class DrawpicModerationService:
             return ModerationResult(passed=True, reason="", raw_response="SKIPPED")
 
         rendered_prompt = self._render_template(
-            self.config.prompt_review.review_prompt,
+            self.config.general.prompt_review_prompt,
             prompt,
         )
         response = await self.ctx.llm.generate(
@@ -62,7 +62,7 @@ class DrawpicModerationService:
             return ModerationResult(passed=True, reason="", raw_response="SKIPPED")
 
         rendered_prompt = self._render_template(
-            self.config.image_review.review_prompt,
+            self.config.general.image_review_prompt,
             prompt,
         )
         image_format = self._detect_image_format(image_bytes)

@@ -13,12 +13,12 @@ import time
 class AliyunImage:
     """阿里百炼图片接口封装。"""
 
+    _BASE_URL = "https://dashscope.aliyuncs.com"
     _MULTIMODAL_GENERATION_PATH = "/api/v1/services/aigc/multimodal-generation/generation"
 
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://dashscope.aliyuncs.com",
         logger: Any | None = None,
         request_timeout_seconds: int = 20,
         default_size: str = "1024*1024",
@@ -30,7 +30,6 @@ class AliyunImage:
         extra_parameters: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
         self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
         self.default_size = default_size.strip()
@@ -49,7 +48,7 @@ class AliyunImage:
         """调用阿里百炼文生图接口。"""
 
         response = await self._post_json(
-            url=f"{self.base_url}{self._MULTIMODAL_GENERATION_PATH}",
+            url=f"{self._BASE_URL}{self._MULTIMODAL_GENERATION_PATH}",
             payload={
                 "model": model,
                 "input": {
@@ -160,7 +159,7 @@ class AliyunImage:
                 )
             try:
                 return await self._post_json(
-                    url=f"{self.base_url}{self._MULTIMODAL_GENERATION_PATH}",
+                    url=f"{self._BASE_URL}{self._MULTIMODAL_GENERATION_PATH}",
                     payload={
                         "model": normalized_model,
                         "input": {

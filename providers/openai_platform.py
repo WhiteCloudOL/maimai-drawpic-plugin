@@ -35,7 +35,10 @@ class OpenaiImage:
         extra_parameters: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
+        normalized_base_url = base_url.strip().rstrip("/") or "https://api.openai.com"
+        if normalized_base_url.endswith("/v1"):
+            normalized_base_url = normalized_base_url[:-3].rstrip("/")
+        self.base_url = normalized_base_url
         self.compatibility_mode = compatibility_mode
         self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
@@ -467,10 +470,10 @@ class OpenaiImage:
         image_bytes_list: list[bytes],
         n: int,
     ) -> dict[str, Any]:
-        """发送图片编辑表单，并自动兼容 image / image[] 两种字段名。
+        """发送图片编辑表单，并自动兼容多种图片字段名。
 
-        多图编辑使用 image[] 字段一次提交全部源图片；单图字段 image 仅提交第一张
-        （OpenAI Images Edits 的 image 字段只接受单张图片）。
+        OpenAI 官方 curl 示例多图使用 image[]；部分 SDK/中转站会接受重复 image 字段；
+        NewAPI 等旧 OpenAI 兼容接口通常只声明单个 image 字段。
         """
 
         default_size = self._resolve_size(model)
@@ -495,9 +498,27 @@ class OpenaiImage:
                     source_size,
                     size,
                 )
-            for field_name in ("image", "image[]"):
-                submitted_images = image_bytes_list if field_name == "image[]" else image_bytes_list[:1]
+            if len(image_bytes_list) > 1:
+                field_candidates = [
+                    ("image[]", image_bytes_list, "official_array_field"),
+                    ("image", image_bytes_list, "repeated_image_field"),
+                    ("image", image_bytes_list[:1], "single_image_fallback"),
+                ]
+            else:
+                field_candidates = [
+                    ("image", image_bytes_list, "single_image_field"),
+                    ("image[]", image_bytes_list, "official_array_field"),
+                ]
+            for field_name, submitted_images, field_mode in field_candidates:
                 try:
+                    self._log_info(
+                        "OpenAI 图生图图片字段尝试: model=%s field_name=%s field_mode=%s submitted_image_count=%s total_image_count=%s",
+                        model,
+                        field_name,
+                        field_mode,
+                        len(submitted_images),
+                        len(image_bytes_list),
+                    )
                     form = aiohttp.FormData()
                     form.add_field("model", model)
                     form.add_field("prompt", prompt)
@@ -525,7 +546,7 @@ class OpenaiImage:
                         )
                     return await self._post_form(url=url, form=form)
                 except Exception as exc:
-                    attempt_errors.append(f"size={size or 'default'} {field_name}: {exc}")
+                    attempt_errors.append(f"size={size or 'default'} {field_mode}/{field_name}: {exc}")
         raise RuntimeError("图片编辑表单提交失败: " + " | ".join(attempt_errors))
 
     async def _extract_images(self, response: dict[str, Any]) -> list[bytes]:
