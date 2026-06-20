@@ -184,10 +184,13 @@ class DrawTaskStore:
         status: DrawTaskStatus,
         message: str,
         sent_count: int | None = None,
-    ) -> DrawTaskRecord:
-        """更新任务状态。"""
+    ) -> DrawTaskRecord | None:
+        """更新任务状态；任务不存在时返回 None 而非抛出 KeyError。"""
 
-        record = self._tasks[task_id]
+        record = self._tasks.get(task_id)
+        if record is None:
+            self._log_warning("更新任务状态时未找到 task_id=%s，可能已被配置重载清理", task_id)
+            return None
         record.status = status
         record.message = message
         if sent_count is not None:
@@ -196,10 +199,13 @@ class DrawTaskStore:
         self.save()
         return record
 
-    def mark_status_queried(self, task_id: str) -> DrawTaskRecord:
-        """记录一次状态查询。"""
+    def mark_status_queried(self, task_id: str) -> DrawTaskRecord | None:
+        """记录一次状态查询；任务不存在时返回 None 而非抛出 KeyError。"""
 
-        record = self._tasks[task_id]
+        record = self._tasks.get(task_id)
+        if record is None:
+            self._log_warning("记录状态查询时未找到 task_id=%s，可能已被配置重载清理", task_id)
+            return None
         record.last_status_query_at = datetime.now()
         self.save()
         return record

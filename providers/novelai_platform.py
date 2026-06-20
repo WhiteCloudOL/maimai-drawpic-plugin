@@ -3,14 +3,14 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 
-from PIL import Image as PILImage
-
 import aiohttp
 import base64
 import json
 import random
 import time
 import zipfile
+
+from ..core.image_utils import detect_image_dimensions
 
 
 class NovelAIImage:
@@ -153,11 +153,7 @@ class NovelAIImage:
     def _detect_image_size(image_bytes: bytes) -> tuple[int, int] | None:
         """读取源图尺寸。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            width, height = image.size
-        if width <= 0 or height <= 0:
-            return None
-        return width, height
+        return detect_image_dimensions(image_bytes)
 
     async def _post_img2img_with_source_size_fallback(
         self,

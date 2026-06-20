@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from io import BytesIO
 from typing import Any
-
-from PIL import Image as PILImage
 
 import aiohttp
 import base64
 import time
+
+from ..core.image_utils import detect_mime_type
 
 
 class VolcengineImage:
@@ -194,16 +193,7 @@ class VolcengineImage:
     def _detect_mime_type(image_bytes: bytes) -> str:
         """尽量根据图片内容推断 MIME 类型。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            format_name = str(image.format or "").upper()
-
-        mime_type_map = {
-            "JPEG": "image/jpeg",
-            "JPG": "image/jpeg",
-            "PNG": "image/png",
-            "WEBP": "image/webp",
-        }
-        return mime_type_map.get(format_name, "image/png")
+        return detect_mime_type(image_bytes)
 
     async def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         """发送 JSON POST 请求。"""

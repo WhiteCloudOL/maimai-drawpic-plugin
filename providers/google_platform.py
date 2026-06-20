@@ -1,9 +1,9 @@
-from io import BytesIO
 from typing import Any
 
 from google import genai
 from google.genai import errors, types
-from PIL import Image as PILImage
+
+from ..core.image_utils import detect_image_dimensions, detect_mime_type
 
 
 class GoogleImage:
@@ -55,26 +55,13 @@ class GoogleImage:
     def _detect_mime_type(image_bytes: bytes) -> str:
         """尽量根据图片内容推断 MIME 类型。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            format_name = str(image.format or "").upper()
-
-        mime_type_map = {
-            "JPEG": "image/jpeg",
-            "JPG": "image/jpeg",
-            "PNG": "image/png",
-            "WEBP": "image/webp",
-        }
-        return mime_type_map.get(format_name, "image/png")
+        return detect_mime_type(image_bytes)
 
     @staticmethod
     def _detect_image_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
         """读取源图尺寸，用于选择最接近的输出比例。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            width, height = image.size
-        if width <= 0 or height <= 0:
-            return None
-        return width, height
+        return detect_image_dimensions(image_bytes)
 
     @staticmethod
     def _resolve_closest_aspect_ratio(dimensions: tuple[int, int]) -> str:

@@ -73,6 +73,12 @@ class ProviderRouter:
     def __init__(self, config: DrawpicConfig, logger: Any | None = None):
         self.config = config
         self.logger = logger
+        # Provider 实例缓存：键为 (provider_type, model, openai_compatibility_mode)，
+        # 值为已构造的 ImageProvider 实例。ProviderRouter 每次随 _refresh_services 重建，
+        # 因此缓存生命周期与配置版本一致，无需手动失效。
+        self._provider_cache: dict[tuple[str, str, str], ImageProvider] = {}
+        # OpenAI 路由列表缓存，避免每次 get_openai_models / get_model_provider 都重算
+        self._openai_routes_cache: list[OpenAIModelRoute] | None = None
 
     @staticmethod
     def _split_inline_items(value: str) -> list[str]:
@@ -114,6 +120,10 @@ class ProviderRouter:
 
     def _iter_openai_routes(self) -> list[OpenAIModelRoute]:
         """展开主 OpenAI 配置和额外 OpenAI 兼容实例。"""
+
+        # 路由列表在配置不变时是纯函数结果，缓存避免重复解析
+        if self._openai_routes_cache is not None:
+            return self._openai_routes_cache
 
         routes: list[OpenAIModelRoute] = []
         if self.config.openai.enabled:
@@ -176,6 +186,7 @@ class ProviderRouter:
                         rewrite_prompt_to_english=instance.rewrite_prompt_to_english,
                     )
                 )
+        self._openai_routes_cache = routes
         return routes
 
     def resolve_openai_model_route(self, model: str) -> OpenAIModelRoute | None:
@@ -526,24 +537,34 @@ class ProviderRouter:
         model: str,
         openai_compatibility_mode: str = "",
     ) -> tuple[ImageProvider, ProviderName]:
-        """根据模型解析并创建对应的平台实例。"""
+        """根据模型解析并创建对应的平台实例，带实例缓存避免重复构造。"""
 
         provider_type = self.get_model_provider(model)
+        normalized_model = model.strip()
+        # 非 OpenAI 平台的 provider 不依赖 compatibility_mode，缓存键用空串占位
+        cache_key = (provider_type, normalized_model, openai_compatibility_mode.strip() if provider_type == "openai" else "")
+        cached_provider = self._provider_cache.get(cache_key)
+        if cached_provider is not None:
+            return cached_provider, provider_type
+
         if provider_type == "aliyun":
-            return self.create_aliyun_provider(), "aliyun"
-        if provider_type == "google":
-            return self.create_google_provider(), "google"
-        if provider_type == "zhipu":
-            return self.create_zhipu_provider(), "zhipu"
-        if provider_type == "volcengine":
-            return self.create_volcengine_provider(), "volcengine"
-        if provider_type == "siliconflow":
-            return self.create_siliconflow_provider(), "siliconflow"
-        if provider_type == "novelai":
-            return self.create_novelai_provider(), "novelai"
-        if provider_type == "openai":
-            return self.create_openai_provider(
+            provider = self.create_aliyun_provider()
+        elif provider_type == "google":
+            provider = self.create_google_provider()
+        elif provider_type == "zhipu":
+            provider = self.create_zhipu_provider()
+        elif provider_type == "volcengine":
+            provider = self.create_volcengine_provider()
+        elif provider_type == "siliconflow":
+            provider = self.create_siliconflow_provider()
+        elif provider_type == "novelai":
+            provider = self.create_novelai_provider()
+        elif provider_type == "openai":
+            provider = self.create_openai_provider(
                 self.resolve_openai_compatibility_mode(openai_compatibility_mode, model),
                 model,
-            ), "openai"
-        raise RuntimeError(f"模型未归属于任何已配置提供商：{model}")
+            )
+        else:
+            raise RuntimeError(f"模型未归属于任何已配置提供商：{model}")
+        self._provider_cache[cache_key] = provider
+        return provider, provider_type

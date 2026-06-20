@@ -190,9 +190,16 @@ class ChatStreamService:
     ) -> int:
         """将生成结果发送回当前会话。"""
 
+        total = len(image_bytes_list)
         sent_count = 0
-        for image_bytes in image_bytes_list:
+        for index, image_bytes in enumerate(image_bytes_list, start=1):
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+            self.ctx.logger.info(
+                "正在发送绘图结果图片: stream_id=%s progress=%s/%s",
+                stream_id,
+                index,
+                total,
+            )
             send_result = await self.ctx.send.image(image_base64, stream_id)
             if not send_result:
                 raise RuntimeError(f"发送图片失败，目标聊天流不可用: {stream_id}")

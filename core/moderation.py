@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from io import BytesIO
 from typing import Any
 
 import base64
 
-from PIL import Image as PILImage
-
 from .config import DrawpicConfig
+from .image_utils import detect_image_format
 
 
 @dataclass(slots=True)
@@ -108,35 +106,71 @@ class DrawpicModerationService:
     def _detect_image_format(image_bytes: bytes) -> str:
         """根据图片字节推断格式。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            format_name = str(image.format or "").strip().lower()
-        if format_name in {"jpg", "jpeg", "png", "webp", "gif"}:
-            return format_name
-        return "png"
+        return detect_image_format(image_bytes)
 
     @staticmethod
     def _parse_review_response(raw_response: str | None) -> ModerationResult:
-        """解析模型返回的审核结论。"""
+        """解析模型返回的审核结论。
+
+        采用分层匹配策略，兼容审核模型可能附加的多行前置说明：
+        1. 优先全文精确匹配 `结论：PASS` / `结论：REJECT`（含全角冒号）
+        2. 退化到逐行查找首个包含 PASS / REJECT 的结论行
+        3. 再退化到全文模糊匹配 PASS / REJECT
+        4. 仍无法识别时抛出 RuntimeError，由调用方决定拒绝或放行
+        """
 
         normalized_response = str(raw_response or "").strip()
         if not normalized_response:
             raise RuntimeError("审核模型返回了空结果")
 
-        upper_response = normalized_response.upper()
-        first_line = normalized_response.splitlines()[0].strip().upper()
-
-        if "REJECT" in first_line or "REJECT" in upper_response or "结论：REJECT" in normalized_response:
+        # 1) 全文精确匹配结论行（兼容全角/半角冒号）
+        if "结论：REJECT" in normalized_response or "结论:REJECT" in normalized_response or "结论: REJECT" in normalized_response:
             return ModerationResult(
                 passed=False,
                 reason=DrawpicModerationService._extract_reason(normalized_response, default_reason="审核未通过"),
                 raw_response=normalized_response,
             )
-        if "PASS" in first_line or "PASS" in upper_response or "结论：PASS" in normalized_response:
+        if "结论：PASS" in normalized_response or "结论:PASS" in normalized_response or "结论: PASS" in normalized_response:
             return ModerationResult(
                 passed=True,
                 reason=DrawpicModerationService._extract_reason(normalized_response),
                 raw_response=normalized_response,
             )
+
+        # 2) 逐行查找首个包含明确 PASS / REJECT 关键词的行
+        for raw_line in normalized_response.splitlines():
+            normalized_line = raw_line.strip().upper()
+            if not normalized_line:
+                continue
+            if "REJECT" in normalized_line:
+                return ModerationResult(
+                    passed=False,
+                    reason=DrawpicModerationService._extract_reason(normalized_response, default_reason="审核未通过"),
+                    raw_response=normalized_response,
+                )
+            if "PASS" in normalized_line:
+                return ModerationResult(
+                    passed=True,
+                    reason=DrawpicModerationService._extract_reason(normalized_response),
+                    raw_response=normalized_response,
+                )
+
+        # 3) 全文模糊兜底（模型可能把结论拼接在一段话中）
+        upper_response = normalized_response.upper()
+        if "REJECT" in upper_response:
+            return ModerationResult(
+                passed=False,
+                reason=DrawpicModerationService._extract_reason(normalized_response, default_reason="审核未通过"),
+                raw_response=normalized_response,
+            )
+        if "PASS" in upper_response:
+            return ModerationResult(
+                passed=True,
+                reason=DrawpicModerationService._extract_reason(normalized_response),
+                raw_response=normalized_response,
+            )
+
+        # 4) 无法识别
         raise RuntimeError(f"审核模型返回了无法识别的结果：{normalized_response}")
 
     @staticmethod

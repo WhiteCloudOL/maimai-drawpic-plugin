@@ -413,11 +413,15 @@ class DrawService:
         running_message = "图片正在编辑中" if is_image_edit else "图片正在生成中"
         timeout_message = "图片编辑超时" if is_image_edit else "图片生成超时"
         try:
-            self.task_store.update_task(
+            running_record = self.task_store.update_task(
                 task_id,
                 status="running",
                 message=running_message,
             )
+            if running_record is None:
+                # 任务记录已被配置重载清空，无法继续追踪状态，静默退出避免 KeyError 崩溃
+                self.ctx.logger.warning("绘图任务记录已失效，终止后台执行: task_id=%s task_type=%s", task_id, task_type)
+                return
             image_platform, provider_name = self.router.require_platform_for_model(
                 resolved_model,
                 openai_compatibility_mode,

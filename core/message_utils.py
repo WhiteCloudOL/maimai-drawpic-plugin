@@ -1,4 +1,5 @@
 from io import BytesIO
+from time import monotonic
 from typing import Any
 
 from PIL import Image as PILImage
@@ -8,8 +9,10 @@ import binascii
 
 
 _MAX_CACHED_SOURCE_IMAGES = 80
-# 每条消息可能携带多张图片，因此缓存值为按消息内顺序排列的 Base64 列表。
-_SOURCE_IMAGE_CACHE: dict[tuple[str, str], list[str]] = {}
+# 源图缓存存活时长（秒），超过后按惰性过期清理，避免高频聊天下内存持续增长。
+_SOURCE_IMAGE_CACHE_TTL_SECONDS = 1800
+# 每条消息可能携带多张图片，因此缓存值为 (缓存时间, Base64 列表) 元组。
+_SOURCE_IMAGE_CACHE: dict[tuple[str, str], tuple[float, list[str]]] = {}
 _SOURCE_IMAGE_CACHE_ORDER: list[tuple[str, str]] = []
 
 
@@ -236,15 +239,38 @@ def _remember_source_image(stream_id: str | list[str], message_id: str, image_ba
     if not image_base64_list:
         return
 
+    cached_at = monotonic()
     for normalized_stream_id in _normalize_stream_ids(stream_id):
         cache_key = (normalized_stream_id, message_id)
         if cache_key not in _SOURCE_IMAGE_CACHE:
             _SOURCE_IMAGE_CACHE_ORDER.append(cache_key)
-        _SOURCE_IMAGE_CACHE[cache_key] = list(image_base64_list)
+        _SOURCE_IMAGE_CACHE[cache_key] = (cached_at, list(image_base64_list))
 
+    # 双重驱逐：数量上限 + 惰性 TTL 过期
     while len(_SOURCE_IMAGE_CACHE_ORDER) > _MAX_CACHED_SOURCE_IMAGES * 2:
         expired_key = _SOURCE_IMAGE_CACHE_ORDER.pop(0)
         _SOURCE_IMAGE_CACHE.pop(expired_key, None)
+
+
+def _evict_expired_source_image_cache() -> None:
+    """惰性清理已过 TTL 的源图缓存条目。"""
+
+    if not _SOURCE_IMAGE_CACHE_ORDER:
+        return
+    now = monotonic()
+    # 仅从队首扫描，过期的条目集中在最早写入的位置
+    while _SOURCE_IMAGE_CACHE_ORDER:
+        cache_key = _SOURCE_IMAGE_CACHE_ORDER[0]
+        entry = _SOURCE_IMAGE_CACHE.get(cache_key)
+        if entry is None:
+            _SOURCE_IMAGE_CACHE_ORDER.pop(0)
+            continue
+        cached_at, _ = entry
+        if now - cached_at > _SOURCE_IMAGE_CACHE_TTL_SECONDS:
+            _SOURCE_IMAGE_CACHE_ORDER.pop(0)
+            _SOURCE_IMAGE_CACHE.pop(cache_key, None)
+            continue
+        break
 
 
 def _validate_image_base64_list(image_base64_list: list[str]) -> list[str]:
@@ -295,11 +321,14 @@ def find_all_cached_source_images(stream_id: str | list[str], message_id: str) -
     if not normalized_message_id:
         return None
 
+    _evict_expired_source_image_cache()
     for normalized_stream_id in _normalize_stream_ids(stream_id):
         cache_key = (normalized_stream_id, normalized_message_id)
-        image_base64_list = _SOURCE_IMAGE_CACHE.get(cache_key)
-        if image_base64_list:
-            return list(image_base64_list), normalized_message_id
+        entry = _SOURCE_IMAGE_CACHE.get(cache_key)
+        if entry is not None:
+            _, image_base64_list = entry
+            if image_base64_list:
+                return list(image_base64_list), normalized_message_id
     return None
 
 

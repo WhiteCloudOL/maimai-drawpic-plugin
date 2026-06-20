@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from io import BytesIO
 from typing import Any
-
-from PIL import Image as PILImage
 
 import aiohttp
 import base64
 import time
+
+from ..core.image_utils import detect_image_dimensions, detect_mime_type
 
 
 
@@ -91,10 +90,10 @@ class SiliconFlowImage:
     def _detect_image_size(image_bytes: bytes) -> str:
         """读取源图尺寸，硅基流动 image_size 使用 宽x高。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            width, height = image.size
-        if width <= 0 or height <= 0:
+        dimensions = detect_image_dimensions(image_bytes)
+        if dimensions is None:
             return ""
+        width, height = dimensions
         return f"{width}x{height}"
 
     async def _post_json_with_source_size_fallback(
@@ -176,16 +175,7 @@ class SiliconFlowImage:
     def _detect_mime_type(image_bytes: bytes) -> str:
         """尽量根据图片内容推断 MIME 类型。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            format_name = str(image.format or "").upper()
-
-        mime_type_map = {
-            "JPEG": "image/jpeg",
-            "JPG": "image/jpeg",
-            "PNG": "image/png",
-            "WEBP": "image/webp",
-        }
-        return mime_type_map.get(format_name, "image/png")
+        return detect_mime_type(image_bytes)
 
     async def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         """发送 JSON POST 请求。"""

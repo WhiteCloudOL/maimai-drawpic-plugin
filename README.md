@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.8.1-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.8.2-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -161,6 +161,14 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 📝 近期更新
+
+### v1.8.2
+
+* **稳定性修复**：修复配置热重载时后台绘图任务可能因 `task_store` 被清空而静默崩溃的问题，`update_task` / `mark_status_queried` 现对缺失任务安全返回 `None`，后台任务在记录失效时优雅退出。
+* **审核解析增强**：提示词与图片审核结论解析改为分层匹配（全文精确 → 逐行 → 全文模糊），兼容审核模型在结论前附加多行说明的情况，避免误判为无法识别。
+* **性能优化**：`ProviderRouter` 新增 Provider 实例缓存与 OpenAI 路由列表缓存，避免每次后台任务重复构造平台实例和解析配置。
+* **缓存改进**：入站源图缓存新增 30 分钟 TTL 惰性过期机制，避免高频聊天下内存持续增长。
+* **可观测性**：图片发送阶段新增逐张进度日志；重复的图片 MIME 检测逻辑已统一到 `core/image_utils` 共享工具。
 
 ### v1.8.1
 

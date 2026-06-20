@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from io import BytesIO
 from typing import Any
-
-from PIL import Image as PILImage
 
 import aiohttp
 import base64
 import time
+
+from ..core.image_utils import detect_image_dimensions, detect_mime_type
 
 
 class AliyunImage:
@@ -116,10 +115,10 @@ class AliyunImage:
     def _detect_image_size(image_bytes: bytes) -> str:
         """读取源图尺寸，阿里百炼 size 使用 宽*高。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            width, height = image.size
-        if width <= 0 or height <= 0:
+        dimensions = detect_image_dimensions(image_bytes)
+        if dimensions is None:
             return ""
+        width, height = dimensions
         return f"{width}*{height}"
 
     async def _post_json_with_source_size_fallback(
@@ -181,19 +180,7 @@ class AliyunImage:
     def _detect_mime_type(image_bytes: bytes) -> str:
         """尽量根据图片内容推断 MIME 类型。"""
 
-        with PILImage.open(BytesIO(image_bytes)) as image:
-            format_name = str(image.format or "").upper()
-
-        mime_type_map = {
-            "BMP": "image/bmp",
-            "GIF": "image/gif",
-            "JPEG": "image/jpeg",
-            "JPG": "image/jpeg",
-            "PNG": "image/png",
-            "TIFF": "image/tiff",
-            "WEBP": "image/webp",
-        }
-        return mime_type_map.get(format_name, "image/png")
+        return detect_mime_type(image_bytes)
 
     def _build_headers(self) -> dict[str, str]:
         """构建请求头。"""
