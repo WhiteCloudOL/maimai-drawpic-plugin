@@ -41,7 +41,8 @@ def build_model_text(router: ProviderRouter, session_preference: dict[str, str])
         ("OpenAI", router.get_openai_models()),
         ("Google", router.get_google_models()),
         ("智谱", router.get_zhipu_models()),
-        ("火山引擎", router.get_volcengine_models()),
+        ("火山引擎（文生图）", router.get_volcengine_t2i_models()),
+        ("火山引擎（图生图）", router.get_volcengine_i2i_models()),
         ("硅基流动", router.get_siliconflow_models()),
         ("NovelAI / NovelAPI", router.get_novelai_models()),
     ]

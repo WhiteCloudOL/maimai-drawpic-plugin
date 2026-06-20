@@ -24,7 +24,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.16.1",
+        default="2.17.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -873,15 +873,30 @@ class VolcengineModelConfig(PluginConfigBase):
         },
     )
     models: list[str] = Field(
-        default=[
-            "doubao-seedream-3-0-t2i",
-            "doubao-seedream-3-0-i2i",
-        ],
-        description="火山引擎方舟图片模型列表",
+        default=[],
+        description="火山引擎方舟图片模型列表（旧字段，已拆分为 t2i_models 和 i2i_models；留空时自动兼容）",
         json_schema_extra={
-            "label": "火山引擎模型列表",
-            "hint": "填写火山方舟控制台中的即梦 AI / 豆包生图模型或 endpoint 名称",
+            "label": "火山引擎模型列表（旧）",
+            "hint": "已拆分为文生图模型和图生图模型；如填写了下方两个字则本字段被忽略",
             "order": 1,
+        },
+    )
+    t2i_models: list[str] = Field(
+        default=["doubao-seedream-3-0-t2i"],
+        description="火山引擎文生图模型列表，仅用于文生图任务",
+        json_schema_extra={
+            "label": "文生图模型列表",
+            "hint": "填写火山方舟控制台中以 -t2i 结尾的即梦 AI / 豆包生图模型或 endpoint 名称",
+            "order": 2,
+        },
+    )
+    i2i_models: list[str] = Field(
+        default=["doubao-seedream-3-0-i2i"],
+        description="火山引擎图生图模型列表，仅用于图生图编辑任务",
+        json_schema_extra={
+            "label": "图生图模型列表",
+            "hint": "填写火山方舟控制台中以 -i2i 结尾的即梦 AI / 豆包生图模型或 endpoint 名称；留空则该平台不支持图生图",
+            "order": 3,
         },
     )
     default_size: str = Field(
@@ -890,7 +905,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "默认分辨率",
             "hint": "常见值：1024x1024、1328x1328、2048x2048；以模型实际支持为准",
-            "order": 2,
+            "order": 4,
         },
     )
     model_size_overrides: list[str] = Field(
@@ -899,7 +914,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "按模型覆盖分辨率",
             "hint": "每行填写一个 模型名=宽x高，例如 doubao-seedream-3-0-t2i=1024x1024",
-            "order": 3,
+            "order": 5,
         },
     )
     model_endpoint_overrides: list[str] = Field(
@@ -908,7 +923,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "按模型覆盖接口地址",
             "hint": "通常留空。不同模型需要特殊地址时，每行填写 模型名=完整URL 或 模型名=api/v3/...",
-            "order": 4,
+            "order": 6,
         },
     )
     response_format: str = Field(
@@ -917,7 +932,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "响应格式",
             "hint": "常见值：url、b64_json；留空则不传",
-            "order": 5,
+            "order": 7,
         },
     )
     guidance_scale: float = Field(
@@ -926,7 +941,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "引导强度",
             "hint": "大于 0 时传入 guidance_scale；仅模型支持时生效",
-            "order": 6,
+            "order": 8,
         },
     )
     seed: int = Field(
@@ -935,7 +950,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "随机种子",
             "hint": "非负整数会传入 seed；仅模型支持时生效",
-            "order": 7,
+            "order": 9,
         },
     )
     watermark: bool = Field(
@@ -944,7 +959,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "添加水印",
             "hint": "关闭时请求参数 watermark=false",
-            "order": 8,
+            "order": 10,
         },
     )
     max_images: int = Field(
@@ -953,7 +968,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "单次图片数量",
             "hint": "插件当前默认请求 1 张；这里限制工具未来传入 n 时的最大值",
-            "order": 9,
+            "order": 11,
         },
     )
     extra_parameters: list[str] = Field(
@@ -962,7 +977,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "额外参数",
             "hint": "每行一个 key=value，值支持 true/false、数字或 JSON；用于兼容平台新增参数",
-            "order": 10,
+            "order": 12,
         },
     )
     rewrite_prompt_to_english: bool = Field(
@@ -971,7 +986,7 @@ class VolcengineModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "英文提示词改写",
             "hint": "开启后会调用 MaiBot replyer 模型将非英文提示词改写为英文；多数即梦/豆包模型可直接使用中文",
-            "order": 11,
+            "order": 13,
         },
     )
 
@@ -1436,4 +1451,43 @@ def migrate_legacy_review_config(config_data: Mapping[str, Any]) -> dict[str, An
         if "image_review_prompt" not in general_config and "review_prompt" in image_review_config:
             general_config["image_review_prompt"] = image_review_config["review_prompt"]
 
+    _migrate_legacy_volcengine_models(migrated_config)
+
     return migrated_config
+
+
+def _migrate_legacy_volcengine_models(migrated_config: dict[str, Any]) -> None:
+    """将旧版火山引擎 models 列表自动分配到 t2i_models / i2i_models。
+
+    仅在 t2i_models / i2i_models 均未填写时触发，按后缀 -t2i / -i2i 拆分；
+    无法识别后缀的模型同时加入两个列表，保证兼容性。
+    """
+
+    volcengine_config = migrated_config.get("volcengine")
+    if not isinstance(volcengine_config, dict):
+        return
+    legacy_models = volcengine_config.get("models")
+    if not isinstance(legacy_models, list) or not legacy_models:
+        return
+    # 仅在新的两个字段都缺失或为空时才迁移
+    has_t2i = isinstance(volcengine_config.get("t2i_models"), list) and volcengine_config["t2i_models"]
+    has_i2i = isinstance(volcengine_config.get("i2i_models"), list) and volcengine_config["i2i_models"]
+    if has_t2i or has_i2i:
+        return
+    t2i_models: list[str] = []
+    i2i_models: list[str] = []
+    for model in legacy_models:
+        normalized_model = str(model or "").strip()
+        if not normalized_model:
+            continue
+        lowered = normalized_model.lower()
+        if lowered.endswith("-t2i"):
+            t2i_models.append(normalized_model)
+        elif lowered.endswith("-i2i"):
+            i2i_models.append(normalized_model)
+        else:
+            # 无法识别后缀，同时加入两个列表
+            t2i_models.append(normalized_model)
+            i2i_models.append(normalized_model)
+    volcengine_config["t2i_models"] = t2i_models
+    volcengine_config["i2i_models"] = i2i_models

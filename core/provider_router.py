@@ -226,12 +226,28 @@ class ProviderRouter:
             return []
         return [model.strip() for model in self.config.zhipu.models if model.strip()]
 
-    def get_volcengine_models(self) -> list[str]:
-        """获取火山引擎模型列表。"""
+    def get_volcengine_t2i_models(self) -> list[str]:
+        """获取火山引擎文生图模型列表。"""
 
         if not self.config.volcengine.enabled:
             return []
-        return [model.strip() for model in self.config.volcengine.models if model.strip()]
+        return [model.strip() for model in self.config.volcengine.t2i_models if model.strip()]
+
+    def get_volcengine_i2i_models(self) -> list[str]:
+        """获取火山引擎图生图模型列表。"""
+
+        if not self.config.volcengine.enabled:
+            return []
+        return [model.strip() for model in self.config.volcengine.i2i_models if model.strip()]
+
+    def get_volcengine_models(self) -> list[str]:
+        """获取火山引擎全部模型列表（文生图 + 图生图，去重保序）。"""
+
+        combined: list[str] = []
+        for model in self.get_volcengine_t2i_models() + self.get_volcengine_i2i_models():
+            if model not in combined:
+                combined.append(model)
+        return combined
 
     def get_siliconflow_models(self) -> list[str]:
         """获取硅基流动模型列表。"""
@@ -528,9 +544,58 @@ class ProviderRouter:
             return f"当前模型 {normalized_model} 未归属于任何已配置图片平台，无法判断图生图能力"
         if provider_name == "zhipu":
             return f"当前模型 {normalized_model} 属于智谱平台；该平台当前仅支持文生图，不支持图生图编辑"
-        if provider_name == "volcengine" and normalized_model.lower().endswith("-t2i"):
-            return f"当前模型 {normalized_model} 属于火山引擎文生图模型；请切换到 i2i/edit 类模型后再使用图生图"
+        if provider_name == "volcengine":
+            i2i_models = self.get_volcengine_i2i_models()
+            if not i2i_models:
+                return "火山引擎未配置图生图模型（i2i_models 为空），无法提交图生图任务"
+            if normalized_model not in i2i_models:
+                return f"当前模型 {normalized_model} 属于火山引擎文生图模型；请切换到 i2i 类模型后再使用图生图"
         return ""
+
+    def resolve_volcengine_model_for_task(
+        self,
+        model: str,
+        task_type: str,
+    ) -> str:
+        """根据任务类型自动解析火山引擎最终使用的模型名。
+
+        火山引擎文生图模型（-t2i）和图生图模型（-i2i）是分离的，
+        当用户选定的模型与任务类型不匹配时，自动切换到对应的模型。
+        返回最终使用的模型名；无法切换时抛出 ValueError。
+        """
+
+        normalized_model = model.strip()
+        if not normalized_model:
+            raise ValueError("火山引擎模型名为空，无法解析")
+
+        t2i_models = self.get_volcengine_t2i_models()
+        i2i_models = self.get_volcengine_i2i_models()
+
+        if task_type == "edit_image":
+            if normalized_model in i2i_models:
+                return normalized_model
+            if not i2i_models:
+                raise ValueError("火山引擎未配置图生图模型（i2i_models 为空），无法提交图生图任务")
+            # 尝试把 -t2i 后缀替换为 -i2i 查找对应模型
+            if normalized_model.lower().endswith("-t2i"):
+                candidate = normalized_model[:-4] + "-i2i"
+                if candidate in i2i_models:
+                    return candidate
+            # 回退到第一个可用 i2i 模型
+            return i2i_models[0]
+
+        # task_type == "draw"（文生图）
+        if normalized_model in t2i_models:
+            return normalized_model
+        if not t2i_models:
+            raise ValueError("火山引擎未配置文生图模型（t2i_models 为空），无法提交文生图任务")
+        # 尝试把 -i2i 后缀替换为 -t2i 查找对应模型
+        if normalized_model.lower().endswith("-i2i"):
+            candidate = normalized_model[:-4] + "-t2i"
+            if candidate in t2i_models:
+                return candidate
+        # 回退到第一个可用 t2i 模型
+        return t2i_models[0]
 
     def require_platform_for_model(
         self,

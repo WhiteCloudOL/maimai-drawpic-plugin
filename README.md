@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.8.2-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.8.3-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -167,6 +167,10 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 📝 近期更新
+
+### v1.8.3
+
+* **火山引擎模型分离**：火山引擎方舟的文生图模型（`-t2i`）与图生图模型（`-i2i`）是不同的模型，现已拆分为 `t2i_models` 和 `i2i_models` 独立配置。插件会根据任务类型自动切换到匹配的模型，用户无需手动切换即可同时使用文生图和图生图。旧版 `models` 字段会自动按后缀迁移到对应列表。
 
 ### v1.8.2
 

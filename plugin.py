@@ -451,14 +451,15 @@ class DrawpicPlugin(MaiBotPlugin):
         router = self._require_router()
         moderation_service = self._require_moderation_service()
         self.ctx.logger.info(
-            "麦麦绘图插件已加载: default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
+            "麦麦绘图插件已加载: default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_t2i_models=%s volcengine_i2i_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
             router.resolve_default_model(),
             router.resolve_request_timeout_seconds(),
             len(router.get_aliyun_models()),
             len(router.get_openai_models()),
             len(router.get_google_models()),
             len(router.get_zhipu_models()),
-            len(router.get_volcengine_models()),
+            len(router.get_volcengine_t2i_models()),
+            len(router.get_volcengine_i2i_models()),
             len(router.get_siliconflow_models()),
             len(router.get_novelai_models()),
             moderation_service.is_prompt_review_enabled(),
@@ -489,7 +490,7 @@ class DrawpicPlugin(MaiBotPlugin):
             router = self._require_router()
             moderation_service = self._require_moderation_service()
             self.ctx.logger.info(
-                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s task_count=%s",
+                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_t2i_models=%s volcengine_i2i_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s task_count=%s",
                 scope,
                 version,
                 router.resolve_default_model(),
@@ -498,7 +499,8 @@ class DrawpicPlugin(MaiBotPlugin):
                 len(router.get_openai_models()),
                 len(router.get_google_models()),
                 len(router.get_zhipu_models()),
-                len(router.get_volcengine_models()),
+                len(router.get_volcengine_t2i_models()),
+                len(router.get_volcengine_i2i_models()),
                 len(router.get_siliconflow_models()),
                 len(router.get_novelai_models()),
                 moderation_service.is_prompt_review_enabled(),
@@ -536,7 +538,14 @@ class DrawpicPlugin(MaiBotPlugin):
         provider_name = self._require_router().get_model_provider(resolved_model)
         if not provider_name:
             raise ValueError(f"指定模型不可用：{resolved_model}")
-        image_edit_unsupported_reason = self._require_router().get_image_edit_unsupported_reason(resolved_model)
+        # 火山引擎文生图/图生图模型分离，提前检查时需用自动切换后的模型判断图生图能力
+        check_model = resolved_model
+        if provider_name == "volcengine" and normalized_source_images:
+            try:
+                check_model = self._require_router().resolve_volcengine_model_for_task(resolved_model, "edit_image")
+            except ValueError:
+                check_model = resolved_model
+        image_edit_unsupported_reason = self._require_router().get_image_edit_unsupported_reason(check_model)
         if normalized_source_images and image_edit_unsupported_reason:
             raise ValueError(f"{image_edit_unsupported_reason}。请改用 /绘图 文生图 <prompt>，或切换到支持图生图的模型")
 
@@ -730,7 +739,14 @@ class DrawpicPlugin(MaiBotPlugin):
             provider_name = router.get_model_provider(resolved_model)
             if not provider_name:
                 return {"success": False, "message": f"指定模型不可用：{resolved_model}"}
-            image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(resolved_model)
+            # 火山引擎文生图/图生图模型分离，提前检查时需用自动切换后的模型判断图生图能力
+            check_model = resolved_model
+            if provider_name == "volcengine":
+                try:
+                    check_model = router.resolve_volcengine_model_for_task(resolved_model, "edit_image")
+                except ValueError:
+                    check_model = resolved_model
+            image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(check_model)
             if image_edit_unsupported_reason:
                 return {
                     "success": False,
@@ -986,7 +1002,14 @@ class DrawpicPlugin(MaiBotPlugin):
             return False, "模型不可用", 1
 
         # 部分平台或模型不支持图生图，提前给出清晰提示，且不创建后台任务。
-        image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(resolved_model)
+        # 火山引擎文生图/图生图模型分离，提前检查时需用自动切换后的模型判断图生图能力
+        check_model = resolved_model
+        if provider_name == "volcengine":
+            try:
+                check_model = router.resolve_volcengine_model_for_task(resolved_model, "edit_image")
+            except ValueError:
+                check_model = resolved_model
+        image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(check_model)
         if image_edit_unsupported_reason:
             await self._send_command_reply(
                 title="当前模型不支持图生图",

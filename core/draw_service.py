@@ -426,13 +426,25 @@ class DrawService:
                 resolved_model,
                 openai_compatibility_mode,
             )
-            image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(resolved_model)
+            # 火山引擎文生图 / 图生图模型是分离的，按任务类型自动切换
+            effective_model = resolved_model
+            if provider_name == "volcengine":
+                effective_model = self.router.resolve_volcengine_model_for_task(resolved_model, task_type)
+                if effective_model != resolved_model:
+                    self.ctx.logger.info(
+                        "火山引擎模型自动切换: task_id=%s task_type=%s original_model=%s effective_model=%s",
+                        task_id,
+                        task_type,
+                        resolved_model,
+                        effective_model,
+                    )
+            image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(effective_model)
             if is_image_edit and image_edit_unsupported_reason:
                 raise ValueError(f"{image_edit_unsupported_reason}。请改用文生图，或切换到支持图生图的模型")
             provider_prompt = await self.rewrite_prompt_to_english_if_needed(
                 prompt,
                 provider_name,
-                resolved_model,
+                effective_model,
             )
             if is_image_edit:
                 self.ctx.logger.info(
@@ -440,7 +452,7 @@ class DrawService:
                     task_id,
                     task_type,
                     provider_name,
-                    resolved_model,
+                    effective_model,
                     len(normalized_source_images),
                     [len(image_bytes) for image_bytes in normalized_source_images],
                     matched_message_id,
@@ -449,7 +461,7 @@ class DrawService:
                 image_bytes_list = await self.run_provider_call(
                     image_platform.edit_images,
                     provider_prompt,
-                    resolved_model,
+                    effective_model,
                     normalized_source_images,
                     1,
                 )
@@ -459,7 +471,7 @@ class DrawService:
                     task_id,
                     task_type,
                     provider_name,
-                    resolved_model,
+                    effective_model,
                     provider_prompt[:120],
                 )
                 image_bytes_list = await self.run_provider_call(
@@ -547,11 +559,26 @@ class DrawService:
 
         normalized_source_images = source_image_bytes_list or []
         is_image_edit = bool(normalized_source_images)
-        image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(resolved_model)
+        task_type = "edit_image" if is_image_edit else "draw"
+
+        # 火山引擎文生图 / 图生图模型是分离的，提交前自动切换到匹配的模型
+        effective_model = resolved_model
+        if provider_name == "volcengine":
+            effective_model = self.router.resolve_volcengine_model_for_task(resolved_model, task_type)
+            if effective_model != resolved_model:
+                self.ctx.logger.info(
+                    "火山引擎模型自动切换(提交阶段): stream_id=%s task_type=%s original_model=%s effective_model=%s",
+                    stream_id,
+                    task_type,
+                    resolved_model,
+                    effective_model,
+                )
+
+        image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(effective_model)
         if is_image_edit and image_edit_unsupported_reason:
             self.ctx.logger.info(
                 "拒绝提交图生图任务: model=%s stream_id=%s user_id=%s group_id=%s platform=%s source_image_count=%s reason=%s",
-                resolved_model,
+                effective_model,
                 stream_id,
                 user_id,
                 group_id,
@@ -561,7 +588,6 @@ class DrawService:
             )
             raise ValueError(f"{image_edit_unsupported_reason}。请改用文生图，或切换到支持图生图的模型")
 
-        task_type = "edit_image" if is_image_edit else "draw"
         task_record = self.task_store.create_task(
             session_key=self.build_session_key(
                 stream_id=stream_id,
@@ -572,7 +598,7 @@ class DrawService:
             stream_id=stream_id,
             task_type=task_type,
             prompt=prompt,
-            model=resolved_model,
+            model=effective_model,
             provider=provider_name,
             message="任务已创建，等待后台执行",
         )
@@ -581,7 +607,7 @@ class DrawService:
                 task_id=task_record.task_id,
                 prompt=prompt,
                 stream_id=stream_id,
-                resolved_model=resolved_model,
+                resolved_model=effective_model,
                 openai_compatibility_mode=resolved_openai_mode,
                 source_image_bytes_list=normalized_source_images,
                 matched_message_id=matched_message_id,
