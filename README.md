@@ -26,6 +26,20 @@
 * **🤖 深度 LLM 赋能**：对外暴露 `draw`、`edit_image` 和 `draw_status` 工具，赋予大模型自主判断场景并调用绘图工具的能力，全程静默异步执行。
 * **🛡️ 策略与安全管控**：内置服务商级英文提示词重写引擎，可选开启提示词审核、图片风控、用户额度管理及管理员权限校验，保障运营安全。
 
+## 🌐 支持平台
+
+| 平台 | 说明 | 文生图 | 图生图 | API Key 获取 / 官网 |
+| --- | --- | :---: | :---: | --- |
+| **OpenAI** 及兼容中转 | 官方 `gpt-image` 系列及任意 OpenAI 兼容接口（NewAPI、中转站等），支持多实例分别配置 BaseURL 与模型映射。 | ✅ | ✅ | [Platform](https://platform.openai.com/) |
+| **Google Gemini** | Gemini `image-preview` / `flash-image` 系列图片模型，支持官方接口与兼容网关。 | ✅ | ✅ | [Google AI Studio](https://aistudio.google.com/apikey) |
+| **智谱** | 智谱 GLM 图像生成接口，中文提示词友好。 | ✅ | ❌ | [智谱开放平台](https://open.bigmodel.cn/) |
+| **阿里百炼** | 通义万相 `qwen-image` 系列，支持自由分辨率与图像编辑。 | ✅ | ✅ | [获取 API Key](https://help.aliyun.com/zh/model-studio/get-api-key) |
+| **火山引擎 / 方舟** | 豆包生图、即梦 AI 系列模型，内置官方接口地址。 | ✅ | ✅ | [API Key 管理](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey) |
+| **硅基流动** | Kolors、Stable Diffusion 3.5 等开源模型，按量计费。 | ✅ | ✅ | [API 密钥页面](https://cloud.siliconflow.cn/account/ak) |
+| **NovelAI / NovelAPI** | NovelAI 官方接口或兼容 NovelAPI 网关，支持 `nai-diffusion` 全系列模型。 | ✅ | ✅ | [NovelAI](https://novelai.net/) |
+
+> 💡 标记为 ❌ 的平台仅支持文生图，插件会在用户尝试图生图时提前拦截并提示切换模型。
+
 ## 📦 安装指南
 
 ### 🔹 方式一：插件市场安装（推荐）
@@ -88,14 +102,6 @@ models = "relay-gpt-image=gpt-image-2"
 | **通用平台** | `api_key` / `models` | 对应服务商的鉴权密钥与允许使用的模型名列表。 |
 | **通用平台** | `base_url` | 适用于 OpenAI、Google、NovelAI 的网关地址（其余平台使用内置官方地址）。 |
 | **通用平台** | `rewrite_prompt_to_english` | 开启后，调用接口前将使用 MaiBot 的 `replyer` 模型自动翻译并规范化提示词标点。 |
-
-### API Key 获取入口
-
-| 平台 | 获取入口 |
-| --- | --- |
-| 火山引擎 / 方舟 | [API Key 管理](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey) |
-| 阿里百炼 | [获取 API Key 文档](https://help.aliyun.com/zh/model-studio/get-api-key) |
-| 硅基流动 | [API 密钥页面](https://cloud.siliconflow.cn/account/ak) |
 
 ## 🔐 权限与额度管控
 
