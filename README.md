@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.8.3-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.8.4-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -167,6 +167,12 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 📝 近期更新
+
+### v1.8.4
+
+* **聊天流修复**：LLM 工具不再暴露聊天流参数，改由插件从 SDK 注入上下文和 `ctx.chat` 能力解析真实聊天流，修复 QQ 私聊中把 QQ 号或昵称误当发送目标导致“目标聊天流不可用”的问题。
+* **额度归属修复**：QQ 私聊仅使用真实数字用户号记录额度，群聊仍按发起用户扣次数，避免昵称或错误聊天流污染额度账本。
+* **额度日志增强**：额度查询、扣除、额度不足、管理员跳过与手动调整都会记录归属用户、剩余次数、周期和聊天流信息，便于后台排查。
 
 ### v1.8.3
 

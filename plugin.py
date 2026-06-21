@@ -276,8 +276,20 @@ class DrawpicPlugin(MaiBotPlugin):
         """构建用户额度状态文本。"""
 
         if not self.config.general.quota_enabled:
+            self.ctx.logger.info(
+                "绘图额度状态: quota_enabled=false stream_id=%s user_id=%s group_id=%s",
+                stream_id,
+                user_id,
+                group_id,
+            )
             return "未启用次数管理"
         if self._is_admin(user_id):
+            self.ctx.logger.info(
+                "绘图额度状态: admin_user=true stream_id=%s user_id=%s group_id=%s",
+                stream_id,
+                user_id,
+                group_id,
+            )
             return "管理员不受次数限制"
         quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
         remaining = self._usage_store.get_remaining(
@@ -285,17 +297,45 @@ class DrawpicPlugin(MaiBotPlugin):
             period=self.config.general.quota_period,
             default_quota=self.config.general.default_quota,
         )
+        self.ctx.logger.info(
+            "绘图额度状态: quota_user_id=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
+            quota_user_id,
+            remaining,
+            self.config.general.quota_period,
+            self.config.general.default_quota,
+            stream_id,
+            user_id,
+            group_id,
+        )
         return f"当前周期剩余 {remaining} 次（周期：{self.config.general.quota_period}）"
 
     def _consume_draw_quota(self, user_id: str, group_id: str, stream_id: str) -> tuple[bool, str]:
         """消耗一次绘图额度。"""
 
         if not self.config.general.quota_enabled:
+            self.ctx.logger.info(
+                "跳过绘图额度扣除: quota_enabled=false stream_id=%s user_id=%s group_id=%s",
+                stream_id,
+                user_id,
+                group_id,
+            )
             return True, "未启用次数管理"
         if self._is_admin(user_id):
+            self.ctx.logger.info(
+                "跳过绘图额度扣除: admin_user=true stream_id=%s user_id=%s group_id=%s",
+                stream_id,
+                user_id,
+                group_id,
+            )
             return True, "管理员不受次数限制"
         quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
         if not quota_user_id:
+            self.ctx.logger.warning(
+                "绘图额度扣除失败: quota_user_id为空 stream_id=%s user_id=%s group_id=%s",
+                stream_id,
+                user_id,
+                group_id,
+            )
             return False, "无法识别用户，不能使用绘图次数"
         success, remaining = self._usage_store.consume(
             quota_user_id,
@@ -303,7 +343,27 @@ class DrawpicPlugin(MaiBotPlugin):
             default_quota=self.config.general.default_quota,
         )
         if not success:
+            self.ctx.logger.warning(
+                "绘图额度不足: quota_user_id=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
+                quota_user_id,
+                remaining,
+                self.config.general.quota_period,
+                self.config.general.default_quota,
+                stream_id,
+                user_id,
+                group_id,
+            )
             return False, f"绘图次数已用尽（周期：{self.config.general.quota_period}）"
+        self.ctx.logger.info(
+            "绘图额度已扣除: quota_user_id=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
+            quota_user_id,
+            remaining,
+            self.config.general.quota_period,
+            self.config.general.default_quota,
+            stream_id,
+            user_id,
+            group_id,
+        )
         return True, f"当前周期剩余 {remaining} 次"
 
     @staticmethod
@@ -1015,6 +1075,18 @@ class DrawpicPlugin(MaiBotPlugin):
             count=count,
             period=self.config.general.quota_period,
             default_quota=self.config.general.default_quota,
+        )
+        self.ctx.logger.info(
+            "绘图额度已调整: action=%s target_user_id=%s count=%s remaining=%s operator_user_id=%s stream_id=%s group_id=%s period=%s default_quota=%s",
+            action,
+            target_user_id,
+            count,
+            remaining,
+            user_id,
+            stream_id,
+            group_id,
+            self.config.general.quota_period,
+            self.config.general.default_quota,
         )
         action_label_map = {
             "add": "添加",
