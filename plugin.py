@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, HookHandler, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
-from maibot_sdk.types import HookMode, ToolParameterInfo, ToolParamType
+from maibot_sdk.types import HookMode
 
 from .core.config import DrawpicConfig, migrate_legacy_review_config
 from .core.draw_service import DrawService
@@ -27,6 +27,58 @@ from .core.texts import (
     build_session_status_text,
 )
 from .core.usage_store import UserQuotaStore
+
+
+DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "description": "图片提示词，尽量描述清楚主体、风格和画面内容",
+        },
+        "model": {
+            "type": "string",
+            "description": "可选，指定要使用的图片模型；未传时使用当前会话模型",
+        },
+    },
+    "required": ["prompt"],
+}
+
+EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "description": "图片编辑提示词，描述希望基于源图修改成什么样；不要把源图片描述写在这里替代真实图片",
+        },
+        "source_message_id": {
+            "type": "string",
+            "description": "可选，指定要编辑的源图片消息 ID；不填时自动优先取当前/最近引用消息中的图片，再取最近一张图片",
+        },
+        "source_image_base64": {
+            "type": "string",
+            "description": "可选，直接传入真实源图片 Base64 或 data:image/...;base64；不要传图片描述文本",
+        },
+        "model": {
+            "type": "string",
+            "description": "可选，指定要使用的图片模型；未传时使用当前会话模型",
+        },
+    },
+    "required": ["prompt"],
+}
+
+DRAW_STATUS_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "task_id": {
+            "type": "string",
+            "description": "可选，指定要查询的后台绘图任务 ID；不填时默认查询当前会话最近一个任务",
+        },
+    },
+}
 
 
 class DrawpicPlugin(MaiBotPlugin):
@@ -326,6 +378,82 @@ class DrawpicPlugin(MaiBotPlugin):
             "platform": str(message.get("platform") or "qq").strip() or "qq",
         }
 
+    def _extract_runtime_context(
+        self,
+        *,
+        stream_id: str = "",
+        kwargs: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
+        """从 SDK 注入参数或命令消息中提取聊天上下文。"""
+
+        payload = kwargs or {}
+        message = payload.get("message")
+        message_context = self._extract_message_context(message) if isinstance(message, dict) else {}
+        normalized_stream_id = str(message_context.get("stream_id") or payload.get("chat_id") or stream_id or "").strip()
+        normalized_user_id = str(message_context.get("user_id") or payload.get("user_id") or "").strip()
+        normalized_group_id = str(message_context.get("group_id") or payload.get("group_id") or "").strip()
+        return {
+            "stream_id": normalized_stream_id,
+            "user_id": normalized_user_id,
+            "group_id": normalized_group_id,
+            "platform": str(message_context.get("platform") or payload.get("platform") or "qq").strip() or "qq",
+        }
+
+    def _extract_invocation_context(
+        self,
+        *,
+        kwargs: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
+        """从 SDK 注入参数中提取工具调用上下文，不依赖 LLM 填写。"""
+
+        return self._extract_runtime_context(kwargs=kwargs)
+
+    @staticmethod
+    def _is_qq_platform(platform: str) -> bool:
+        """判断当前平台是否按 QQ 数字用户号处理额度。"""
+
+        return platform.strip().lower() in {"qq", "qqguild"}
+
+    @classmethod
+    def _normalize_runtime_user_id(cls, user_id: str, platform: str) -> str:
+        """清理运行期用户 ID，避免 QQ 昵称进入额度账本。"""
+
+        normalized_user_id = user_id.strip()
+        if not normalized_user_id:
+            return ""
+        if cls._is_qq_platform(platform) and not normalized_user_id.isdigit():
+            return ""
+        return normalized_user_id
+
+    @classmethod
+    def _merge_resolved_runtime_context(
+        cls,
+        live_context: dict[str, str],
+        *,
+        user_id: str,
+        group_id: str,
+        platform: str,
+    ) -> dict[str, str]:
+        """合并真实聊天流上下文，群聊保留本次发起用户用于额度。"""
+
+        resolved_platform = str(live_context.get("platform") or "").strip() or platform.strip() or "qq"
+        resolved_group_id = str(live_context.get("group_id") or "").strip() or group_id.strip()
+        incoming_user_id = cls._normalize_runtime_user_id(user_id, resolved_platform)
+        if resolved_group_id:
+            resolved_user_id = incoming_user_id
+        else:
+            live_user_id = cls._normalize_runtime_user_id(
+                str(live_context.get("user_id") or "").strip(),
+                resolved_platform,
+            )
+            resolved_user_id = live_user_id or incoming_user_id
+        return {
+            "stream_id": str(live_context.get("stream_id") or "").strip(),
+            "user_id": resolved_user_id,
+            "group_id": resolved_group_id,
+            "platform": resolved_platform,
+        }
+
     @HookHandler(
         "chat.receive.before_process",
         name="prefixed_draw_command_fallback",
@@ -525,8 +653,31 @@ class DrawpicPlugin(MaiBotPlugin):
         """按当前会话设置启动后台绘图，源图为空时文生图，存在源图时图生图。"""
 
         draw_service = self._require_draw_service()
+        live_context = await self._require_stream_service().resolve_live_stream_context(
+            stream_id=stream_id,
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform_name,
+        )
+        runtime_context = self._merge_resolved_runtime_context(
+            live_context,
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform_name,
+        )
+        resolved_stream_id = runtime_context["stream_id"]
+        if not resolved_stream_id:
+            raise RuntimeError("当前聊天流不可用，无法回传图片")
+        resolved_user_id = runtime_context["user_id"]
+        resolved_group_id = runtime_context["group_id"]
+        resolved_platform = runtime_context["platform"]
         normalized_source_images = source_image_bytes_list or []
-        session_preference = self._get_session_preference(stream_id, user_id, group_id, platform_name)
+        session_preference = self._get_session_preference(
+            resolved_stream_id,
+            resolved_user_id,
+            resolved_group_id,
+            resolved_platform,
+        )
         resolved_model = draw_service.resolve_model_name(
             requested_model or session_preference["model"],
             allow_unknown_model=False,
@@ -550,18 +701,18 @@ class DrawpicPlugin(MaiBotPlugin):
             raise ValueError(f"{image_edit_unsupported_reason}。请改用 /绘图 文生图 <prompt>，或切换到支持图生图的模型")
 
         await draw_service.review_prompt_or_raise(prompt)
-        quota_allowed, quota_message = self._consume_draw_quota(user_id, group_id, stream_id)
+        quota_allowed, quota_message = self._consume_draw_quota(resolved_user_id, resolved_group_id, resolved_stream_id)
         if not quota_allowed:
             raise PermissionError(quota_message)
         return await draw_service.start_background_image_request(
             prompt=prompt,
-            stream_id=stream_id,
+            stream_id=resolved_stream_id,
             resolved_model=resolved_model,
             resolved_openai_mode=resolved_openai_mode,
             provider_name=provider_name,
-            user_id=user_id,
-            group_id=group_id,
-            platform_name=platform_name,
+            user_id=resolved_user_id,
+            group_id=resolved_group_id,
+            platform_name=resolved_platform,
             source_image_bytes_list=normalized_source_images,
             matched_message_id=matched_message_id,
             notify_start=notify_start,
@@ -570,70 +721,28 @@ class DrawpicPlugin(MaiBotPlugin):
     @Tool(
         "draw",
         description="根据纯文本提示调用绘图模型创建新图片，并发送到当前聊天流；用户要求修改、编辑、重绘已有图片时不要调用本工具，应调用 edit_image",
-        parameters=[
-            ToolParameterInfo(
-                name="prompt",
-                param_type=ToolParamType.STRING,
-                description="图片提示词，尽量描述清楚主体、风格和画面内容",
-                required=True,
-            ),
-            ToolParameterInfo(
-                name="stream_id",
-                param_type=ToolParamType.STRING,
-                description="当前聊天流 ID",
-                required=True,
-            ),
-            ToolParameterInfo(
-                name="model",
-                param_type=ToolParamType.STRING,
-                description="可选，指定要使用的图片模型；未传时使用当前会话模型",
-                required=False,
-            ),
-            ToolParameterInfo(
-                name="user_id",
-                param_type=ToolParamType.STRING,
-                description="可选，当前私聊对象的用户 ID，用于回传时定位真实聊天流",
-                required=False,
-            ),
-            ToolParameterInfo(
-                name="group_id",
-                param_type=ToolParamType.STRING,
-                description="可选，当前群聊的群组 ID，用于回传时定位真实聊天流",
-                required=False,
-            ),
-            ToolParameterInfo(
-                name="platform",
-                param_type=ToolParamType.STRING,
-                description="可选，当前平台名称，默认 qq",
-                required=False,
-            ),
-        ],
+        parameters=DRAW_TOOL_PARAMETERS_SCHEMA,
     )
     async def handle_draw(
         self,
         prompt: str,
-        stream_id: str,
         model: str = "",
-        user_id: str = "",
-        group_id: str = "",
-        platform: str = "qq",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """创建图片。"""
 
         if not prompt.strip():
             return {"success": False, "message": "提示词不能为空"}
-        if not stream_id.strip():
-            return {"success": False, "message": "当前聊天流 ID 为空，无法回传图片"}
 
         try:
+            context = self._extract_invocation_context(kwargs=kwargs)
             return await self._start_background_image_request(
                 prompt=prompt.strip(),
-                stream_id=stream_id.strip(),
+                stream_id=context["stream_id"],
                 requested_model=model.strip(),
-                user_id=user_id.strip() or str(kwargs.get("user_id") or "").strip(),
-                group_id=group_id.strip() or str(kwargs.get("group_id") or "").strip(),
-                platform_name=platform.strip() or str(kwargs.get("platform") or "qq").strip() or "qq",
+                user_id=context["user_id"],
+                group_id=context["group_id"],
+                platform_name=context["platform"],
             )
         except PermissionError as exc:
             return {
@@ -651,82 +760,42 @@ class DrawpicPlugin(MaiBotPlugin):
             "如果用户回复/引用了一张图片，直接调用本工具，插件会从引用消息中提取真实图片。"
             "找不到真实图片或模型平台不支持图片编辑时，返回原因并由 AI 告知用户无法调用图片编辑"
         ),
-        parameters=[
-            ToolParameterInfo(
-                name="prompt",
-                param_type=ToolParamType.STRING,
-                description="图片编辑提示词，描述希望基于源图修改成什么样；不要把源图片描述写在这里替代真实图片",
-                required=True,
-            ),
-            ToolParameterInfo(
-                name="stream_id",
-                param_type=ToolParamType.STRING,
-                description="当前聊天流 ID",
-                required=True,
-            ),
-            ToolParameterInfo(
-                name="source_message_id",
-                param_type=ToolParamType.STRING,
-                description="可选，指定要编辑的源图片消息 ID；不填时自动优先取当前/最近引用消息中的图片，再取最近一张图片",
-                required=False,
-            ),
-            ToolParameterInfo(
-                name="source_image_base64",
-                param_type=ToolParamType.STRING,
-                description="可选，直接传入真实源图片 Base64 或 data:image/...;base64；不要传图片描述文本",
-                required=False,
-            ),
-            ToolParameterInfo(
-                name="model",
-                param_type=ToolParamType.STRING,
-                description="可选，指定要使用的图片模型；未传时使用当前会话模型",
-                required=False,
-            ),
-            ToolParameterInfo(
-                name="user_id",
-                param_type=ToolParamType.STRING,
-                description="可选，当前私聊对象的用户 ID，用于回传时定位真实聊天流",
-                required=False,
-            ),
-            ToolParameterInfo(
-                name="group_id",
-                param_type=ToolParamType.STRING,
-                description="可选，当前群聊的群组 ID，用于回传时定位真实聊天流",
-                required=False,
-            ),
-            ToolParameterInfo(
-                name="platform",
-                param_type=ToolParamType.STRING,
-                description="可选，当前平台名称，默认 qq",
-                required=False,
-            ),
-        ],
+        parameters=EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA,
     )
     async def handle_edit_image(
         self,
         prompt: str,
-        stream_id: str,
         source_message_id: str = "",
         source_image_base64: str = "",
         model: str = "",
-        user_id: str = "",
-        group_id: str = "",
-        platform: str = "qq",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """编辑图片。"""
 
         if not prompt.strip():
             return {"success": False, "message": "提示词不能为空"}
-        if not stream_id.strip():
-            return {"success": False, "message": "当前聊天流 ID 为空，无法回传图片"}
 
         try:
             draw_service = self._require_draw_service()
-            normalized_stream_id = stream_id.strip()
-            normalized_user_id = user_id.strip() or str(kwargs.get("user_id") or "").strip()
-            normalized_group_id = group_id.strip() or str(kwargs.get("group_id") or "").strip()
-            platform_name = platform.strip() or str(kwargs.get("platform") or "qq").strip() or "qq"
+            context = self._extract_invocation_context(kwargs=kwargs)
+            live_context = await self._require_stream_service().resolve_live_stream_context(
+                stream_id=context["stream_id"],
+                user_id=context["user_id"],
+                group_id=context["group_id"],
+                platform=context["platform"],
+            )
+            runtime_context = self._merge_resolved_runtime_context(
+                live_context,
+                user_id=context["user_id"],
+                group_id=context["group_id"],
+                platform=context["platform"],
+            )
+            normalized_stream_id = runtime_context["stream_id"]
+            if not normalized_stream_id:
+                return {"success": False, "message": "当前聊天流 ID 为空，无法回传图片"}
+            normalized_user_id = runtime_context["user_id"]
+            normalized_group_id = runtime_context["group_id"]
+            platform_name = runtime_context["platform"]
             session_preference = self._get_session_preference(
                 normalized_stream_id,
                 normalized_user_id,
@@ -814,35 +883,36 @@ class DrawpicPlugin(MaiBotPlugin):
     @Tool(
         "draw_status",
         description="查询最近一个绘图后台任务，或查询指定 task_id 的绘图任务状态",
-        parameters=[
-            ToolParameterInfo(
-                name="stream_id",
-                param_type=ToolParamType.STRING,
-                description="当前聊天流 ID，用于查询当前会话最近一个后台绘图任务",
-                required=True,
-            ),
-            ToolParameterInfo(
-                name="task_id",
-                param_type=ToolParamType.STRING,
-                description="可选，指定要查询的后台绘图任务 ID；不填时默认查询当前会话最近一个任务",
-                required=False,
-            ),
-        ],
+        parameters=DRAW_STATUS_TOOL_PARAMETERS_SCHEMA,
     )
     async def handle_draw_status(
         self,
-        stream_id: str,
         task_id: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """查询后台绘图任务状态。"""
 
+        context = self._extract_invocation_context(kwargs=kwargs)
+        live_context = await self._require_stream_service().resolve_live_stream_context(
+            stream_id=context["stream_id"],
+            user_id=context["user_id"],
+            group_id=context["group_id"],
+            platform=context["platform"],
+        )
+        runtime_context = self._merge_resolved_runtime_context(
+            live_context,
+            user_id=context["user_id"],
+            group_id=context["group_id"],
+            platform=context["platform"],
+        )
+        if not runtime_context["stream_id"]:
+            return {"success": False, "message": "当前聊天流不可用，无法查询绘图任务状态"}
         return self._require_draw_service().get_task_status_payload(
-            stream_id=stream_id,
+            stream_id=runtime_context["stream_id"],
             task_id=task_id,
-            user_id=str(kwargs.get("user_id") or "").strip(),
-            group_id=str(kwargs.get("group_id") or "").strip(),
-            platform=str(kwargs.get("platform") or "qq").strip() or "qq",
+            user_id=runtime_context["user_id"],
+            group_id=runtime_context["group_id"],
+            platform=runtime_context["platform"],
         )
 
     @staticmethod
@@ -1149,13 +1219,31 @@ class DrawpicPlugin(MaiBotPlugin):
 
         matched_groups = kwargs.get("matched_groups", {})
         command_payload = str(matched_groups.get("content") or "").strip() if isinstance(matched_groups, dict) else ""
-        normalized_stream_id = str(stream_id or "").strip()
-        normalized_user_id = str(kwargs.get("user_id") or "").strip()
-        normalized_group_id = str(kwargs.get("group_id") or "").strip()
-        normalized_platform = str(kwargs.get("platform") or "qq").strip() or "qq"
+        context = self._extract_runtime_context(stream_id=stream_id, kwargs=kwargs)
+        normalized_stream_id = context["stream_id"]
+        normalized_user_id = context["user_id"]
+        normalized_group_id = context["group_id"]
+        normalized_platform = context["platform"]
 
-        if not normalized_stream_id:
+        live_context = await self._require_stream_service().resolve_live_stream_context(
+            stream_id=normalized_stream_id,
+            user_id=normalized_user_id,
+            group_id=normalized_group_id,
+            platform=normalized_platform,
+        )
+        runtime_context = self._merge_resolved_runtime_context(
+            live_context,
+            user_id=normalized_user_id,
+            group_id=normalized_group_id,
+            platform=normalized_platform,
+        )
+        resolved_stream_id = runtime_context["stream_id"]
+        if not resolved_stream_id:
             return False, "当前聊天流不可用，无法执行绘图命令", 1
+        normalized_stream_id = resolved_stream_id
+        normalized_user_id = runtime_context["user_id"]
+        normalized_group_id = runtime_context["group_id"]
+        normalized_platform = runtime_context["platform"]
 
         if not command_payload or command_payload in {"帮助", "help"}:
             await self._send_command_reply(

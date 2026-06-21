@@ -35,6 +35,7 @@
     "chat.get_all_streams",
     "chat.get_group_streams",
     "chat.get_private_streams",
+    "chat.open_session",
     "chat.get_stream_by_group_id",
     "chat.get_stream_by_user_id",
     "message.get_recent",
