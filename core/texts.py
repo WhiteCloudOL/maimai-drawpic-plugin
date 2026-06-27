@@ -11,10 +11,10 @@ def build_command_usage_text() -> str:
         [
             "可用子命令",
             "/绘图 模型",
-            "查看当前模型与可用模型；后接模型名可切换。",
+            "查看当前首选模型与可用模型；后接模型名可设置当前会话首选模型。",
             "",
             "/绘图 状态",
-            "查看当前会话模型、兼容模式、额度与绘图任务。",
+            "查看当前会话首选模型、备选模型、兼容模式、额度与绘图任务。",
             "",
             "/绘图 兼容模式",
             "查看或设置 OpenAI 兼容模式，仅对 OpenAI 提供商生效。",
@@ -36,6 +36,11 @@ def build_model_text(router: ProviderRouter, session_preference: dict[str, str])
 
     current_model = session_preference["model"] or router.resolve_default_model()
     current_provider = router.get_model_provider(current_model) or "unknown"
+    fallback_model = router.resolve_fallback_model(current_model)
+    fallback_model_text = fallback_model or "未启用"
+    fallback_unavailable_reason = router.get_fallback_model_unavailable_reason(current_model)
+    if fallback_unavailable_reason:
+        fallback_model_text = f"未启用（{fallback_unavailable_reason}）"
     provider_lines = [
         ("阿里百炼", router.get_aliyun_models()),
         ("OpenAI", router.get_openai_models()),
@@ -47,8 +52,9 @@ def build_model_text(router: ProviderRouter, session_preference: dict[str, str])
         ("NovelAI / NovelAPI", router.get_novelai_models()),
     ]
     lines = [
-        f"当前使用模型：{current_provider}：{current_model}",
-        "后接模型名称即可切换当前会话模型。",
+        f"当前首选模型：{current_provider}：{current_model}",
+        f"生图备选模型：{fallback_model_text}",
+        "后接模型名称即可设置当前会话首选模型。",
         "",
     ]
     for provider_name, models in provider_lines:
@@ -68,15 +74,21 @@ def build_session_status_text(
 
     model_name = session_preference["model"] or router.resolve_default_model()
     provider_name = router.get_model_provider(model_name) or "unknown"
-    lock_status = "已锁定" if session_preference["model"] else "未锁定，跟随默认模型"
+    lock_status = "已锁定" if session_preference["model"] else "未锁定，跟随默认首选模型"
     openai_mode_text = session_preference["openai_compatibility_mode"] or "未锁定，跟随模型配置"
     task_text = _format_task(latest_task)
+    fallback_model = router.resolve_fallback_model(model_name)
+    fallback_model_text = fallback_model or "未启用"
+    fallback_unavailable_reason = router.get_fallback_model_unavailable_reason(model_name)
+    if fallback_unavailable_reason:
+        fallback_model_text = f"未启用（{fallback_unavailable_reason}）"
     return "\n".join(
         [
-            f"当前绘图模型：{provider_name}：{model_name}",
-            f"会话模型状态：{lock_status}",
+            f"当前首选模型：{provider_name}：{model_name}",
+            f"会话首选模型状态：{lock_status}",
+            f"生图备选模型：{fallback_model_text}",
             f"OpenAI 兼容模式：{openai_mode_text}（仅对 OpenAI 提供商生效）",
-            f"默认模型：{router.resolve_default_model()}",
+            f"默认首选模型：{router.resolve_default_model()}",
             f"当前绘图任务：{task_text}",
             f"用户次数：{quota_text}",
         ]

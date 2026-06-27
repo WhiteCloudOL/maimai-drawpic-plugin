@@ -297,7 +297,7 @@ class ProviderRouter:
         return ""
 
     def resolve_default_model(self) -> str:
-        """解析当前有效的默认模型。"""
+        """解析当前有效的默认首选模型。"""
 
         configured_default = self.config.general.default_model.strip()
         if self.get_model_provider(configured_default):
@@ -307,6 +307,30 @@ class ProviderRouter:
         if all_models:
             return all_models[0]
         raise ValueError("当前未配置任何可用图片模型")
+
+    def resolve_fallback_model(self, primary_model: str = "") -> str:
+        """解析当前有效的生图备选模型，未配置或不可用时返回空字符串。"""
+
+        configured_fallback = self.config.general.fallback_model.strip()
+        if not configured_fallback:
+            return ""
+        if configured_fallback == primary_model.strip():
+            return ""
+        if self.get_model_provider(configured_fallback):
+            return configured_fallback
+        return ""
+
+    def get_fallback_model_unavailable_reason(self, primary_model: str = "") -> str:
+        """返回备选模型不可用原因，空字符串表示已可用或未配置。"""
+
+        configured_fallback = self.config.general.fallback_model.strip()
+        if not configured_fallback:
+            return ""
+        if configured_fallback == primary_model.strip():
+            return "生图备选模型与首选模型相同，已忽略备选模型"
+        if not self.get_model_provider(configured_fallback):
+            return f"生图备选模型未归属于任何已配置图片平台：{configured_fallback}"
+        return ""
 
     def resolve_openai_compatibility_mode(self, mode: str = "", model: str = "") -> OpenAICompatibilityMode:
         """解析最终使用的 OpenAI 兼容模式。"""

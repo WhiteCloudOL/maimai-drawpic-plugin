@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -9,9 +10,19 @@ import re
 import unicodedata
 
 from .moderation import DrawpicModerationService
-from .provider_router import ProviderRouter
+from .provider_router import ProviderName, ProviderRouter
 from .stream_service import ChatStreamService
 from .task_store import DrawTaskRecord, DrawTaskStore
+
+
+@dataclass(frozen=True, slots=True)
+class ImageRequestAttempt:
+    """一次图片请求尝试使用的最终路由信息。"""
+
+    model: str
+    provider_name: ProviderName
+    openai_compatibility_mode: str
+    is_fallback: bool = False
 
 
 class DrawService:
@@ -272,6 +283,172 @@ class DrawService:
             image_bytes_list = await asyncio.wait_for(asyncio.to_thread(call, *args), timeout=timeout_seconds)
         return image_bytes_list
 
+    def resolve_fallback_model_name(self, primary_model: str = "") -> str:
+        """解析生图备选模型名称。"""
+
+        return self.router.resolve_fallback_model(primary_model)
+
+    def _build_image_request_attempt(
+        self,
+        *,
+        model: str,
+        task_type: str,
+        openai_compatibility_mode: str,
+        is_fallback: bool = False,
+    ) -> ImageRequestAttempt:
+        """构建一次图片请求尝试的最终模型与提供商信息。"""
+
+        provider_name = self.router.get_model_provider(model)
+        if not provider_name:
+            raise ValueError(f"指定模型不可用：{model}")
+
+        effective_model = model
+        if provider_name == "volcengine":
+            effective_model = self.router.resolve_volcengine_model_for_task(model, task_type)
+            if effective_model != model:
+                self.ctx.logger.info(
+                    "火山引擎模型自动切换: task_type=%s original_model=%s effective_model=%s is_fallback=%s",
+                    task_type,
+                    model,
+                    effective_model,
+                    is_fallback,
+                )
+
+        image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(effective_model)
+        if task_type == "edit_image" and image_edit_unsupported_reason:
+            raise ValueError(f"{image_edit_unsupported_reason}。请改用文生图，或切换到支持图生图的模型")
+
+        return ImageRequestAttempt(
+            model=effective_model,
+            provider_name=provider_name,
+            openai_compatibility_mode=self.router.resolve_openai_compatibility_mode(
+                openai_compatibility_mode,
+                effective_model,
+            ),
+            is_fallback=is_fallback,
+        )
+
+    def _build_fallback_image_request_attempt(
+        self,
+        *,
+        primary_model: str,
+        primary_effective_model: str,
+        task_type: str,
+        openai_compatibility_mode: str,
+    ) -> ImageRequestAttempt | None:
+        """在首选模型失败后构建备选模型请求。"""
+
+        fallback_model = self.router.resolve_fallback_model(primary_model)
+        fallback_unavailable_reason = self.router.get_fallback_model_unavailable_reason(primary_model)
+        if fallback_unavailable_reason:
+            self.ctx.logger.warning(
+                "生图备选模型不可用，跳过备选尝试: primary_model=%s fallback_model=%s reason=%s",
+                primary_model,
+                self.router.config.general.fallback_model.strip(),
+                fallback_unavailable_reason,
+            )
+            return None
+        if not fallback_model:
+            self.ctx.logger.info(
+                "未配置生图备选模型，首选模型失败后不再重试: primary_model=%s",
+                primary_model,
+            )
+            return None
+
+        try:
+            fallback_attempt = self._build_image_request_attempt(
+                model=fallback_model,
+                task_type=task_type,
+                openai_compatibility_mode=openai_compatibility_mode,
+                is_fallback=True,
+            )
+        except Exception as exc:
+            self.ctx.logger.warning(
+                "生图备选模型解析失败，跳过备选尝试: primary_model=%s fallback_model=%s task_type=%s error=%s",
+                primary_model,
+                fallback_model,
+                task_type,
+                exc,
+            )
+            return None
+
+        if fallback_attempt.model == primary_effective_model:
+            self.ctx.logger.warning(
+                "生图备选模型与首选模型最终解析结果相同，跳过备选尝试: primary_model=%s fallback_model=%s effective_model=%s",
+                primary_model,
+                fallback_model,
+                fallback_attempt.model,
+            )
+            return None
+
+        return fallback_attempt
+
+    async def _run_image_request_attempt(
+        self,
+        *,
+        attempt: ImageRequestAttempt,
+        prompt: str,
+        task_id: str,
+        task_type: str,
+        source_image_bytes_list: list[bytes],
+        matched_message_id: str,
+    ) -> list[bytes]:
+        """执行单次图片请求尝试。"""
+
+        image_platform, provider_name = self.router.require_platform_for_model(
+            attempt.model,
+            attempt.openai_compatibility_mode,
+        )
+        provider_prompt = await self.rewrite_prompt_to_english_if_needed(
+            prompt,
+            provider_name,
+            attempt.model,
+        )
+
+        if task_type == "edit_image":
+            self.ctx.logger.info(
+                "开始绘图任务尝试: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s source_image_count=%s source_image_bytes_lengths=%s matched_message_id=%s prompt=%s",
+                task_id,
+                task_type,
+                provider_name,
+                attempt.model,
+                attempt.is_fallback,
+                len(source_image_bytes_list),
+                [len(image_bytes) for image_bytes in source_image_bytes_list],
+                matched_message_id,
+                provider_prompt[:120],
+            )
+            return await self.run_provider_call(
+                image_platform.edit_images,
+                provider_prompt,
+                attempt.model,
+                source_image_bytes_list,
+                1,
+            )
+
+        self.ctx.logger.info(
+            "开始绘图任务尝试: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s source_image_count=0 prompt=%s",
+            task_id,
+            task_type,
+            provider_name,
+            attempt.model,
+            attempt.is_fallback,
+            provider_prompt[:120],
+        )
+        return await self.run_provider_call(
+            image_platform.generate_images,
+            provider_prompt,
+            attempt.model,
+            1,
+        )
+
+    @staticmethod
+    def _format_attempt_error(attempt: ImageRequestAttempt, error_message: str) -> str:
+        """格式化一次模型尝试失败信息。"""
+
+        role_name = "备选模型" if attempt.is_fallback else "首选模型"
+        return f"{role_name} {attempt.provider_name}:{attempt.model} 失败：{error_message}"
+
     def track_background_task(self, task: asyncio.Task[Any], task_id: str) -> None:
         """跟踪后台任务，避免任务对象被提前释放。"""
 
@@ -422,82 +599,168 @@ class DrawService:
                 # 任务记录已被配置重载清空，无法继续追踪状态，静默退出避免 KeyError 崩溃
                 self.ctx.logger.warning("绘图任务记录已失效，终止后台执行: task_id=%s task_type=%s", task_id, task_type)
                 return
-            image_platform, provider_name = self.router.require_platform_for_model(
-                resolved_model,
-                openai_compatibility_mode,
+            primary_attempt = self._build_image_request_attempt(
+                model=resolved_model,
+                task_type=task_type,
+                openai_compatibility_mode=openai_compatibility_mode,
             )
-            # 火山引擎文生图 / 图生图模型是分离的，按任务类型自动切换
-            effective_model = resolved_model
-            if provider_name == "volcengine":
-                effective_model = self.router.resolve_volcengine_model_for_task(resolved_model, task_type)
-                if effective_model != resolved_model:
-                    self.ctx.logger.info(
-                        "火山引擎模型自动切换: task_id=%s task_type=%s original_model=%s effective_model=%s",
+            self.task_store.update_task(
+                task_id,
+                status="running",
+                message=running_message,
+                model=primary_attempt.model,
+                provider=primary_attempt.provider_name,
+            )
+
+            timeout_seconds = self.resolve_request_timeout_seconds()
+            attempt_errors: list[str] = []
+            image_bytes_list: list[bytes] = []
+            successful_attempt: ImageRequestAttempt | None = None
+
+            try:
+                image_bytes_list = await self._run_image_request_attempt(
+                    attempt=primary_attempt,
+                    prompt=prompt,
+                    task_id=task_id,
+                    task_type=task_type,
+                    source_image_bytes_list=normalized_source_images,
+                    matched_message_id=matched_message_id,
+                )
+                if not image_bytes_list:
+                    raise RuntimeError("图片平台没有返回任何图片结果")
+                successful_attempt = primary_attempt
+            except TimeoutError:
+                error_message = f"{timeout_message}，超过 {timeout_seconds} 秒"
+                attempt_errors.append(self._format_attempt_error(primary_attempt, error_message))
+                self.ctx.logger.warning(
+                    "首选模型绘图超时: task_id=%s task_type=%s provider=%s model=%s timeout_seconds=%s",
+                    task_id,
+                    task_type,
+                    primary_attempt.provider_name,
+                    primary_attempt.model,
+                    timeout_seconds,
+                )
+            except Exception as exc:
+                error_message = str(exc) or exc.__class__.__name__
+                attempt_errors.append(self._format_attempt_error(primary_attempt, error_message))
+                self.ctx.logger.warning(
+                    "首选模型绘图失败: task_id=%s task_type=%s provider=%s model=%s error=%s",
+                    task_id,
+                    task_type,
+                    primary_attempt.provider_name,
+                    primary_attempt.model,
+                    error_message,
+                    exc_info=True,
+                )
+
+            if successful_attempt is None:
+                fallback_attempt = self._build_fallback_image_request_attempt(
+                    primary_model=resolved_model,
+                    primary_effective_model=primary_attempt.model,
+                    task_type=task_type,
+                    openai_compatibility_mode=openai_compatibility_mode,
+                )
+                if fallback_attempt is not None:
+                    self.ctx.logger.warning(
+                        "首选模型绘图失败，开始尝试生图备选模型: task_id=%s task_type=%s primary_provider=%s primary_model=%s fallback_provider=%s fallback_model=%s previous_errors=%s",
                         task_id,
                         task_type,
-                        resolved_model,
-                        effective_model,
+                        primary_attempt.provider_name,
+                        primary_attempt.model,
+                        fallback_attempt.provider_name,
+                        fallback_attempt.model,
+                        "；".join(attempt_errors),
                     )
-            image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(effective_model)
-            if is_image_edit and image_edit_unsupported_reason:
-                raise ValueError(f"{image_edit_unsupported_reason}。请改用文生图，或切换到支持图生图的模型")
-            provider_prompt = await self.rewrite_prompt_to_english_if_needed(
-                prompt,
-                provider_name,
-                effective_model,
-            )
-            if is_image_edit:
-                self.ctx.logger.info(
-                    "开始绘图任务: task_id=%s task_type=%s provider=%s model=%s source_image_count=%s source_image_bytes_lengths=%s matched_message_id=%s prompt=%s",
-                    task_id,
-                    task_type,
-                    provider_name,
-                    effective_model,
-                    len(normalized_source_images),
-                    [len(image_bytes) for image_bytes in normalized_source_images],
-                    matched_message_id,
-                    provider_prompt[:120],
-                )
-                image_bytes_list = await self.run_provider_call(
-                    image_platform.edit_images,
-                    provider_prompt,
-                    effective_model,
-                    normalized_source_images,
-                    1,
-                )
-            else:
-                self.ctx.logger.info(
-                    "开始绘图任务: task_id=%s task_type=%s provider=%s model=%s source_image_count=0 prompt=%s",
-                    task_id,
-                    task_type,
-                    provider_name,
-                    effective_model,
-                    provider_prompt[:120],
-                )
-                image_bytes_list = await self.run_provider_call(
-                    image_platform.generate_images,
-                    provider_prompt,
-                    resolved_model,
-                    1,
-                )
-            if not image_bytes_list:
+                    self.task_store.update_task(
+                        task_id,
+                        status="running",
+                        message=f"首选模型失败，正在尝试生图备选模型：{fallback_attempt.model}",
+                        model=fallback_attempt.model,
+                        provider=fallback_attempt.provider_name,
+                    )
+                    try:
+                        image_bytes_list = await self._run_image_request_attempt(
+                            attempt=fallback_attempt,
+                            prompt=prompt,
+                            task_id=task_id,
+                            task_type=task_type,
+                            source_image_bytes_list=normalized_source_images,
+                            matched_message_id=matched_message_id,
+                        )
+                        if not image_bytes_list:
+                            raise RuntimeError("图片平台没有返回任何图片结果")
+                        successful_attempt = fallback_attempt
+                        self.ctx.logger.info(
+                            "生图备选模型绘图成功: task_id=%s task_type=%s provider=%s model=%s previous_errors=%s",
+                            task_id,
+                            task_type,
+                            fallback_attempt.provider_name,
+                            fallback_attempt.model,
+                            "；".join(attempt_errors),
+                        )
+                    except TimeoutError:
+                        error_message = f"{timeout_message}，超过 {timeout_seconds} 秒"
+                        attempt_errors.append(self._format_attempt_error(fallback_attempt, error_message))
+                        self.ctx.logger.error(
+                            "生图备选模型绘图超时: task_id=%s task_type=%s provider=%s model=%s timeout_seconds=%s",
+                            task_id,
+                            task_type,
+                            fallback_attempt.provider_name,
+                            fallback_attempt.model,
+                            timeout_seconds,
+                        )
+                    except Exception as exc:
+                        error_message = str(exc) or exc.__class__.__name__
+                        attempt_errors.append(self._format_attempt_error(fallback_attempt, error_message))
+                        self.ctx.logger.error(
+                            "生图备选模型绘图失败: task_id=%s task_type=%s provider=%s model=%s error=%s",
+                            task_id,
+                            task_type,
+                            fallback_attempt.provider_name,
+                            fallback_attempt.model,
+                            error_message,
+                            exc_info=True,
+                        )
+
+            if successful_attempt is None:
+                failure_message = "；".join(attempt_errors) if attempt_errors else "图片平台没有返回任何图片结果"
                 self.task_store.update_task(
                     task_id,
                     status="failed",
-                    message="图片平台没有返回任何图片结果",
+                    message=failure_message,
                 )
-                self.ctx.logger.error("绘图任务失败: task_id=%s task_type=%s provider=%s model=%s error=%s", task_id, task_type, provider_name, resolved_model, "图片平台没有返回任何图片结果")
+                self.ctx.logger.error(
+                    "绘图任务失败: task_id=%s task_type=%s primary_provider=%s primary_model=%s configured_fallback_model=%s errors=%s",
+                    task_id,
+                    task_type,
+                    primary_attempt.provider_name,
+                    primary_attempt.model,
+                    self.router.config.general.fallback_model.strip(),
+                    failure_message,
+                )
                 return
 
             reviewed_images, rejected_reasons = await self.filter_reviewed_images(prompt, image_bytes_list)
             if not reviewed_images:
                 review_reason_text = "；".join(rejected_reasons) if rejected_reasons else "审核未通过"
+                if successful_attempt.is_fallback and attempt_errors:
+                    review_reason_text = f"首选模型失败后使用备选模型生成，但图片审核未通过：{review_reason_text}"
                 self.task_store.update_task(
                     task_id,
                     status="rejected",
                     message=review_reason_text,
+                    model=successful_attempt.model,
+                    provider=successful_attempt.provider_name,
                 )
-                self.ctx.logger.error("绘图任务审核未通过: task_id=%s task_type=%s provider=%s model=%s error=%s", task_id, task_type, provider_name, resolved_model, review_reason_text)
+                self.ctx.logger.error(
+                    "绘图任务审核未通过: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s error=%s",
+                    task_id,
+                    task_type,
+                    successful_attempt.provider_name,
+                    successful_attempt.model,
+                    successful_attempt.is_fallback,
+                    review_reason_text,
+                )
                 return
 
             sent_count = await self.stream_service.send_generated_images_with_fallback(
@@ -507,22 +770,29 @@ class DrawService:
                 group_id=group_id,
                 platform=platform_name,
                 task_id=task_id,
-                provider=provider_name,
-                model=resolved_model,
+                provider=successful_attempt.provider_name,
+                model=successful_attempt.model,
             )
+            success_message = f"图片已发送，数量={sent_count}"
+            if successful_attempt.is_fallback:
+                success_message = f"首选模型失败，已使用生图备选模型发送图片，数量={sent_count}"
             self.task_store.update_task(
                 task_id,
                 status="completed",
-                message=f"图片已发送，数量={sent_count}",
+                message=success_message,
                 sent_count=sent_count,
+                model=successful_attempt.model,
+                provider=successful_attempt.provider_name,
             )
             self.ctx.logger.info(
-                "绘图任务完成: task_id=%s task_type=%s provider=%s model=%s sent_count=%s",
+                "绘图任务完成: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s sent_count=%s previous_errors=%s",
                 task_id,
                 task_type,
-                provider_name,
-                resolved_model,
+                successful_attempt.provider_name,
+                successful_attempt.model,
+                successful_attempt.is_fallback,
                 sent_count,
+                "；".join(attempt_errors),
             )
         except TimeoutError:
             timeout_seconds = self.resolve_request_timeout_seconds()
@@ -561,32 +831,53 @@ class DrawService:
         is_image_edit = bool(normalized_source_images)
         task_type = "edit_image" if is_image_edit else "draw"
 
-        # 火山引擎文生图 / 图生图模型是分离的，提交前自动切换到匹配的模型
-        effective_model = resolved_model
-        if provider_name == "volcengine":
-            effective_model = self.router.resolve_volcengine_model_for_task(resolved_model, task_type)
-            if effective_model != resolved_model:
-                self.ctx.logger.info(
-                    "火山引擎模型自动切换(提交阶段): stream_id=%s task_type=%s original_model=%s effective_model=%s",
-                    stream_id,
-                    task_type,
-                    resolved_model,
-                    effective_model,
-                )
-
-        image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(effective_model)
-        if is_image_edit and image_edit_unsupported_reason:
+        primary_attempt = self._build_image_request_attempt(
+            model=resolved_model,
+            task_type=task_type,
+            openai_compatibility_mode=resolved_openai_mode,
+        )
+        if is_image_edit and self.router.get_image_edit_unsupported_reason(primary_attempt.model):
             self.ctx.logger.info(
                 "拒绝提交图生图任务: model=%s stream_id=%s user_id=%s group_id=%s platform=%s source_image_count=%s reason=%s",
-                effective_model,
+                primary_attempt.model,
                 stream_id,
                 user_id,
                 group_id,
                 platform_name,
                 len(normalized_source_images),
-                image_edit_unsupported_reason,
+                self.router.get_image_edit_unsupported_reason(primary_attempt.model),
             )
+            image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(primary_attempt.model)
             raise ValueError(f"{image_edit_unsupported_reason}。请改用文生图，或切换到支持图生图的模型")
+
+        fallback_model = self.router.resolve_fallback_model(resolved_model)
+        fallback_unavailable_reason = self.router.get_fallback_model_unavailable_reason(resolved_model)
+        if fallback_model:
+            try:
+                fallback_attempt = self._build_image_request_attempt(
+                    model=fallback_model,
+                    task_type=task_type,
+                    openai_compatibility_mode=resolved_openai_mode,
+                    is_fallback=True,
+                )
+                if fallback_attempt.model == primary_attempt.model:
+                    fallback_model = ""
+                    fallback_unavailable_reason = "生图备选模型与首选模型最终解析结果相同，已忽略备选模型"
+            except Exception as exc:
+                fallback_unavailable_reason = f"生图备选模型解析失败：{exc}"
+                fallback_model = ""
+        self.ctx.logger.info(
+            "准备提交绘图任务: stream_id=%s task_type=%s primary_provider=%s primary_model=%s configured_model=%s fallback_model=%s configured_fallback_model=%s fallback_unavailable_reason=%s source_image_count=%s",
+            stream_id,
+            task_type,
+            primary_attempt.provider_name,
+            primary_attempt.model,
+            resolved_model,
+            fallback_model or "未启用",
+            self.router.config.general.fallback_model.strip() or "未配置",
+            fallback_unavailable_reason or "",
+            len(normalized_source_images),
+        )
 
         task_record = self.task_store.create_task(
             session_key=self.build_session_key(
@@ -598,8 +889,8 @@ class DrawService:
             stream_id=stream_id,
             task_type=task_type,
             prompt=prompt,
-            model=effective_model,
-            provider=provider_name,
+            model=primary_attempt.model,
+            provider=primary_attempt.provider_name,
             message="任务已创建，等待后台执行",
         )
         background_task = asyncio.create_task(
@@ -607,8 +898,8 @@ class DrawService:
                 task_id=task_record.task_id,
                 prompt=prompt,
                 stream_id=stream_id,
-                resolved_model=effective_model,
-                openai_compatibility_mode=resolved_openai_mode,
+                resolved_model=primary_attempt.model,
+                openai_compatibility_mode=primary_attempt.openai_compatibility_mode,
                 source_image_bytes_list=normalized_source_images,
                 matched_message_id=matched_message_id,
                 user_id=user_id,
@@ -619,10 +910,12 @@ class DrawService:
         self.track_background_task(background_task, task_record.task_id)
         if notify_start:
             self.ctx.logger.info(
-                "绘图任务已提交: task_id=%s task_type=%s model=%s stream_id=%s user_id=%s group_id=%s platform=%s source_image_count=%s",
+                "绘图任务已提交: task_id=%s task_type=%s primary_provider=%s primary_model=%s fallback_model=%s stream_id=%s user_id=%s group_id=%s platform=%s source_image_count=%s",
                 task_record.task_id,
                 task_type,
-                resolved_model,
+                primary_attempt.provider_name,
+                primary_attempt.model,
+                fallback_model or "未启用",
                 stream_id,
                 user_id,
                 group_id,
@@ -637,9 +930,10 @@ class DrawService:
                 "这是异步任务。当前不要立刻反复调用 draw_status；请根据对话上下文自然回复用户任务已开始，"
                 f"至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查询状态。"
             ),
-            "provider": provider_name,
-            "model": resolved_model,
-            "openai_compatibility_mode": resolved_openai_mode,
+            "provider": primary_attempt.provider_name,
+            "model": primary_attempt.model,
+            "openai_compatibility_mode": primary_attempt.openai_compatibility_mode,
+            "fallback_model": fallback_model,
             "task_type": task_type,
             "timeout_seconds": self.resolve_request_timeout_seconds(),
             "task_id": task_record.task_id,

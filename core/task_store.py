@@ -184,6 +184,8 @@ class DrawTaskStore:
         status: DrawTaskStatus,
         message: str,
         sent_count: int | None = None,
+        model: str | None = None,
+        provider: str | None = None,
     ) -> DrawTaskRecord | None:
         """更新任务状态；任务不存在时返回 None 而非抛出 KeyError。"""
 
@@ -195,6 +197,10 @@ class DrawTaskStore:
         record.message = message
         if sent_count is not None:
             record.sent_count = sent_count
+        if model is not None:
+            record.model = model.strip()
+        if provider is not None:
+            record.provider = provider.strip()
         record.updated_at = datetime.now()
         self.save()
         return record

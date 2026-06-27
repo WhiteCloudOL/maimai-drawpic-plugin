@@ -39,7 +39,7 @@ DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
         },
         "model": {
             "type": "string",
-            "description": "可选，指定要使用的图片模型；未传时使用当前会话模型",
+            "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
         },
     },
     "required": ["prompt"],
@@ -63,7 +63,7 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
         },
         "model": {
             "type": "string",
-            "description": "可选，指定要使用的图片模型；未传时使用当前会话模型",
+            "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
         },
     },
     "required": ["prompt"],
@@ -638,9 +638,15 @@ class DrawpicPlugin(MaiBotPlugin):
         self._usage_store.load()
         router = self._require_router()
         moderation_service = self._require_moderation_service()
+        resolved_default_model = router.resolve_default_model()
+        resolved_fallback_model = router.resolve_fallback_model(resolved_default_model)
+        fallback_unavailable_reason = router.get_fallback_model_unavailable_reason(resolved_default_model)
         self.ctx.logger.info(
-            "麦麦绘图插件已加载: default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_t2i_models=%s volcengine_i2i_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
-            router.resolve_default_model(),
+            "麦麦绘图插件已加载: default_model=%s fallback_model=%s configured_fallback_model=%s fallback_unavailable_reason=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_t2i_models=%s volcengine_i2i_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s session_pref_count=%s task_count=%s",
+            resolved_default_model,
+            resolved_fallback_model or "未启用",
+            self.config.general.fallback_model.strip() or "未配置",
+            fallback_unavailable_reason or "",
             router.resolve_request_timeout_seconds(),
             len(router.get_aliyun_models()),
             len(router.get_openai_models()),
@@ -677,11 +683,17 @@ class DrawpicPlugin(MaiBotPlugin):
             self._usage_store.load()
             router = self._require_router()
             moderation_service = self._require_moderation_service()
+            resolved_default_model = router.resolve_default_model()
+            resolved_fallback_model = router.resolve_fallback_model(resolved_default_model)
+            fallback_unavailable_reason = router.get_fallback_model_unavailable_reason(resolved_default_model)
             self.ctx.logger.info(
-                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_t2i_models=%s volcengine_i2i_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s task_count=%s",
+                "麦麦绘图插件配置已更新: scope=%s version=%s default_model=%s fallback_model=%s configured_fallback_model=%s fallback_unavailable_reason=%s timeout=%ss aliyun_models=%s openai_models=%s google_models=%s zhipu_models=%s volcengine_t2i_models=%s volcengine_i2i_models=%s siliconflow_models=%s novelai_models=%s prompt_review=%s image_review=%s task_count=%s",
                 scope,
                 version,
-                router.resolve_default_model(),
+                resolved_default_model,
+                resolved_fallback_model or "未启用",
+                self.config.general.fallback_model.strip() or "未配置",
+                fallback_unavailable_reason or "",
                 router.resolve_request_timeout_seconds(),
                 len(router.get_aliyun_models()),
                 len(router.get_openai_models()),
@@ -1135,7 +1147,7 @@ class DrawpicPlugin(MaiBotPlugin):
         if not provider_name:
             await self._send_command_reply(
                 title="模型不可用",
-                body=f"当前会话绘图模型不可用：{resolved_model}",
+                body=f"当前会话首选模型不可用：{resolved_model}",
                 stream_id=stream_id,
                 user_id=user_id,
                 group_id=group_id,
@@ -1157,7 +1169,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 title="当前模型不支持图生图",
                 body=(
                     f"{image_edit_unsupported_reason}。\n"
-                    "请先用 /绘图 模型 <模型名> 切换到支持图生图的模型，或改用 /绘图 文生图 <prompt>。"
+                    "请先用 /绘图 模型 <模型名> 设置支持图生图的首选模型，或改用 /绘图 文生图 <prompt>。"
                 ),
                 stream_id=stream_id,
                 user_id=user_id,
@@ -1381,7 +1393,7 @@ class DrawpicPlugin(MaiBotPlugin):
             if not self._can_manage_session(normalized_user_id):
                 await self._send_command_reply(
                     title="权限不足",
-                    body="当前已启用权限管理。\n只有插件管理员可以切换本群或本会话使用的绘图模型。",
+                    body="当前已启用权限管理。\n只有插件管理员可以设置本群或本会话使用的首选绘图模型。",
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
                     group_id=normalized_group_id,
@@ -1409,14 +1421,14 @@ class DrawpicPlugin(MaiBotPlugin):
                 model=model_name,
             )
             await self._send_command_reply(
-                title="模型已切换",
-                body=f"当前会话绘图模型：{provider_name}：{next_preference['model']}",
+                title="首选模型已设置",
+                body=f"当前会话首选绘图模型：{provider_name}：{next_preference['model']}",
                 stream_id=normalized_stream_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
                 platform=normalized_platform,
             )
-            return True, "已切换绘图模型", 2
+            return True, "已设置首选绘图模型", 2
 
         if normalized_command == "compatible-mode":
             compatibility_mode = rest_payload.strip()

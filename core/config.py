@@ -24,7 +24,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.17.0",
+        default="2.17.1",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -40,11 +40,20 @@ class GeneralConfig(PluginConfigBase):
 
     default_model: str = Field(
         default="gpt-image-2",
-        description="默认模型名称。插件会自动在各平台模型列表中查找该模型",
+        description="默认首选模型名称。插件会自动在各平台模型列表中查找该模型",
         json_schema_extra={
-            "label": "默认模型",
-            "hint": "默认模型名称。插件会自动在各平台模型列表中查找该模型",
+            "label": "默认首选模型",
+            "hint": "默认首选模型名称。插件会自动在各平台模型列表中查找该模型",
             "order": 0,
+        },
+    )
+    fallback_model: str = Field(
+        default="",
+        description="生图备选模型名称。首选模型调用失败或未返回图片时，后台任务会自动尝试该模型；留空表示不启用",
+        json_schema_extra={
+            "label": "生图备选模型",
+            "hint": "首选模型调用失败或未返回图片时自动尝试；需填写已在下方任一平台模型列表中配置的模型名，留空表示不启用",
+            "order": 1,
         },
     )
     request_timeout_seconds: int = Field(
@@ -53,7 +62,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "图片请求超时",
             "hint": "单次图片请求超时时间（秒），建议设置为 120 到 300",
-            "order": 1,
+            "order": 2,
         },
     )
     command_reply_mode: CommandReplyMode = Field(
@@ -63,16 +72,16 @@ class GeneralConfig(PluginConfigBase):
             "label": "命令返回形式",
             "hint": "图片=使用粉色图片模板回复命令；文本=直接发送纯文本回复",
             "options": ["图片", "文本"],
-            "order": 2,
+            "order": 3,
         },
     )
     permission_enabled: bool = Field(
         default=True,
-        description="是否启用权限管理。启用后，仅插件管理员可切换模型、切换兼容模式和修改用户次数",
+        description="是否启用权限管理。启用后，仅插件管理员可设置首选模型、切换兼容模式和修改用户次数",
         json_schema_extra={
             "label": "启用权限管理",
-            "hint": "启用后，模型切换、兼容模式切换和次数管理命令仅允许插件管理员使用",
-            "order": 3,
+            "hint": "启用后，首选模型设置、兼容模式切换和次数管理命令仅允许插件管理员使用",
+            "order": 4,
         },
     )
     admin_user_ids: list[str] = Field(
@@ -81,7 +90,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "插件管理员列表",
             "hint": "填写允许管理模型、兼容模式和用户次数的用户 ID，通常为 QQ 号",
-            "order": 4,
+            "order": 5,
         },
     )
     quota_enabled: bool = Field(
@@ -90,7 +99,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "启用用户次数管理",
             "hint": "启用后，普通用户每次绘图会消耗次数；管理员不受限制",
-            "order": 5,
+            "order": 6,
         },
     )
     quota_period: QuotaPeriodMode = Field(
@@ -99,7 +108,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "次数周期",
             "hint": "daily=每日，weekly=每周，monthly=每月，once=一次性不自动重置",
-            "order": 6,
+            "order": 7,
         },
     )
     default_quota: int = Field(
@@ -108,7 +117,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "默认可用次数",
             "hint": "普通用户在所选周期内默认可用的绘图次数",
-            "order": 7,
+            "order": 8,
         },
     )
     image_edit_unsupported_models: list[str] = Field(
@@ -117,7 +126,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "不支持图生图模型",
             "hint": "每行一个模型名。用于标记平台列表中存在但只能文生图的模型，命中后不会创建后台图生图任务",
-            "order": 8,
+            "order": 9,
         },
     )
     prompt_review_enabled: bool = Field(
@@ -126,7 +135,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "启用提示词审核",
             "hint": "启用后，文生图和图生图的提示词会先交给 MaiBot 的 replyer 模型审核",
-            "order": 9,
+            "order": 10,
         },
     )
     prompt_review_prompt: str = Field(
@@ -148,7 +157,7 @@ class GeneralConfig(PluginConfigBase):
             "hint": "支持 {user_prompt} 占位符；建议要求模型只返回 PASS 或 REJECT 及简短原因",
             "x-widget": "textarea",
             "rows": 8,
-            "order": 10,
+            "order": 11,
         },
     )
     image_review_enabled: bool = Field(
@@ -157,7 +166,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "启用生成图片审核",
             "hint": "启用后，生成完成的图片会先交给 MaiBot 的 vlm 模型审核，再决定是否发送",
-            "order": 11,
+            "order": 12,
         },
     )
     image_review_prompt: str = Field(
@@ -180,7 +189,7 @@ class GeneralConfig(PluginConfigBase):
             "hint": "支持 {user_prompt} 占位符；建议要求模型只返回 PASS 或 REJECT 及简短原因",
             "x-widget": "textarea",
             "rows": 8,
-            "order": 12,
+            "order": 13,
         },
     )
 
