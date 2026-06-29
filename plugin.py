@@ -270,7 +270,13 @@ class DrawpicPlugin(MaiBotPlugin):
     def _resolve_quota_user_id(self, user_id: str, group_id: str, stream_id: str) -> str:
         """解析额度使用的用户键。"""
 
-        return user_id.strip() or group_id.strip() or stream_id.strip()
+        normalized_user_id = user_id.strip()
+        normalized_group_id = group_id.strip()
+        if normalized_group_id:
+            if normalized_user_id == normalized_group_id:
+                return ""
+            return normalized_user_id
+        return normalized_user_id or stream_id.strip()
 
     def _quota_status_text(self, user_id: str, group_id: str, stream_id: str) -> str:
         """构建用户额度状态文本。"""
@@ -292,6 +298,22 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return "管理员不受次数限制"
         quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
+        if not quota_user_id:
+            if group_id.strip():
+                self.ctx.logger.warning(
+                    "绘图额度状态失败: 群聊缺少真实用户ID，拒绝按群号查询额度 stream_id=%s user_id=%s group_id=%s",
+                    stream_id,
+                    user_id,
+                    group_id,
+                )
+            else:
+                self.ctx.logger.warning(
+                    "绘图额度状态失败: quota_user_id为空 stream_id=%s user_id=%s group_id=%s",
+                    stream_id,
+                    user_id,
+                    group_id,
+                )
+            return "无法识别用户，不能查询个人次数"
         remaining = self._usage_store.get_remaining(
             quota_user_id,
             period=self.config.general.quota_period,
@@ -330,12 +352,20 @@ class DrawpicPlugin(MaiBotPlugin):
             return True, "管理员不受次数限制"
         quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
         if not quota_user_id:
-            self.ctx.logger.warning(
-                "绘图额度扣除失败: quota_user_id为空 stream_id=%s user_id=%s group_id=%s",
-                stream_id,
-                user_id,
-                group_id,
-            )
+            if group_id.strip():
+                self.ctx.logger.warning(
+                    "绘图额度扣除失败: 群聊缺少真实用户ID，拒绝按群号扣除额度 stream_id=%s user_id=%s group_id=%s",
+                    stream_id,
+                    user_id,
+                    group_id,
+                )
+            else:
+                self.ctx.logger.warning(
+                    "绘图额度扣除失败: quota_user_id为空 stream_id=%s user_id=%s group_id=%s",
+                    stream_id,
+                    user_id,
+                    group_id,
+                )
             return False, "无法识别用户，不能使用绘图次数"
         success, remaining = self._usage_store.consume(
             quota_user_id,
@@ -418,24 +448,64 @@ class DrawpicPlugin(MaiBotPlugin):
         return ""
 
     @staticmethod
-    def _extract_message_context(message: dict[str, Any]) -> dict[str, str]:
+    def _read_context_value(source: Any, key: str) -> Any:
+        """读取 dict 或消息对象中的同名上下文字段。"""
+
+        if source is None:
+            return None
+        if isinstance(source, Mapping):
+            return source.get(key)
+        return getattr(source, key, None)
+
+    @classmethod
+    def _first_context_value(cls, source: Any, *keys: str) -> Any:
+        """按顺序读取第一个非空上下文字段。"""
+
+        for key in keys:
+            value = cls._read_context_value(source, key)
+            if value not in (None, ""):
+                return value
+        return ""
+
+    @classmethod
+    def _select_runtime_user_id(
+        cls,
+        *,
+        platform: str,
+        group_id: str,
+        user_id_candidates: list[Any],
+    ) -> str:
+        """选择运行期真实用户 ID，QQ 群聊只接受数字用户号。"""
+
+        normalized_candidates = [str(value or "").strip() for value in user_id_candidates]
+        if cls._is_qq_platform(platform) and group_id.strip():
+            normalized_group_id = group_id.strip()
+            for candidate in normalized_candidates:
+                if candidate.isdigit() and candidate != normalized_group_id:
+                    return candidate
+            return ""
+        for candidate in normalized_candidates:
+            if candidate:
+                return candidate
+        return ""
+
+    @classmethod
+    def _extract_message_context(cls, message: Any) -> dict[str, str]:
         """从 Hook 原始消息中提取命令处理需要的上下文字段。"""
 
-        message_info = message.get("message_info")
-        if not isinstance(message_info, dict):
-            message_info = {}
-        user_info = message_info.get("user_info")
-        if not isinstance(user_info, dict):
-            user_info = {}
-        group_info = message_info.get("group_info")
-        if not isinstance(group_info, dict):
-            group_info = {}
+        message_info = cls._read_context_value(message, "message_info")
+        user_info = cls._read_context_value(message_info, "user_info")
+        group_info = cls._read_context_value(message_info, "group_info")
 
         return {
-            "stream_id": str(message.get("session_id") or "").strip(),
-            "user_id": str(user_info.get("user_id") or "").strip(),
-            "group_id": str(group_info.get("group_id") or "").strip(),
-            "platform": str(message.get("platform") or "qq").strip() or "qq",
+            "stream_id": str(cls._first_context_value(message, "session_id", "stream_id", "chat_id")).strip(),
+            "user_id": str(
+                cls._first_context_value(user_info, "user_id") or cls._first_context_value(message, "user_id")
+            ).strip(),
+            "group_id": str(
+                cls._first_context_value(group_info, "group_id") or cls._first_context_value(message, "group_id")
+            ).strip(),
+            "platform": str(cls._first_context_value(message, "platform") or "qq").strip() or "qq",
         }
 
     def _extract_runtime_context(
@@ -448,15 +518,39 @@ class DrawpicPlugin(MaiBotPlugin):
 
         payload = kwargs or {}
         message = payload.get("message")
-        message_context = self._extract_message_context(message) if isinstance(message, dict) else {}
-        normalized_stream_id = str(message_context.get("stream_id") or payload.get("chat_id") or stream_id or "").strip()
-        normalized_user_id = str(message_context.get("user_id") or payload.get("user_id") or "").strip()
+        message_context = self._extract_message_context(message) if message is not None else {}
+        normalized_platform = str(message_context.get("platform") or payload.get("platform") or "qq").strip() or "qq"
+        normalized_stream_id = str(
+            message_context.get("stream_id")
+            or payload.get("stream_id")
+            or payload.get("chat_id")
+            or stream_id
+            or ""
+        ).strip()
         normalized_group_id = str(message_context.get("group_id") or payload.get("group_id") or "").strip()
+        normalized_user_id = self._select_runtime_user_id(
+            platform=normalized_platform,
+            group_id=normalized_group_id,
+            user_id_candidates=[message_context.get("user_id"), payload.get("user_id")],
+        )
+        if (
+            any(str(value or "").strip() for value in (message_context.get("user_id"), payload.get("user_id")))
+            and not normalized_user_id
+            and normalized_group_id
+            and self._is_qq_platform(normalized_platform)
+        ):
+            self.ctx.logger.warning(
+                "绘图运行上下文收到无效QQ用户ID（昵称或群号），将拒绝用于个人额度 stream_id=%s user_id=%s group_id=%s platform=%s",
+                normalized_stream_id,
+                message_context.get("user_id") or payload.get("user_id") or "",
+                normalized_group_id,
+                normalized_platform,
+            )
         return {
             "stream_id": normalized_stream_id,
             "user_id": normalized_user_id,
             "group_id": normalized_group_id,
-            "platform": str(message_context.get("platform") or payload.get("platform") or "qq").strip() or "qq",
+            "platform": normalized_platform,
         }
 
     def _extract_invocation_context(
@@ -500,6 +594,8 @@ class DrawpicPlugin(MaiBotPlugin):
         resolved_group_id = str(live_context.get("group_id") or "").strip() or group_id.strip()
         incoming_user_id = cls._normalize_runtime_user_id(user_id, resolved_platform)
         if resolved_group_id:
+            if incoming_user_id == resolved_group_id:
+                incoming_user_id = ""
             resolved_user_id = incoming_user_id
         else:
             live_user_id = cls._normalize_runtime_user_id(
