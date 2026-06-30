@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.8.7-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.8.8-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -169,7 +169,12 @@ plugins/maimai-drawpic-plugin/
 
 ```
 
-## 📝 近期更新
+## 近期更新
+
+### v1.8.8
+
+* 群聊 user_id 获取修复：在不修改主程序的前提下，将 user_id 作为工具必填参数由 LLM 从聊天历史中填入，解决群聊中 SDK 注入 user_id 为空导致额度无法扣除的问题。QQ 平台会对 LLM 填入的 user_id 做纯数字校验，非数字 ID 会被拒绝。
+* 工具日志补齐：三个工具在 user_id 缺失或无效时记录 warning 日志，包含 LLM 原始填入值、group_id、stream_id 便于排查。
 
 ### v1.8.7
 

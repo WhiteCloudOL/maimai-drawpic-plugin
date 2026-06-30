@@ -37,12 +37,16 @@ DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "图片提示词，尽量描述清楚主体、风格和画面内容",
         },
+        "user_id": {
+            "type": "string",
+            "description": "发起绘图的用户的 user_id，从聊天历史消息中获取发送者 ID",
+        },
         "model": {
             "type": "string",
             "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
         },
     },
-    "required": ["prompt"],
+    "required": ["prompt", "user_id"],
 }
 
 EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
@@ -52,6 +56,10 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
         "prompt": {
             "type": "string",
             "description": "图片编辑提示词，描述希望基于源图修改成什么样；不要把源图片描述写在这里替代真实图片",
+        },
+        "user_id": {
+            "type": "string",
+            "description": "发起编辑图片的用户的 user_id，从聊天历史消息中获取发送者 ID",
         },
         "source_message_id": {
             "type": "string",
@@ -66,18 +74,23 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
             "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
         },
     },
-    "required": ["prompt"],
+    "required": ["prompt", "user_id"],
 }
 
 DRAW_STATUS_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
+        "user_id": {
+            "type": "string",
+            "description": "查询绘图状态的用户的 user_id，从聊天历史消息中获取发送者 ID",
+        },
         "task_id": {
             "type": "string",
             "description": "可选，指定要查询的后台绘图任务 ID；不填时默认查询当前会话最近一个任务",
         },
     },
+    "required": ["user_id"],
 }
 
 
@@ -557,10 +570,19 @@ class DrawpicPlugin(MaiBotPlugin):
         self,
         *,
         kwargs: dict[str, Any] | None = None,
+        llm_user_id: str = "",
     ) -> dict[str, str]:
-        """从 SDK 注入参数中提取工具调用上下文，不依赖 LLM 填写。"""
+        """从 SDK 注入参数和 LLM 填入参数中提取工具调用上下文。
 
-        return self._extract_runtime_context(kwargs=kwargs)
+        LLM 填入的 user_id 优先级最高，SDK 注入的 user_id 作为 fallback。
+        """
+
+        payload = kwargs or {}
+        llm_user_id = str(llm_user_id or "").strip()
+        # LLM 填入的 user_id 优先，但需通过平台校验
+        if llm_user_id:
+            payload = {**payload, "user_id": llm_user_id}
+        return self._extract_runtime_context(kwargs=payload)
 
     @staticmethod
     def _is_qq_platform(platform: str) -> bool:
@@ -894,6 +916,7 @@ class DrawpicPlugin(MaiBotPlugin):
     async def handle_draw(
         self,
         prompt: str,
+        user_id: str,
         model: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -903,7 +926,15 @@ class DrawpicPlugin(MaiBotPlugin):
             return {"success": False, "message": "提示词不能为空"}
 
         try:
-            context = self._extract_invocation_context(kwargs=kwargs)
+            context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
+            if not context["user_id"]:
+                self.ctx.logger.warning(
+                    "draw 工具缺少有效 user_id: llm_user_id=%s group_id=%s stream_id=%s",
+                    user_id,
+                    context["group_id"],
+                    context["stream_id"],
+                )
+                return {"success": False, "message": "无法识别发起用户，缺少有效的 user_id"}
             return await self._start_background_image_request(
                 prompt=prompt.strip(),
                 stream_id=context["stream_id"],
@@ -933,6 +964,7 @@ class DrawpicPlugin(MaiBotPlugin):
     async def handle_edit_image(
         self,
         prompt: str,
+        user_id: str,
         source_message_id: str = "",
         source_image_base64: str = "",
         model: str = "",
@@ -945,7 +977,15 @@ class DrawpicPlugin(MaiBotPlugin):
 
         try:
             draw_service = self._require_draw_service()
-            context = self._extract_invocation_context(kwargs=kwargs)
+            context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
+            if not context["user_id"]:
+                self.ctx.logger.warning(
+                    "edit_image 工具缺少有效 user_id: llm_user_id=%s group_id=%s stream_id=%s",
+                    user_id,
+                    context["group_id"],
+                    context["stream_id"],
+                )
+                return {"success": False, "message": "无法识别发起用户，缺少有效的 user_id"}
             live_context = await self._require_stream_service().resolve_live_stream_context(
                 stream_id=context["stream_id"],
                 user_id=context["user_id"],
@@ -1055,12 +1095,21 @@ class DrawpicPlugin(MaiBotPlugin):
     )
     async def handle_draw_status(
         self,
+        user_id: str,
         task_id: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """查询后台绘图任务状态。"""
 
-        context = self._extract_invocation_context(kwargs=kwargs)
+        context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
+        if not context["user_id"]:
+            self.ctx.logger.warning(
+                "draw_status 工具缺少有效 user_id: llm_user_id=%s group_id=%s stream_id=%s",
+                user_id,
+                context["group_id"],
+                context["stream_id"],
+            )
+            return {"success": False, "message": "无法识别发起用户，缺少有效的 user_id"}
         live_context = await self._require_stream_service().resolve_live_stream_context(
             stream_id=context["stream_id"],
             user_id=context["user_id"],
