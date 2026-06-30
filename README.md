@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.8.6-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.8.7-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -170,6 +170,12 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 📝 近期更新
+
+### v1.8.7
+
+* **额度归属修正**：所有额度查询与扣除统一以 `user_id` 为唯一归属键，移除私聊场景下用 `stream_id` 兜底的逻辑，避免额度账本污染。
+* **额度不足提示**：工具调用额度不足时返回用户标识与剩余次数事实，由 LLM 自行组织回复，不再注入固定提示文本。
+* **调试日志精简**：工具上下文提取日志降级为 debug 级别，移除临时调试用全量消息打印代码。
 
 ### v1.8.6
 

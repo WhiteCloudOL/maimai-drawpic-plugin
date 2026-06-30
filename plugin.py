@@ -268,15 +268,14 @@ class DrawpicPlugin(MaiBotPlugin):
         return self._is_admin(user_id)
 
     def _resolve_quota_user_id(self, user_id: str, group_id: str, stream_id: str) -> str:
-        """解析额度使用的用户键。"""
+        """解析额度使用的用户键，始终以真实 user_id 为准。"""
 
+        del stream_id  # 额度仅按 user_id 归属，不再用 stream_id 兜底
         normalized_user_id = user_id.strip()
         normalized_group_id = group_id.strip()
-        if normalized_group_id:
-            if normalized_user_id == normalized_group_id:
-                return ""
-            return normalized_user_id
-        return normalized_user_id or stream_id.strip()
+        if normalized_group_id and normalized_user_id == normalized_group_id:
+            return ""
+        return normalized_user_id
 
     def _quota_status_text(self, user_id: str, group_id: str, stream_id: str) -> str:
         """构建用户额度状态文本。"""
@@ -299,21 +298,13 @@ class DrawpicPlugin(MaiBotPlugin):
             return "管理员不受次数限制"
         quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
         if not quota_user_id:
-            if group_id.strip():
-                self.ctx.logger.warning(
-                    "绘图额度状态失败: 群聊缺少真实用户ID，拒绝按群号查询额度 stream_id=%s user_id=%s group_id=%s",
-                    stream_id,
-                    user_id,
-                    group_id,
-                )
-            else:
-                self.ctx.logger.warning(
-                    "绘图额度状态失败: quota_user_id为空 stream_id=%s user_id=%s group_id=%s",
-                    stream_id,
-                    user_id,
-                    group_id,
-                )
-            return "无法识别用户，不能查询个人次数"
+            self.ctx.logger.warning(
+                "绘图额度状态失败: 无法识别用户 user_id=%s group_id=%s stream_id=%s",
+                user_id,
+                group_id,
+                stream_id,
+            )
+            return "无法识别用户身份，不能查询个人次数"
         remaining = self._usage_store.get_remaining(
             quota_user_id,
             period=self.config.general.quota_period,
@@ -329,7 +320,7 @@ class DrawpicPlugin(MaiBotPlugin):
             user_id,
             group_id,
         )
-        return f"当前周期剩余 {remaining} 次（周期：{self.config.general.quota_period}）"
+        return f"用户 {quota_user_id} 当前周期剩余 {remaining} 次（周期：{self.config.general.quota_period}）"
 
     def _consume_draw_quota(self, user_id: str, group_id: str, stream_id: str) -> tuple[bool, str]:
         """消耗一次绘图额度。"""
@@ -352,21 +343,13 @@ class DrawpicPlugin(MaiBotPlugin):
             return True, "管理员不受次数限制"
         quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
         if not quota_user_id:
-            if group_id.strip():
-                self.ctx.logger.warning(
-                    "绘图额度扣除失败: 群聊缺少真实用户ID，拒绝按群号扣除额度 stream_id=%s user_id=%s group_id=%s",
-                    stream_id,
-                    user_id,
-                    group_id,
-                )
-            else:
-                self.ctx.logger.warning(
-                    "绘图额度扣除失败: quota_user_id为空 stream_id=%s user_id=%s group_id=%s",
-                    stream_id,
-                    user_id,
-                    group_id,
-                )
-            return False, "无法识别用户，不能使用绘图次数"
+            self.ctx.logger.warning(
+                "绘图额度扣除失败: 无法识别用户 user_id=%s group_id=%s stream_id=%s",
+                user_id,
+                group_id,
+                stream_id,
+            )
+            return False, "无法识别用户身份，不能使用绘图次数"
         success, remaining = self._usage_store.consume(
             quota_user_id,
             period=self.config.general.quota_period,
@@ -383,7 +366,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 user_id,
                 group_id,
             )
-            return False, f"绘图次数已用尽（周期：{self.config.general.quota_period}）"
+            return False, f"用户 {quota_user_id} 的绘图次数已用尽（周期：{self.config.general.quota_period}）"
         self.ctx.logger.info(
             "绘图额度已扣除: quota_user_id=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
             quota_user_id,
@@ -394,7 +377,7 @@ class DrawpicPlugin(MaiBotPlugin):
             user_id,
             group_id,
         )
-        return True, f"当前周期剩余 {remaining} 次"
+        return True, f"用户 {quota_user_id} 当前周期剩余 {remaining} 次"
 
     @staticmethod
     def _resolve_stream_id_from_hook_message(message: Any) -> str:
@@ -528,13 +511,30 @@ class DrawpicPlugin(MaiBotPlugin):
             or ""
         ).strip()
         normalized_group_id = str(message_context.get("group_id") or payload.get("group_id") or "").strip()
+        message_context_user_id = message_context.get("user_id")
+        payload_user_id = payload.get("user_id")
         normalized_user_id = self._select_runtime_user_id(
             platform=normalized_platform,
             group_id=normalized_group_id,
-            user_id_candidates=[message_context.get("user_id"), payload.get("user_id")],
+            user_id_candidates=[message_context_user_id, payload_user_id],
+        )
+        self.ctx.logger.debug(
+            "工具上下文提取: message_present=%s payload_stream_id=%s payload_user_id=%s payload_group_id=%s payload_platform=%s "
+            "候选user_id=[message_context=%s, payload=%s] 选中user_id=%s 最终stream_id=%s group_id=%s platform=%s",
+            message is not None,
+            payload.get("stream_id"),
+            payload_user_id,
+            payload.get("group_id"),
+            payload.get("platform"),
+            message_context_user_id,
+            payload_user_id,
+            normalized_user_id,
+            normalized_stream_id,
+            normalized_group_id,
+            normalized_platform,
         )
         if (
-            any(str(value or "").strip() for value in (message_context.get("user_id"), payload.get("user_id")))
+            any(str(value or "").strip() for value in (message_context_user_id, payload_user_id))
             and not normalized_user_id
             and normalized_group_id
             and self._is_qq_platform(normalized_platform)
@@ -542,7 +542,7 @@ class DrawpicPlugin(MaiBotPlugin):
             self.ctx.logger.warning(
                 "绘图运行上下文收到无效QQ用户ID（昵称或群号），将拒绝用于个人额度 stream_id=%s user_id=%s group_id=%s platform=%s",
                 normalized_stream_id,
-                message_context.get("user_id") or payload.get("user_id") or "",
+                message_context_user_id or payload_user_id or "",
                 normalized_group_id,
                 normalized_platform,
             )
@@ -915,7 +915,7 @@ class DrawpicPlugin(MaiBotPlugin):
         except PermissionError as exc:
             return {
                 "success": False,
-                "message": f"{exc}。请自然告知用户当前无法继续绘图，并提示联系管理员调整次数。",
+                "message": str(exc),
             }
         except Exception as exc:
             self.ctx.logger.error("启动后台创建图片失败: %s", exc, exc_info=True)
@@ -1034,7 +1034,7 @@ class DrawpicPlugin(MaiBotPlugin):
         except PermissionError as exc:
             return {
                 "success": False,
-                "message": f"{exc}。请自然告知用户当前无法继续绘图，并提示联系管理员调整次数。",
+                "message": str(exc),
             }
         except ValueError as exc:
             return {
