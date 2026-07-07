@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import asyncio
 import inspect
@@ -581,8 +581,26 @@ class DrawService:
         user_id: str = "",
         group_id: str = "",
         platform_name: str = "qq",
+        on_task_unsuccessful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
     ) -> None:
         """后台执行绘图任务，源图为空时文生图，存在源图时图生图。"""
+
+        async def _notify_task_unsuccessful(status: str, reason: str) -> None:
+            if on_task_unsuccessful is None:
+                return
+            try:
+                result = on_task_unsuccessful(task_id, status, reason)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as exc:
+                self.ctx.logger.error(
+                    "绘图任务失败回调执行异常: task_id=%s status=%s reason=%s error=%s",
+                    task_id,
+                    status,
+                    reason,
+                    exc,
+                    exc_info=True,
+                )
 
         normalized_source_images = source_image_bytes_list or []
         is_image_edit = bool(normalized_source_images)
@@ -729,6 +747,7 @@ class DrawService:
                     status="failed",
                     message=failure_message,
                 )
+                await _notify_task_unsuccessful("failed", failure_message)
                 self.ctx.logger.error(
                     "绘图任务失败: task_id=%s task_type=%s primary_provider=%s primary_model=%s configured_fallback_model=%s errors=%s",
                     task_id,
@@ -752,6 +771,7 @@ class DrawService:
                     model=successful_attempt.model,
                     provider=successful_attempt.provider_name,
                 )
+                await _notify_task_unsuccessful("rejected", review_reason_text)
                 self.ctx.logger.error(
                     "绘图任务审核未通过: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s error=%s",
                     task_id,
@@ -794,6 +814,15 @@ class DrawService:
                 sent_count,
                 "；".join(attempt_errors),
             )
+        except asyncio.CancelledError:
+            self.task_store.update_task(
+                task_id,
+                status="failed",
+                message="任务已取消",
+            )
+            await _notify_task_unsuccessful("failed", "任务已取消")
+            self.ctx.logger.warning("绘图任务已取消: task_id=%s task_type=%s model=%s", task_id, task_type, resolved_model)
+            raise
         except TimeoutError:
             timeout_seconds = self.resolve_request_timeout_seconds()
             self.task_store.update_task(
@@ -801,6 +830,7 @@ class DrawService:
                 status="failed",
                 message=f"{timeout_message}，超过 {timeout_seconds} 秒",
             )
+            await _notify_task_unsuccessful("failed", f"{timeout_message}，超过 {timeout_seconds} 秒")
             self.ctx.logger.error("绘图任务失败: task_id=%s task_type=%s model=%s error=%s", task_id, task_type, resolved_model, f"{timeout_message}，超过 {timeout_seconds} 秒")
         except Exception as exc:
             self.task_store.update_task(
@@ -808,6 +838,7 @@ class DrawService:
                 status="failed",
                 message=str(exc),
             )
+            await _notify_task_unsuccessful("failed", str(exc))
             self.ctx.logger.error("绘图任务失败: task_id=%s task_type=%s model=%s error=%s", task_id, task_type, resolved_model, exc, exc_info=True)
 
     async def start_background_image_request(
@@ -824,6 +855,7 @@ class DrawService:
         source_image_bytes_list: list[bytes] | None = None,
         matched_message_id: str = "",
         notify_start: bool = False,
+        on_task_unsuccessful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
     ) -> dict[str, Any]:
         """启动后台绘图任务，源图为空时文生图，存在源图时图生图。"""
 
@@ -905,6 +937,7 @@ class DrawService:
                 user_id=user_id,
                 group_id=group_id,
                 platform_name=platform_name,
+                on_task_unsuccessful=on_task_unsuccessful,
             )
         )
         self.track_background_task(background_task, task_record.task_id)

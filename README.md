@@ -3,9 +3,9 @@
 # 🎨 麦麦绘图 (MaiBot Drawpic Plugin)
 
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
-![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.0+-success.svg)
+![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.10+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.8.8-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.8.9-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -30,29 +30,32 @@
 
 | 平台 | 说明 | 文生图 | 图生图 | API Key 获取 / 官网 |
 | --- | --- | :---: | :---: | --- |
-| **OpenAI** 及兼容中转 | 官方 `gpt-image` 系列及任意 OpenAI 兼容接口（NewAPI、中转站等），支持多实例分别配置 BaseURL 与模型映射。 | ✅ | ✅ | [Platform](https://platform.openai.com/) |
+| **OpenAI** 及兼容中转 | 官方 `gpt-image` 系列及任意 OpenAI 兼容接口（NewAPI、中转站等），支持多实例分别配置 BaseURL 与模型映射。 | ✅ | ✅ | [OpenAI开放平台](https://platform.openai.com/) |
 | **Google Gemini** | Gemini `image-preview` / `flash-image` 系列图片模型，支持官方接口与兼容网关。 | ✅ | ✅ | [Google AI Studio](https://aistudio.google.com/apikey) |
 | **智谱** | 智谱 GLM 图像生成接口，中文提示词友好。 | ✅ | ❌ | [智谱开放平台](https://open.bigmodel.cn/) |
-| **阿里百炼** | 通义万相 `qwen-image` 系列，支持自由分辨率与图像编辑。 | ✅ | ✅ | [获取 API Key](https://help.aliyun.com/zh/model-studio/get-api-key) |
-| **火山引擎 / 方舟** | 豆包生图、即梦 AI 系列模型，内置官方接口地址。 | ✅ | ✅ | [API Key 管理](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey) |
-| **硅基流动** | Kolors、Stable Diffusion 3.5 等开源模型，按量计费。 | ✅ | ✅ | [API 密钥页面](https://cloud.siliconflow.cn/account/ak) |
-| **NovelAI / NovelAPI** | NovelAI 官方接口或兼容 NovelAPI 网关，支持 `nai-diffusion` 全系列模型。 | ✅ | ✅ | [NovelAI](https://novelai.net/) |
+| **阿里百炼** | 通义万相 `qwen-image` 系列，支持自由分辨率与图像编辑。 | ✅ | ✅ | [阿里云API-KEY管理](https://help.aliyun.com/zh/model-studio/get-api-key) |
+| **火山引擎** | 豆包生图、即梦 AI 系列模型，内置官方接口地址。 | ✅ | ✅ | [火山引擎API-KEY管理](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey) |
+| **硅基流动** | Kolors、Stable Diffusion 3.5 等开源模型，按量计费。 | ✅ | ✅ | [硅基流动API-KEY管理](https://cloud.siliconflow.cn/account/ak) |
+| **NovelAI / NovelAPI** | NovelAI 官方接口或兼容 NovelAPI 网关，支持 `nai-diffusion` 全系列模型。 | ✅ | ✅ | [NovelAI官网](https://novelai.net/) |
 
-> 💡 标记为 ❌ 的平台仅支持文生图，插件会在用户尝试图生图时提前拦截并提示切换模型。
+> 💡 标记为 ❌ 表示该平台不支持某一项功能，插件会在用户尝试图生图时提前拦截并提示切换模型。
 
 ## 📦 安装指南
 
 ### 🔹 方式一：插件市场安装（推荐）
-插件市场搜索：**麦麦绘图**，即可安装完成
+插件市场搜索：`麦麦绘图`，即可安装完成
 
 ### 🔹 方式二：maibot CLI 安装
-非官方安装方式 支持Windows/MacOS/Linux多平台：https://github.com/WhiteCloudOL/MaiBot-Manager-TUI
+**非官方安装方式** 支持Windows/MacOS/Linux多平台：https://github.com/WhiteCloudOL/MaiBot-Manager-TUI  
 
+```bash
 maibot plugin install WhiteCloudOL/maimai-drawpic-plugin
+```
 
 ### 🔹 方式三：手动安装
 
 使用git下载插件文件至插件文件夹：
+
 ```bash
 cd plugins # 进入插件文件夹
 git clone https://github.com/WhiteCloudOL/maimai-drawpic-plugin
@@ -148,6 +151,8 @@ models = "relay-gpt-image=gpt-image-2"
 
 插件向 MaiBot 暴露以下 Native Tools，由大语言模型根据对话上下文自然调用，无需人工干预指令：
 
+工具调用所需的 `stream_id`、`group_id`、`user_id` 优先由 MaiBot 主程序运行时上下文注入，LLM 不需要也不应该自行填写用户 ID。
+
 | 工具名称 | 核心能力 |
 | --- | --- |
 | `draw` | 接收提示词发起文生图任务，完成后将图像异步回调至当前聊天流。 |
@@ -171,53 +176,8 @@ plugins/maimai-drawpic-plugin/
 
 ## 近期更新
 
-### v1.8.8
+### v1.8.9
 
-* 群聊 user_id 获取修复：在不修改主程序的前提下，将 user_id 作为工具必填参数由 LLM 从聊天历史中填入，解决群聊中 SDK 注入 user_id 为空导致额度无法扣除的问题。QQ 平台会对 LLM 填入的 user_id 做纯数字校验，非数字 ID 会被拒绝。
-* 工具日志补齐：三个工具在 user_id 缺失或无效时记录 warning 日志，包含 LLM 原始填入值、group_id、stream_id 便于排查。
-
-### v1.8.7
-
-* **额度归属修正**：所有额度查询与扣除统一以 `user_id` 为唯一归属键，移除私聊场景下用 `stream_id` 兜底的逻辑，避免额度账本污染。
-* **额度不足提示**：工具调用额度不足时返回用户标识与剩余次数事实，由 LLM 自行组织回复，不再注入固定提示文本。
-* **调试日志精简**：工具上下文提取日志降级为 debug 级别，移除临时调试用全量消息打印代码。
-
-### v1.8.6
-
-* **额度归属修复**：群聊绘图额度只扣发起者个人额度；当运行上下文缺少真实用户 ID 时会拒绝按群号查询或扣除额度，并记录清晰告警日志。
-
-### v1.8.5
-
-* **生图备选模型**：通用配置新增 `fallback_model`，首选模型调用失败、超时或未返回图片时会自动尝试备选模型，并在任务状态与日志中记录最终使用模型。
-* **指令文案调整**：`/绘图 模型 <模型名>` 语义调整为设置当前会话首选模型，避免和全局生图备选模型混淆。
-
-### v1.8.4
-
-* **聊天流修复**：LLM 工具不再暴露聊天流参数，改由插件从 SDK 注入上下文和 `ctx.chat` 能力解析真实聊天流，修复 QQ 私聊中把 QQ 号或昵称误当发送目标导致“目标聊天流不可用”的问题。
-* **额度归属修复**：QQ 私聊仅使用真实数字用户号记录额度，群聊仍按发起用户扣次数，避免昵称或错误聊天流污染额度账本。
-* **额度日志增强**：额度查询、扣除、额度不足、管理员跳过与手动调整都会记录归属用户、剩余次数、周期和聊天流信息，便于后台排查。
-
-### v1.8.3
-
-* **火山引擎模型分离**：火山引擎方舟的文生图模型（`-t2i`）与图生图模型（`-i2i`）是不同的模型，现已拆分为 `t2i_models` 和 `i2i_models` 独立配置。插件会根据任务类型自动切换到匹配的模型，用户无需手动切换即可同时使用文生图和图生图。旧版 `models` 字段会自动按后缀迁移到对应列表。
-
-### v1.8.2
-
-* **稳定性修复**：修复配置热重载时后台绘图任务可能因 `task_store` 被清空而静默崩溃的问题，`update_task` / `mark_status_queried` 现对缺失任务安全返回 `None`，后台任务在记录失效时优雅退出。
-* **审核解析增强**：提示词与图片审核结论解析改为分层匹配（全文精确 → 逐行 → 全文模糊），兼容审核模型在结论前附加多行说明的情况，避免误判为无法识别。
-* **性能优化**：`ProviderRouter` 新增 Provider 实例缓存与 OpenAI 路由列表缓存，避免每次后台任务重复构造平台实例和解析配置。
-* **缓存改进**：入站源图缓存新增 30 分钟 TTL 惰性过期机制，避免高频聊天下内存持续增长。
-* **可观测性**：图片发送阶段新增逐张进度日志；重复的图片 MIME 检测逻辑已统一到 `core/image_utils` 共享工具。
-
-### v1.8.1
-
-* **WebUI 配置修复**：说明额外 OpenAI 兼容实例中 `模型列表` / `按模型覆盖分辨率` / `额外参数` 在 WebUI 对象列表单项内只能填写单行文本，现明确可用英文逗号 `,`、中文逗号 `，` 或分号 `;` 分隔多条；TOML 源代码模式仍可换行。
-* **配置排序优化**：额外 OpenAI 兼容实例的配置项按重要性重新分组排序（必填项 → 常用项 → 细化项 → 高级项 → 扩展项），方便快速填写。
-* **示例清理**：移除配置示例里的具体中转站名，统一改用 `platform` 占位。
-
-### v1.8.0
-
-* **平台适配**：新增火山引擎 / 方舟即梦 AI、豆包生图接入，并内置智谱、阿里百炼、硅基流动官方接口地址。
-* **配置优化**：WebUI 支持额外 OpenAI 兼容实例列表，可为多个中转站分别配置 `BaseURL`、`API Key` 和模型映射。
-* **审核整理**：提示词审核与生成图片审核已移动到 `general` 通用配置，旧配置会自动迁移。
-* **文档补充**：新增火山引擎、阿里百炼、硅基流动 API Key 获取入口。
+* **工具用户识别修复**：LLM 工具不再暴露或必填 `user_id`，插件优先使用 MaiBot 主程序注入的工具执行上下文和通用 `message_info.user_info.user_id` 解析真实发起用户，旧版 LLM 参数仅作为兼容兜底。
+* **额度扣除修复**：绘图任务改为预扣额度并在任务失败、审核拒绝、后台取消或提交异常时自动回退；额度未启用时不再强制要求 `user_id`。
+* **额度日志增强**：额度预扣、跳过、失败、回退均记录归属用户、聊天流、群号、周期和失败原因，便于排查多扣或失败未返还问题。

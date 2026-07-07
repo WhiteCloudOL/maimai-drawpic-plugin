@@ -97,6 +97,16 @@ class UserQuotaStore:
         self.save()
         return True, max(quota - record.used, 0)
 
+    def refund(self, user_id: str, *, period: QuotaPeriod, default_quota: int) -> int:
+        """回退一次已消耗额度，并返回回退后的剩余次数。"""
+
+        record = self._get_record(user_id, period)
+        record.used = max(record.used - 1, 0)
+        quota = self._resolve_quota(record, default_quota)
+        self.records[user_id] = record
+        self.save()
+        return max(quota - record.used, 0)
+
     def adjust_remaining(
         self,
         user_id: str,

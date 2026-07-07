@@ -37,16 +37,12 @@ DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "图片提示词，尽量描述清楚主体、风格和画面内容",
         },
-        "user_id": {
-            "type": "string",
-            "description": "发起绘图的用户的 user_id，从聊天历史消息中获取发送者 ID",
-        },
         "model": {
             "type": "string",
             "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
         },
     },
-    "required": ["prompt", "user_id"],
+    "required": ["prompt"],
 }
 
 EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
@@ -56,10 +52,6 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
         "prompt": {
             "type": "string",
             "description": "图片编辑提示词，描述希望基于源图修改成什么样；不要把源图片描述写在这里替代真实图片",
-        },
-        "user_id": {
-            "type": "string",
-            "description": "发起编辑图片的用户的 user_id，从聊天历史消息中获取发送者 ID",
         },
         "source_message_id": {
             "type": "string",
@@ -74,23 +66,19 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
             "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
         },
     },
-    "required": ["prompt", "user_id"],
+    "required": ["prompt"],
 }
 
 DRAW_STATUS_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "user_id": {
-            "type": "string",
-            "description": "查询绘图状态的用户的 user_id，从聊天历史消息中获取发送者 ID",
-        },
         "task_id": {
             "type": "string",
             "description": "可选，指定要查询的后台绘图任务 ID；不填时默认查询当前会话最近一个任务",
         },
     },
-    "required": ["user_id"],
+    "required": [],
 }
 
 
@@ -335,8 +323,8 @@ class DrawpicPlugin(MaiBotPlugin):
         )
         return f"用户 {quota_user_id} 当前周期剩余 {remaining} 次（周期：{self.config.general.quota_period}）"
 
-    def _consume_draw_quota(self, user_id: str, group_id: str, stream_id: str) -> tuple[bool, str]:
-        """消耗一次绘图额度。"""
+    def _consume_draw_quota(self, user_id: str, group_id: str, stream_id: str) -> tuple[bool, str, str]:
+        """预扣一次绘图额度，返回是否成功、提示文本和实际扣除的用户 ID。"""
 
         if not self.config.general.quota_enabled:
             self.ctx.logger.info(
@@ -345,7 +333,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 user_id,
                 group_id,
             )
-            return True, "未启用次数管理"
+            return True, "未启用次数管理", ""
         if self._is_admin(user_id):
             self.ctx.logger.info(
                 "跳过绘图额度扣除: admin_user=true stream_id=%s user_id=%s group_id=%s",
@@ -353,7 +341,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 user_id,
                 group_id,
             )
-            return True, "管理员不受次数限制"
+            return True, "管理员不受次数限制", ""
         quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
         if not quota_user_id:
             self.ctx.logger.warning(
@@ -362,7 +350,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 group_id,
                 stream_id,
             )
-            return False, "无法识别用户身份，不能使用绘图次数"
+            return False, "无法识别用户身份，不能使用绘图次数", ""
         success, remaining = self._usage_store.consume(
             quota_user_id,
             period=self.config.general.quota_period,
@@ -379,7 +367,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 user_id,
                 group_id,
             )
-            return False, f"用户 {quota_user_id} 的绘图次数已用尽（周期：{self.config.general.quota_period}）"
+            return False, f"用户 {quota_user_id} 的绘图次数已用尽（周期：{self.config.general.quota_period}）", ""
         self.ctx.logger.info(
             "绘图额度已扣除: quota_user_id=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
             quota_user_id,
@@ -390,7 +378,36 @@ class DrawpicPlugin(MaiBotPlugin):
             user_id,
             group_id,
         )
-        return True, f"用户 {quota_user_id} 当前周期剩余 {remaining} 次"
+        return True, f"用户 {quota_user_id} 当前周期剩余 {remaining} 次", quota_user_id
+
+    def _refund_draw_quota(
+        self,
+        quota_user_id: str,
+        group_id: str,
+        stream_id: str,
+        reason: str,
+        task_id: str = "",
+    ) -> None:
+        """回退一次已经预扣的绘图额度。"""
+
+        normalized_quota_user_id = quota_user_id.strip()
+        if not normalized_quota_user_id:
+            return
+        remaining = self._usage_store.refund(
+            normalized_quota_user_id,
+            period=self.config.general.quota_period,
+            default_quota=self.config.general.default_quota,
+        )
+        self.ctx.logger.info(
+            "绘图额度已回退: quota_user_id=%s remaining=%s period=%s stream_id=%s group_id=%s task_id=%s reason=%s",
+            normalized_quota_user_id,
+            remaining,
+            self.config.general.quota_period,
+            stream_id,
+            group_id,
+            task_id,
+            reason,
+        )
 
     @staticmethod
     def _resolve_stream_id_from_hook_message(message: Any) -> str:
@@ -574,15 +591,26 @@ class DrawpicPlugin(MaiBotPlugin):
     ) -> dict[str, str]:
         """从 SDK 注入参数和 LLM 填入参数中提取工具调用上下文。
 
-        LLM 填入的 user_id 优先级最高，SDK 注入的 user_id 作为 fallback。
+        SDK 注入的上下文更接近真实消息事件，LLM 填入的 user_id 仅作为旧版兼容兜底。
         """
 
         payload = kwargs or {}
         llm_user_id = str(llm_user_id or "").strip()
-        # LLM 填入的 user_id 优先，但需通过平台校验
-        if llm_user_id:
-            payload = {**payload, "user_id": llm_user_id}
-        return self._extract_runtime_context(kwargs=payload)
+        runtime_context = self._extract_runtime_context(kwargs=payload)
+        if runtime_context["user_id"] or not llm_user_id:
+            return runtime_context
+
+        fallback_context = self._extract_runtime_context(kwargs={**payload, "user_id": llm_user_id})
+        if fallback_context["user_id"]:
+            self.ctx.logger.warning(
+                "工具上下文未从主程序解析到 user_id，已使用 LLM 参数作为兼容兜底: stream_id=%s user_id=%s group_id=%s platform=%s",
+                fallback_context["stream_id"],
+                fallback_context["user_id"],
+                fallback_context["group_id"],
+                fallback_context["platform"],
+            )
+            return fallback_context
+        return runtime_context
 
     @staticmethod
     def _is_qq_platform(platform: str) -> bool:
@@ -891,22 +919,41 @@ class DrawpicPlugin(MaiBotPlugin):
             raise ValueError(f"{image_edit_unsupported_reason}。请改用 /绘图 文生图 <prompt>，或切换到支持图生图的模型")
 
         await draw_service.review_prompt_or_raise(prompt)
-        quota_allowed, quota_message = self._consume_draw_quota(resolved_user_id, resolved_group_id, resolved_stream_id)
+        quota_allowed, quota_message, quota_user_id = self._consume_draw_quota(
+            resolved_user_id,
+            resolved_group_id,
+            resolved_stream_id,
+        )
         if not quota_allowed:
             raise PermissionError(quota_message)
-        return await draw_service.start_background_image_request(
-            prompt=prompt,
-            stream_id=resolved_stream_id,
-            resolved_model=resolved_model,
-            resolved_openai_mode=resolved_openai_mode,
-            provider_name=provider_name,
-            user_id=resolved_user_id,
-            group_id=resolved_group_id,
-            platform_name=resolved_platform,
-            source_image_bytes_list=normalized_source_images,
-            matched_message_id=matched_message_id,
-            notify_start=notify_start,
-        )
+
+        async def _refund_quota_on_task_unsuccessful(task_id: str, status: str, reason: str) -> None:
+            self._refund_draw_quota(
+                quota_user_id,
+                resolved_group_id,
+                resolved_stream_id,
+                f"{status}: {reason}",
+                task_id,
+            )
+
+        try:
+            return await draw_service.start_background_image_request(
+                prompt=prompt,
+                stream_id=resolved_stream_id,
+                resolved_model=resolved_model,
+                resolved_openai_mode=resolved_openai_mode,
+                provider_name=provider_name,
+                user_id=resolved_user_id,
+                group_id=resolved_group_id,
+                platform_name=resolved_platform,
+                source_image_bytes_list=normalized_source_images,
+                matched_message_id=matched_message_id,
+                notify_start=notify_start,
+                on_task_unsuccessful=_refund_quota_on_task_unsuccessful if quota_user_id else None,
+            )
+        except Exception as exc:
+            self._refund_draw_quota(quota_user_id, resolved_group_id, resolved_stream_id, str(exc))
+            raise
 
     @Tool(
         "draw",
@@ -916,7 +963,7 @@ class DrawpicPlugin(MaiBotPlugin):
     async def handle_draw(
         self,
         prompt: str,
-        user_id: str,
+        user_id: str = "",
         model: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -927,14 +974,6 @@ class DrawpicPlugin(MaiBotPlugin):
 
         try:
             context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
-            if not context["user_id"]:
-                self.ctx.logger.warning(
-                    "draw 工具缺少有效 user_id: llm_user_id=%s group_id=%s stream_id=%s",
-                    user_id,
-                    context["group_id"],
-                    context["stream_id"],
-                )
-                return {"success": False, "message": "无法识别发起用户，缺少有效的 user_id"}
             return await self._start_background_image_request(
                 prompt=prompt.strip(),
                 stream_id=context["stream_id"],
@@ -964,7 +1003,7 @@ class DrawpicPlugin(MaiBotPlugin):
     async def handle_edit_image(
         self,
         prompt: str,
-        user_id: str,
+        user_id: str = "",
         source_message_id: str = "",
         source_image_base64: str = "",
         model: str = "",
@@ -978,14 +1017,6 @@ class DrawpicPlugin(MaiBotPlugin):
         try:
             draw_service = self._require_draw_service()
             context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
-            if not context["user_id"]:
-                self.ctx.logger.warning(
-                    "edit_image 工具缺少有效 user_id: llm_user_id=%s group_id=%s stream_id=%s",
-                    user_id,
-                    context["group_id"],
-                    context["stream_id"],
-                )
-                return {"success": False, "message": "无法识别发起用户，缺少有效的 user_id"}
             live_context = await self._require_stream_service().resolve_live_stream_context(
                 stream_id=context["stream_id"],
                 user_id=context["user_id"],
@@ -1095,21 +1126,13 @@ class DrawpicPlugin(MaiBotPlugin):
     )
     async def handle_draw_status(
         self,
-        user_id: str,
+        user_id: str = "",
         task_id: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """查询后台绘图任务状态。"""
 
         context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
-        if not context["user_id"]:
-            self.ctx.logger.warning(
-                "draw_status 工具缺少有效 user_id: llm_user_id=%s group_id=%s stream_id=%s",
-                user_id,
-                context["group_id"],
-                context["stream_id"],
-            )
-            return {"success": False, "message": "无法识别发起用户，缺少有效的 user_id"}
         live_context = await self._require_stream_service().resolve_live_stream_context(
             stream_id=context["stream_id"],
             user_id=context["user_id"],
