@@ -25,8 +25,9 @@ def build_command_usage_text() -> str:
             "/绘图 图生图 <prompt>",
             "强制发起图生图，需在同一条消息中附带或引用至少一张图片，支持多张。",
             "",
-            "/绘图 添加/减少/设置 用户ID 次数",
-            "管理员调整用户当前周期剩余绘图次数。",
+            "/绘图 添加/减少/设置 群聊/用户 群号/QQ号 数量",
+            "管理员调整群聊或用户当前周期剩余绘图次数。",
+            "例如：/绘图 设置 用户 12345678 10",
         ]
     )
 
@@ -117,10 +118,13 @@ def build_compatible_mode_text(current_mode: str) -> str:
     )
 
 
-def build_quota_adjust_text(action_label: str, user_id: str, remaining: int) -> str:
+def build_quota_adjust_text(action_label: str, scope_label: str, target_id: str, remaining: int) -> str:
     """构建次数调整结果文本。"""
 
-    return f"已{action_label}用户 {user_id} 的当前周期剩余绘图次数。\n当前剩余：{remaining} 次"
+    return (
+        f"已{action_label}{scope_label} {target_id} 的当前周期剩余绘图次数。\n"
+        f"当前剩余：{remaining} 次"
+    )
 
 
 def _format_task(record: DrawTaskRecord | None) -> str:

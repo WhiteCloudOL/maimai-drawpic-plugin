@@ -582,6 +582,7 @@ class DrawService:
         group_id: str = "",
         platform_name: str = "qq",
         on_task_unsuccessful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
+        on_task_successful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
     ) -> None:
         """后台执行绘图任务，源图为空时文生图，存在源图时图生图。"""
 
@@ -595,6 +596,23 @@ class DrawService:
             except Exception as exc:
                 self.ctx.logger.error(
                     "绘图任务失败回调执行异常: task_id=%s status=%s reason=%s error=%s",
+                    task_id,
+                    status,
+                    reason,
+                    exc,
+                    exc_info=True,
+                )
+
+        async def _notify_task_successful(status: str, reason: str) -> None:
+            if on_task_successful is None:
+                return
+            try:
+                result = on_task_successful(task_id, status, reason)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as exc:
+                self.ctx.logger.error(
+                    "绘图任务成功回调执行异常: task_id=%s status=%s reason=%s error=%s",
                     task_id,
                     status,
                     reason,
@@ -804,6 +822,7 @@ class DrawService:
                 model=successful_attempt.model,
                 provider=successful_attempt.provider_name,
             )
+            await _notify_task_successful("completed", success_message)
             self.ctx.logger.info(
                 "绘图任务完成: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s sent_count=%s previous_errors=%s",
                 task_id,
@@ -856,6 +875,7 @@ class DrawService:
         matched_message_id: str = "",
         notify_start: bool = False,
         on_task_unsuccessful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
+        on_task_successful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
     ) -> dict[str, Any]:
         """启动后台绘图任务，源图为空时文生图，存在源图时图生图。"""
 
@@ -938,6 +958,7 @@ class DrawService:
                 group_id=group_id,
                 platform_name=platform_name,
                 on_task_unsuccessful=on_task_unsuccessful,
+                on_task_successful=on_task_successful,
             )
         )
         self.track_background_task(background_task, task_record.task_id)

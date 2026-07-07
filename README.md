@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.10+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.8.9-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.9.0-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -99,7 +99,7 @@ models = "relay-gpt-image=gpt-image-2"
 | --- | --- | --- |
 | **`general`** | `default_model` | 默认首选模型名，插件会自动在各平台模型列表中匹配归属。 |
 | **`general`** | `fallback_model` | 生图备选模型名。首选模型调用失败或未返回图片时，后台任务会自动尝试该模型；留空表示不启用。 |
-| **`general`** | `quota_enabled` | 开启额度管理。配合 `quota_period` (周期) 与 `default_quota` (次数) 使用。 |
+| **`general`** | `group_quota_enabled` / `private_quota_enabled` | 分别为群聊、私聊开启额度管理。配合对应周期与默认次数使用。 |
 | **`general`** | `image_edit_unsupported_models` | 仅支持文生图的模型黑名单，命中后直接拦截图生图请求。 |
 | **`general`** | `prompt_review_enabled` / `image_review_enabled` | 启用文本/图片审核，配合 `replyer` 和 `vlm` 任务模型保障内容安全。 |
 | **`openai`** | `default_openai_compatibility_mode` | 兼容模式 (`auto` / `images_api` / `chat_completions` / `novelai_images_api`)。 |
@@ -114,13 +114,22 @@ models = "relay-gpt-image=gpt-image-2"
 
 * **权限管理 (`permission_enabled`)**
 默认开启。生效后，所有核心配置的更改（如：设置会话首选模型、更改 OpenAI 兼容模式、调整他人额度等）仅限 `general.admin_user_ids` 列表中的管理员执行。
-* **额度消耗 (`quota_enabled`)**
-默认开启。普通用户通过指令（`/绘图 文生图`、`/绘图 图生图`）或触发 LLM 工具调用成功发起绘图时，均会消耗 1 次当前周期额度。
+
+* **额度消耗（群聊与私聊分离）**
+额度按聊天归属扣除：群聊消耗该群剩余次数（键 `qq:group:群号`），私聊消耗该用户剩余次数（键 `qq:user:QQ号`）。群聊与私聊各自独立配置开关、重置周期与默认次数。
+  * `group_quota_enabled` / `group_quota_period` / `group_default_quota`：群聊额度开关、周期与默认次数。
+  * `private_quota_enabled` / `private_quota_period` / `private_default_quota`：私聊额度开关、周期与默认次数。
+
+> ⚠️ **群聊用户级额度限制说明**
+> 由于 MaiBot 工具参数更新的缘故，当前插件工具调用链路无法稳定获取群聊中发起用户的 `user_id`，因此群聊额度只能按群组整体扣除，无法做到群聊内按用户分别限制。如需按用户限制，请让该用户在私聊中使用绘图。
+
+* **失败不扣除**
+绘图任务仅在成功完成（图片已发送）后才扣除额度。任务失败、超时、审核拒绝或提交异常时均不消耗次数。
+
 > 💡 **特权机制**：管理员账户不受任何绘图次数限制。
 
-
-* **周期设定 (`quota_period`)**
-支持四种额度刷新周期：`daily`（每日）、`weekly`（每周）、`monthly`（每月）或 `once`（一次性额度，不自动刷新）。
+* **周期设定**
+支持四种额度刷新周期：`daily`（每日）、`weekly`（每周）、`monthly`（每月）或 `once`（一次性额度，不自动刷新）。群聊与私聊可分别配置。
 
 ## 💾 会话偏好与数据持久化
 
@@ -145,13 +154,15 @@ models = "relay-gpt-image=gpt-image-2"
 | `/绘图 兼容模式 <模式或跟随>` | 设定或清空当前会话的 OpenAI 兼容策略。 |
 | `/绘图 文生图 <prompt>` | 强制纯文本生图。若消息附带图片将拦截并提示切换模式。 |
 | `/绘图 图生图 <prompt>` | 强制基于参考图编辑，支持多图解析（优先读取附带图，其次读取引用图）。 |
-| `/绘图 设置 <ID> <次数>` | 管理员快捷调整指定用户的周期额度。 |
+| `/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量` | 管理员调整群聊或用户的周期额度。例如 `/绘图 设置 用户 12345678 10`。 |
 
 ## 🔧 LLM 工具集
 
 插件向 MaiBot 暴露以下 Native Tools，由大语言模型根据对话上下文自然调用，无需人工干预指令：
 
 工具调用所需的 `stream_id`、`group_id`、`user_id` 优先由 MaiBot 主程序运行时上下文注入，LLM 不需要也不应该自行填写用户 ID。
+
+> ⚠️ 因 MaiBot 工具参数更新，群聊场景下工具调用链路无法稳定获取发起用户的 `user_id`，因此群聊额度只能按群组整体扣除，无法实现群聊内按用户分别限制。
 
 | 工具名称 | 核心能力 |
 | --- | --- |
@@ -175,6 +186,14 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 近期更新
+
+### v1.9.0
+
+* **额度按聊天归属扣除**：群聊额度按群号（`qq:group:群号`）扣除，私聊额度按用户 QQ（`qq:user:QQ号`）扣除，不再混合识别，与管理员命令参数一致。
+* **群聊/私聊额度配置分离**：`quota_enabled` / `quota_period` / `default_quota` 拆分为 `group_*` 与 `private_*` 各三字段，可分别设置开关、重置周期与默认次数；旧配置自动迁移。
+* **额度失败不扣除**：绘图额度改为任务成功后扣除，任务失败、超时、审核拒绝或提交异常时均不消耗次数，不再需要预扣回退。
+* **管理员命令格式更新**：`/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量`，例如 `/绘图 设置 用户 12345678 10`。
+* **群聊用户级额度限制说明**：因 MaiBot 工具参数更新，群聊工具调用链路无法稳定获取发起用户的 `user_id`，群聊额度只能按群组整体扣除，已在 README 中补充说明。
 
 ### v1.8.9
 

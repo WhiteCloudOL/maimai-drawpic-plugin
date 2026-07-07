@@ -268,20 +268,54 @@ class DrawpicPlugin(MaiBotPlugin):
             return True
         return self._is_admin(user_id)
 
-    def _resolve_quota_user_id(self, user_id: str, group_id: str, stream_id: str) -> str:
-        """解析额度使用的用户键，始终以真实 user_id 为准。"""
+    @staticmethod
+    def _is_group_chat(group_id: str) -> bool:
+        """判断当前会话是否为群聊（用于额度配置选择）。"""
 
-        del stream_id  # 额度仅按 user_id 归属，不再用 stream_id 兜底
-        normalized_user_id = user_id.strip()
+        return bool(group_id.strip())
+
+    def _resolve_quota_config(self, group_id: str) -> tuple[bool, str, int]:
+        """按群聊/私聊选择额度配置，返回 (enabled, period, default_quota)。"""
+
+        general = self.config.general
+        if self._is_group_chat(group_id):
+            return (
+                general.group_quota_enabled,
+                general.group_quota_period,
+                general.group_default_quota,
+            )
+        return (
+            general.private_quota_enabled,
+            general.private_quota_period,
+            general.private_default_quota,
+        )
+
+    @staticmethod
+    def _build_quota_key(platform: str, group_id: str, user_id: str) -> str:
+        """按平台和聊天类型构建额度归属键：群聊用 qq:group:群号，私聊用 qq:user:QQ号。"""
+
+        normalized_platform = platform.strip() or "qq"
         normalized_group_id = group_id.strip()
-        if normalized_group_id and normalized_user_id == normalized_group_id:
-            return ""
-        return normalized_user_id
+        normalized_user_id = user_id.strip()
+        if normalized_group_id:
+            return f"{normalized_platform}:group:{normalized_group_id}"
+        return f"{normalized_platform}:user:{normalized_user_id}"
+
+    @staticmethod
+    def _build_quota_key_for_target(platform: str, chat_type: str, target_id: str) -> str:
+        """按管理员命令参数构建额度归属键。chat_type: group / private。"""
+
+        normalized_platform = platform.strip() or "qq"
+        normalized_target_id = target_id.strip()
+        if chat_type == "group":
+            return f"{normalized_platform}:group:{normalized_target_id}"
+        return f"{normalized_platform}:user:{normalized_target_id}"
 
     def _quota_status_text(self, user_id: str, group_id: str, stream_id: str) -> str:
         """构建用户额度状态文本。"""
 
-        if not self.config.general.quota_enabled:
+        quota_enabled, quota_period, default_quota = self._resolve_quota_config(group_id)
+        if not quota_enabled:
             self.ctx.logger.info(
                 "绘图额度状态: quota_enabled=false stream_id=%s user_id=%s group_id=%s",
                 stream_id,
@@ -297,38 +331,51 @@ class DrawpicPlugin(MaiBotPlugin):
                 group_id,
             )
             return "管理员不受次数限制"
-        quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
-        if not quota_user_id:
+        is_group = self._is_group_chat(group_id)
+        if is_group:
+            quota_key = self._build_quota_key(self._resolve_quota_platform(group_id), group_id, "")
+        elif user_id.strip():
+            quota_key = self._build_quota_key(self._resolve_quota_platform(group_id), "", user_id)
+        else:
             self.ctx.logger.warning(
-                "绘图额度状态失败: 无法识别用户 user_id=%s group_id=%s stream_id=%s",
+                "绘图额度状态失败: 无法识别归属 user_id=%s group_id=%s stream_id=%s",
                 user_id,
                 group_id,
                 stream_id,
             )
-            return "无法识别用户身份，不能查询个人次数"
+            return "无法识别聊天归属，不能查询绘图次数"
         remaining = self._usage_store.get_remaining(
-            quota_user_id,
-            period=self.config.general.quota_period,
-            default_quota=self.config.general.default_quota,
+            quota_key,
+            period=quota_period,
+            default_quota=default_quota,
         )
+        scope_label = "群聊" if self._is_group_chat(group_id) else "用户"
+        scope_value = group_id.strip() or user_id.strip()
         self.ctx.logger.info(
-            "绘图额度状态: quota_user_id=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
-            quota_user_id,
+            "绘图额度状态: quota_key=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
+            quota_key,
             remaining,
-            self.config.general.quota_period,
-            self.config.general.default_quota,
+            quota_period,
+            default_quota,
             stream_id,
             user_id,
             group_id,
         )
-        return f"用户 {quota_user_id} 当前周期剩余 {remaining} 次（周期：{self.config.general.quota_period}）"
+        return f"{scope_label} {scope_value} 当前周期剩余 {remaining} 次（周期：{quota_period}）"
 
-    def _consume_draw_quota(self, user_id: str, group_id: str, stream_id: str) -> tuple[bool, str, str]:
-        """预扣一次绘图额度，返回是否成功、提示文本和实际扣除的用户 ID。"""
+    def _resolve_quota_platform(self, group_id: str) -> str:
+        """额度键使用的平台标识，当前固定为 qq。"""
 
-        if not self.config.general.quota_enabled:
+        del group_id
+        return "qq"
+
+    def _check_draw_quota(self, user_id: str, group_id: str, stream_id: str) -> tuple[bool, str, str]:
+        """检查绘图额度是否足够，但不实际扣除。返回是否可用、提示文本和额度键。"""
+
+        quota_enabled, quota_period, default_quota = self._resolve_quota_config(group_id)
+        if not quota_enabled:
             self.ctx.logger.info(
-                "跳过绘图额度扣除: quota_enabled=false stream_id=%s user_id=%s group_id=%s",
+                "跳过绘图额度检查: quota_enabled=false stream_id=%s user_id=%s group_id=%s",
                 stream_id,
                 user_id,
                 group_id,
@@ -336,78 +383,100 @@ class DrawpicPlugin(MaiBotPlugin):
             return True, "未启用次数管理", ""
         if self._is_admin(user_id):
             self.ctx.logger.info(
-                "跳过绘图额度扣除: admin_user=true stream_id=%s user_id=%s group_id=%s",
+                "跳过绘图额度检查: admin_user=true stream_id=%s user_id=%s group_id=%s",
                 stream_id,
                 user_id,
                 group_id,
             )
             return True, "管理员不受次数限制", ""
-        quota_user_id = self._resolve_quota_user_id(user_id, group_id, stream_id)
-        if not quota_user_id:
+        is_group = self._is_group_chat(group_id)
+        if is_group:
+            quota_key = self._build_quota_key(self._resolve_quota_platform(group_id), group_id, "")
+        elif user_id.strip():
+            quota_key = self._build_quota_key(self._resolve_quota_platform(group_id), "", user_id)
+        else:
             self.ctx.logger.warning(
-                "绘图额度扣除失败: 无法识别用户 user_id=%s group_id=%s stream_id=%s",
+                "绘图额度检查失败: 无法识别归属 user_id=%s group_id=%s stream_id=%s",
                 user_id,
                 group_id,
                 stream_id,
             )
-            return False, "无法识别用户身份，不能使用绘图次数", ""
-        success, remaining = self._usage_store.consume(
-            quota_user_id,
-            period=self.config.general.quota_period,
-            default_quota=self.config.general.default_quota,
+            return False, "无法识别聊天归属，不能使用绘图次数", ""
+        remaining = self._usage_store.get_remaining(
+            quota_key,
+            period=quota_period,
+            default_quota=default_quota,
         )
-        if not success:
+        scope_label = "群聊" if is_group else "用户"
+        scope_value = group_id.strip() or user_id.strip()
+        if remaining <= 0:
             self.ctx.logger.warning(
-                "绘图额度不足: quota_user_id=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
-                quota_user_id,
+                "绘图额度不足: quota_key=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
+                quota_key,
                 remaining,
-                self.config.general.quota_period,
-                self.config.general.default_quota,
+                quota_period,
+                default_quota,
                 stream_id,
                 user_id,
                 group_id,
             )
-            return False, f"用户 {quota_user_id} 的绘图次数已用尽（周期：{self.config.general.quota_period}）", ""
+            return (
+                False,
+                f"{scope_label} {scope_value} 的绘图次数已用尽（周期：{quota_period}）",
+                "",
+            )
         self.ctx.logger.info(
-            "绘图额度已扣除: quota_user_id=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
-            quota_user_id,
+            "绘图额度检查通过: quota_key=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
+            quota_key,
             remaining,
-            self.config.general.quota_period,
-            self.config.general.default_quota,
+            quota_period,
+            default_quota,
             stream_id,
             user_id,
             group_id,
         )
-        return True, f"用户 {quota_user_id} 当前周期剩余 {remaining} 次", quota_user_id
+        return True, f"{scope_label} {scope_value} 当前周期剩余 {remaining} 次", quota_key
 
-    def _refund_draw_quota(
+    def _commit_draw_quota(
         self,
-        quota_user_id: str,
+        quota_key: str,
         group_id: str,
         stream_id: str,
-        reason: str,
         task_id: str = "",
     ) -> None:
-        """回退一次已经预扣的绘图额度。"""
+        """绘图任务成功后扣除一次额度。"""
 
-        normalized_quota_user_id = quota_user_id.strip()
-        if not normalized_quota_user_id:
+        normalized_quota_key = quota_key.strip()
+        if not normalized_quota_key:
             return
-        remaining = self._usage_store.refund(
-            normalized_quota_user_id,
-            period=self.config.general.quota_period,
-            default_quota=self.config.general.default_quota,
+        quota_enabled, quota_period, default_quota = self._resolve_quota_config(group_id)
+        if not quota_enabled:
+            return
+        success, remaining = self._usage_store.consume(
+            normalized_quota_key,
+            period=quota_period,
+            default_quota=default_quota,
         )
-        self.ctx.logger.info(
-            "绘图额度已回退: quota_user_id=%s remaining=%s period=%s stream_id=%s group_id=%s task_id=%s reason=%s",
-            normalized_quota_user_id,
-            remaining,
-            self.config.general.quota_period,
-            stream_id,
-            group_id,
-            task_id,
-            reason,
-        )
+        if success:
+            self.ctx.logger.info(
+                "绘图额度已扣除(任务成功): quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s task_id=%s",
+                normalized_quota_key,
+                remaining,
+                quota_period,
+                stream_id,
+                group_id,
+                task_id,
+            )
+        else:
+            self.ctx.logger.warning(
+                "绘图额度扣除失败(任务成功但额度已耗尽): quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s task_id=%s",
+                normalized_quota_key,
+                remaining,
+                quota_period,
+                stream_id,
+                group_id,
+                task_id,
+            )
 
     @staticmethod
     def _resolve_stream_id_from_hook_message(message: Any) -> str:
@@ -919,7 +988,7 @@ class DrawpicPlugin(MaiBotPlugin):
             raise ValueError(f"{image_edit_unsupported_reason}。请改用 /绘图 文生图 <prompt>，或切换到支持图生图的模型")
 
         await draw_service.review_prompt_or_raise(prompt)
-        quota_allowed, quota_message, quota_user_id = self._consume_draw_quota(
+        quota_allowed, quota_message, quota_key = self._check_draw_quota(
             resolved_user_id,
             resolved_group_id,
             resolved_stream_id,
@@ -927,33 +996,29 @@ class DrawpicPlugin(MaiBotPlugin):
         if not quota_allowed:
             raise PermissionError(quota_message)
 
-        async def _refund_quota_on_task_unsuccessful(task_id: str, status: str, reason: str) -> None:
-            self._refund_draw_quota(
-                quota_user_id,
+        async def _commit_quota_on_task_successful(task_id: str, status: str, reason: str) -> None:
+            del status, reason
+            self._commit_draw_quota(
+                quota_key,
                 resolved_group_id,
                 resolved_stream_id,
-                f"{status}: {reason}",
                 task_id,
             )
 
-        try:
-            return await draw_service.start_background_image_request(
-                prompt=prompt,
-                stream_id=resolved_stream_id,
-                resolved_model=resolved_model,
-                resolved_openai_mode=resolved_openai_mode,
-                provider_name=provider_name,
-                user_id=resolved_user_id,
-                group_id=resolved_group_id,
-                platform_name=resolved_platform,
-                source_image_bytes_list=normalized_source_images,
-                matched_message_id=matched_message_id,
-                notify_start=notify_start,
-                on_task_unsuccessful=_refund_quota_on_task_unsuccessful if quota_user_id else None,
-            )
-        except Exception as exc:
-            self._refund_draw_quota(quota_user_id, resolved_group_id, resolved_stream_id, str(exc))
-            raise
+        return await draw_service.start_background_image_request(
+            prompt=prompt,
+            stream_id=resolved_stream_id,
+            resolved_model=resolved_model,
+            resolved_openai_mode=resolved_openai_mode,
+            provider_name=provider_name,
+            user_id=resolved_user_id,
+            group_id=resolved_group_id,
+            platform_name=resolved_platform,
+            source_image_bytes_list=normalized_source_images,
+            matched_message_id=matched_message_id,
+            notify_start=notify_start,
+            on_task_successful=_commit_quota_on_task_successful if quota_key else None,
+        )
 
     @Tool(
         "draw",
@@ -1196,6 +1261,21 @@ class DrawpicPlugin(MaiBotPlugin):
         }
         return command_map.get(command_name.strip(), "")
 
+    @staticmethod
+    def _normalize_scope_name(scope_name: str) -> str:
+        """归一化管理员命令中的范围词：群聊/用户 → group/private。"""
+
+        scope_map = {
+            "群聊": "group",
+            "群": "group",
+            "group": "group",
+            "用户": "private",
+            "私聊": "private",
+            "user": "private",
+            "private": "private",
+        }
+        return scope_map.get(scope_name.strip(), "")
+
     async def _handle_times_command(
         self,
         *,
@@ -1205,12 +1285,16 @@ class DrawpicPlugin(MaiBotPlugin):
         group_id: str,
         platform: str,
     ) -> tuple[bool, str, int]:
-        """处理用户次数调整命令。"""
+        """处理绘图次数调整命令。
+
+        命令格式：/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量
+        例如：/绘图 设置 用户 12345678 10
+        """
 
         if not self._can_manage_session(user_id):
             await self._send_command_reply(
                 title="权限不足",
-                body="当前已启用权限管理。\n只有插件管理员可以调整用户绘图次数。",
+                body="当前已启用权限管理。\n只有插件管理员可以调整绘图次数。",
                 stream_id=stream_id,
                 user_id=user_id,
                 group_id=group_id,
@@ -1224,7 +1308,8 @@ class DrawpicPlugin(MaiBotPlugin):
             await self._send_command_reply(
                 title="次数命令用法",
                 body=(
-                    "/绘图 添加/减少/设置 用户ID 次数"
+                    "/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量\n"
+                    "例如：/绘图 设置 用户 12345678 10"
                 ),
                 stream_id=stream_id,
                 user_id=user_id,
@@ -1233,15 +1318,36 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return False, "次数命令参数不足", 1
 
-        target_user_id, count_text = self._split_command_payload(action_rest)
+        scope_word, scope_rest = self._split_command_payload(action_rest)
+        scope = self._normalize_scope_name(scope_word)
+        if scope not in {"group", "private"}:
+            await self._send_command_reply(
+                title="次数命令用法",
+                body=(
+                    "请指定调整范围：群聊 或 用户。\n"
+                    "格式：/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量\n"
+                    "例如：/绘图 设置 群聊 673381211 50"
+                ),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "次数命令参数不足", 1
+
+        target_id, count_text = self._split_command_payload(scope_rest)
         try:
             count = int(count_text.strip())
         except ValueError:
             count = -1
-        if not target_user_id or count < 0 or (action in {"add", "remove"} and count == 0):
+        if not target_id or count < 0 or (action in {"add", "remove"} and count == 0):
             await self._send_command_reply(
                 title="次数命令参数无效",
-                body="请提供用户ID和有效次数。\n添加/减少需要正整数，设置可设置为 0。",
+                body=(
+                    "请提供有效的群号/QQ号和次数。\n"
+                    "添加/减少需要正整数，设置可设置为 0。\n"
+                    "例如：/绘图 设置 用户 12345678 10"
+                ),
                 stream_id=stream_id,
                 user_id=user_id,
                 group_id=group_id,
@@ -1249,24 +1355,35 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return False, "次数命令参数无效", 1
 
+        quota_key = self._build_quota_key_for_target(platform, scope, target_id)
+        # 按目标范围选择对应的额度配置（周期与默认额度）
+        if scope == "group":
+            quota_period = self.config.general.group_quota_period
+            default_quota = self.config.general.group_default_quota
+        else:
+            quota_period = self.config.general.private_quota_period
+            default_quota = self.config.general.private_default_quota
         remaining = self._usage_store.adjust_remaining(
-            target_user_id,
+            quota_key,
             action=action,  # type: ignore[arg-type]
             count=count,
-            period=self.config.general.quota_period,
-            default_quota=self.config.general.default_quota,
+            period=quota_period,
+            default_quota=default_quota,
         )
+        scope_label = "群聊" if scope == "group" else "用户"
         self.ctx.logger.info(
-            "绘图额度已调整: action=%s target_user_id=%s count=%s remaining=%s operator_user_id=%s stream_id=%s group_id=%s period=%s default_quota=%s",
+            "绘图额度已调整: action=%s scope=%s target_id=%s quota_key=%s count=%s remaining=%s operator_user_id=%s stream_id=%s group_id=%s period=%s default_quota=%s",
             action,
-            target_user_id,
+            scope,
+            target_id,
+            quota_key,
             count,
             remaining,
             user_id,
             stream_id,
             group_id,
-            self.config.general.quota_period,
-            self.config.general.default_quota,
+            quota_period,
+            default_quota,
         )
         action_label_map = {
             "add": "添加",
@@ -1275,13 +1392,13 @@ class DrawpicPlugin(MaiBotPlugin):
         }
         await self._send_command_reply(
             title="次数已更新",
-            body=build_quota_adjust_text(action_label_map[action], target_user_id, remaining),
+            body=build_quota_adjust_text(action_label_map[action], scope_label, target_id, remaining),
             stream_id=stream_id,
             user_id=user_id,
             group_id=group_id,
             platform=platform,
         )
-        return True, "已调整用户绘图次数", 2
+        return True, "已调整绘图次数", 2
 
     async def _handle_draw_image_command(
         self,

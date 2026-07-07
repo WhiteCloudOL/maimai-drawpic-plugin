@@ -24,7 +24,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.17.1",
+        default="2.18.1",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -93,31 +93,58 @@ class GeneralConfig(PluginConfigBase):
             "order": 5,
         },
     )
-    quota_enabled: bool = Field(
+    group_quota_enabled: bool = Field(
         default=True,
-        description="是否启用用户绘图次数管理。管理员不受次数限制",
+        description="是否启用群聊绘图次数管理。管理员不受次数限制",
         json_schema_extra={
-            "label": "启用用户次数管理",
-            "hint": "启用后，普通用户每次绘图会消耗次数；管理员不受限制",
+            "label": "启用群聊次数管理",
+            "hint": "启用后，群聊每次绘图会消耗该群剩余次数；管理员不受限制",
             "order": 6,
         },
     )
-    quota_period: QuotaPeriodMode = Field(
+    group_quota_period: QuotaPeriodMode = Field(
         default="daily",
-        description="用户次数重置周期：daily / weekly / monthly / once",
+        description="群聊次数重置周期：daily / weekly / monthly / once",
         json_schema_extra={
-            "label": "次数周期",
+            "label": "群聊次数周期",
             "hint": "daily=每日，weekly=每周，monthly=每月，once=一次性不自动重置",
             "order": 7,
         },
     )
-    default_quota: int = Field(
+    group_default_quota: int = Field(
         default=5,
-        description="普通用户在当前周期内默认可用绘图次数。",
+        description="群聊在当前周期内默认可用绘图次数。",
         json_schema_extra={
-            "label": "默认可用次数",
-            "hint": "普通用户在所选周期内默认可用的绘图次数",
+            "label": "群聊默认可用次数",
+            "hint": "群聊在所选周期内默认可用的绘图次数",
             "order": 8,
+        },
+    )
+    private_quota_enabled: bool = Field(
+        default=True,
+        description="是否启用私聊绘图次数管理。管理员不受次数限制",
+        json_schema_extra={
+            "label": "启用私聊次数管理",
+            "hint": "启用后，私聊每次绘图会消耗该用户剩余次数；管理员不受限制",
+            "order": 9,
+        },
+    )
+    private_quota_period: QuotaPeriodMode = Field(
+        default="daily",
+        description="私聊次数重置周期：daily / weekly / monthly / once",
+        json_schema_extra={
+            "label": "私聊次数周期",
+            "hint": "daily=每日，weekly=每周，monthly=每月，once=一次性不自动重置",
+            "order": 10,
+        },
+    )
+    private_default_quota: int = Field(
+        default=5,
+        description="私聊用户在当前周期内默认可用绘图次数。",
+        json_schema_extra={
+            "label": "私聊默认可用次数",
+            "hint": "私聊用户在所选周期内默认可用的绘图次数",
+            "order": 11,
         },
     )
     image_edit_unsupported_models: list[str] = Field(
@@ -126,7 +153,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "不支持图生图模型",
             "hint": "每行一个模型名。用于标记平台列表中存在但只能文生图的模型，命中后不会创建后台图生图任务",
-            "order": 9,
+            "order": 12,
         },
     )
     prompt_review_enabled: bool = Field(
@@ -135,7 +162,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "启用提示词审核",
             "hint": "启用后，文生图和图生图的提示词会先交给 MaiBot 的 replyer 模型审核",
-            "order": 10,
+            "order": 13,
         },
     )
     prompt_review_prompt: str = Field(
@@ -157,7 +184,7 @@ class GeneralConfig(PluginConfigBase):
             "hint": "支持 {user_prompt} 占位符；建议要求模型只返回 PASS 或 REJECT 及简短原因",
             "x-widget": "textarea",
             "rows": 8,
-            "order": 11,
+            "order": 14,
         },
     )
     image_review_enabled: bool = Field(
@@ -166,7 +193,7 @@ class GeneralConfig(PluginConfigBase):
         json_schema_extra={
             "label": "启用生成图片审核",
             "hint": "启用后，生成完成的图片会先交给 MaiBot 的 vlm 模型审核，再决定是否发送",
-            "order": 12,
+            "order": 15,
         },
     )
     image_review_prompt: str = Field(
@@ -189,7 +216,7 @@ class GeneralConfig(PluginConfigBase):
             "hint": "支持 {user_prompt} 占位符；建议要求模型只返回 PASS 或 REJECT 及简短原因",
             "x-widget": "textarea",
             "rows": 8,
-            "order": 13,
+            "order": 16,
         },
     )
 
@@ -1462,6 +1489,8 @@ def migrate_legacy_review_config(config_data: Mapping[str, Any]) -> dict[str, An
 
     _migrate_legacy_volcengine_models(migrated_config)
 
+    _migrate_legacy_quota_fields(migrated_config)
+
     return migrated_config
 
 
@@ -1500,3 +1529,38 @@ def _migrate_legacy_volcengine_models(migrated_config: dict[str, Any]) -> None:
             i2i_models.append(normalized_model)
     volcengine_config["t2i_models"] = t2i_models
     volcengine_config["i2i_models"] = i2i_models
+
+
+def _migrate_legacy_quota_fields(migrated_config: dict[str, Any]) -> None:
+    """将旧版统一的额度字段迁移到群聊/私聊分离字段。
+
+    仅在新字段缺失且旧字段存在时触发，旧字段值同时写入群聊和私聊，保持旧行为。
+    """
+
+    general_config = migrated_config.get("general")
+    if not isinstance(general_config, dict):
+        return
+
+    legacy_enabled = general_config.get("quota_enabled")
+    if legacy_enabled is not None:
+        if "group_quota_enabled" not in general_config:
+            general_config["group_quota_enabled"] = legacy_enabled
+        if "private_quota_enabled" not in general_config:
+            general_config["private_quota_enabled"] = legacy_enabled
+        general_config.pop("quota_enabled", None)
+
+    legacy_period = general_config.get("quota_period")
+    if legacy_period is not None:
+        if "group_quota_period" not in general_config:
+            general_config["group_quota_period"] = legacy_period
+        if "private_quota_period" not in general_config:
+            general_config["private_quota_period"] = legacy_period
+        general_config.pop("quota_period", None)
+
+    legacy_default_quota = general_config.get("default_quota")
+    if legacy_default_quota is not None:
+        if "group_default_quota" not in general_config:
+            general_config["group_default_quota"] = legacy_default_quota
+        if "private_default_quota" not in general_config:
+            general_config["private_default_quota"] = legacy_default_quota
+        general_config.pop("default_quota", None)
