@@ -229,7 +229,7 @@ class NovelAIImage:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "Accept": "application/x-zip-compressed, application/json, image/*",
+            "Accept": "application/zip",
         }
 
     async def _post_generation(self, url: str, payload: dict[str, Any]) -> tuple[bytes, str]:
@@ -242,7 +242,7 @@ class NovelAIImage:
                 duration = time.time() - start_time
                 content = await response.read()
                 content_type = response.headers.get("Content-Type", "")
-                if response.status != 200:
+                if response.status != 201:
                     error_preview = content[:1200].decode("utf-8", errors="replace")
                     self._log_error(
                         "NovelAI 图片接口失败: status=%s duration=%.2fs url=%s response_preview=%s",

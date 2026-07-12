@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.10+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.9.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.9.1-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -186,6 +186,11 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 近期更新
+
+### v1.9.1
+
+* **NovelAI 官方接口修复**：图像生成请求按官方规范以 HTTP `201` 判定成功，避免已生成的图片被误判为失败。
+* **NovelAI 响应格式对齐**：请求 `Accept` 固定为官方声明的 `application/zip`，由插件解析生成的图片包。
 
 ### v1.9.0
 
