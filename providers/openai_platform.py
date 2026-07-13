@@ -9,6 +9,7 @@ import re
 import time
 
 from ..core.image_utils import detect_image_dimensions, detect_mime_type
+from ..core.http_proxy import HttpProxySettings
 
 
 class OpenaiImage:
@@ -32,6 +33,7 @@ class OpenaiImage:
         moderation: str = "",
         max_images: int = 1,
         extra_parameters: dict[str, Any] | None = None,
+        proxy_settings: HttpProxySettings | None = None,
     ) -> None:
         self.api_key = api_key
         normalized_base_url = base_url.strip().rstrip("/") or "https://api.openai.com"
@@ -54,6 +56,7 @@ class OpenaiImage:
         self.moderation = moderation.strip()
         self.max_images = max(int(max_images), 1)
         self.extra_parameters = dict(extra_parameters or {})
+        self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """手动调用 OpenAI 兼容文生图接口。"""
@@ -400,11 +403,14 @@ class OpenaiImage:
 
         start_time = time.time()
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with aiohttp.ClientSession(
+            timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()
+        ) as session:
             async with session.post(
                 url,
                 headers=self._build_headers(with_json_content_type=True),
                 json=payload,
+                **self.proxy_settings.aiohttp_request_kwargs(),
             ) as response:
                 duration = time.time() - start_time
                 if response.status != 200:
@@ -426,11 +432,14 @@ class OpenaiImage:
 
         start_time = time.time()
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with aiohttp.ClientSession(
+            timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()
+        ) as session:
             async with session.post(
                 url,
                 headers=self._build_headers(),
                 data=form,
+                **self.proxy_settings.aiohttp_request_kwargs(),
             ) as response:
                 duration = time.time() - start_time
                 if response.status != 200:
@@ -745,8 +754,10 @@ class OpenaiImage:
         """下载 URL 形式返回的图片。"""
 
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as response:
+        async with aiohttp.ClientSession(
+            timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()
+        ) as session:
+            async with session.get(url, **self.proxy_settings.aiohttp_request_kwargs()) as response:
                 if response.status != 200:
                     self._log_error("OpenAI API错误: 下载图片失败 status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载生成图片失败: status={response.status}")

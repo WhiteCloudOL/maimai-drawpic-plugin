@@ -11,10 +11,12 @@ from ..providers.siliconflow_platform import SiliconFlowImage
 from ..providers.volcengine_platform import VolcengineImage
 from ..providers.zhipu_platform import ZhipuImage
 from .config import DrawpicConfig, OpenAICompatibilityMode
+from .http_proxy import HttpProxySettings
 from .provider_options import parse_key_value_options, parse_model_value_overrides
 
 ProviderName = Literal["aliyun", "openai", "google", "zhipu", "volcengine", "siliconflow", "novelai"]
 OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
+_DOMESTIC_PROXY_BYPASS_PROVIDERS = {"aliyun", "volcengine", "siliconflow"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,7 +263,8 @@ class ProviderRouter:
 
         if not self.config.novelai.enabled:
             return []
-        return [model.strip() for model in self.config.novelai.models if model.strip()]
+        configured_models = self.config.novelai.models + self.config.novelai.custom_models
+        return list(dict.fromkeys(model.strip() for model in configured_models if model.strip()))
 
     def get_all_models(self) -> list[str]:
         """获取全部可用模型列表。"""
@@ -390,6 +393,24 @@ class ProviderRouter:
             return normalized_model
         return self.resolve_default_model()
 
+    def _get_proxy_settings(self, provider_name: ProviderName) -> HttpProxySettings:
+        """按提供商解析是否应用插件全局代理。"""
+
+        proxy_config = self.config.proxy
+        if not proxy_config.enabled:
+            return HttpProxySettings.disabled()
+        if proxy_config.bypass_china_providers and provider_name in _DOMESTIC_PROXY_BYPASS_PROVIDERS:
+            return HttpProxySettings.disabled()
+        return HttpProxySettings(
+            enabled=True,
+            use_system_proxy=proxy_config.use_system_proxy,
+            scheme=proxy_config.scheme,
+            host=proxy_config.host.strip(),
+            port=proxy_config.port,
+            username=proxy_config.username,
+            password=proxy_config.password,
+        )
+
     def create_aliyun_provider(self) -> AliyunImage:
         """创建阿里百炼图片提供商实例。"""
 
@@ -404,6 +425,7 @@ class ProviderRouter:
             watermark=self.config.aliyun.watermark,
             max_images=self.config.aliyun.max_images,
             extra_parameters=parse_key_value_options(self.config.aliyun.extra_parameters),
+            proxy_settings=self._get_proxy_settings("aliyun"),
         )
 
     def create_openai_provider(self, compatibility_mode: OpenAICompatibilityMode, model: str = "") -> ImageProvider:
@@ -445,6 +467,7 @@ class ProviderRouter:
             moderation=route.moderation,
             max_images=route.max_images,
             extra_parameters=route.extra_parameters,
+            proxy_settings=self._get_proxy_settings("openai"),
         )
         return RoutedOpenAIImage(provider, route.upstream_model)
 
@@ -465,6 +488,7 @@ class ProviderRouter:
             guidance_scale=self.config.google.guidance_scale,
             add_watermark=self.config.google.add_watermark,
             extra_parameters=parse_key_value_options(self.config.google.extra_parameters),
+            proxy_settings=self._get_proxy_settings("google"),
         )
 
     def create_zhipu_provider(self) -> ZhipuImage:
@@ -478,6 +502,7 @@ class ProviderRouter:
             response_format=self.config.zhipu.response_format,
             user=self.config.zhipu.user,
             extra_parameters=parse_key_value_options(self.config.zhipu.extra_parameters),
+            proxy_settings=self._get_proxy_settings("zhipu"),
         )
 
     def create_volcengine_provider(self) -> VolcengineImage:
@@ -496,6 +521,7 @@ class ProviderRouter:
             watermark=self.config.volcengine.watermark,
             max_images=self.config.volcengine.max_images,
             extra_parameters=parse_key_value_options(self.config.volcengine.extra_parameters),
+            proxy_settings=self._get_proxy_settings("volcengine"),
         )
 
     def create_siliconflow_provider(self) -> SiliconFlowImage:
@@ -514,6 +540,7 @@ class ProviderRouter:
             negative_prompt=self.config.siliconflow.negative_prompt,
             output_format=self.config.siliconflow.output_format,
             extra_parameters=parse_key_value_options(self.config.siliconflow.extra_parameters),
+            proxy_settings=self._get_proxy_settings("siliconflow"),
         )
 
     def create_novelai_provider(self) -> NovelAIImage:
@@ -537,10 +564,12 @@ class ProviderRouter:
             sm=self.config.novelai.sm,
             sm_dyn=self.config.novelai.sm_dyn,
             noise_schedule=self.config.novelai.noise_schedule,
+            v4_noise_schedule=self.config.novelai.v4_noise_schedule,
             img2img_strength=self.config.novelai.img2img_strength,
             img2img_noise=self.config.novelai.img2img_noise,
             max_images=self.config.novelai.max_images,
             extra_parameters=parse_key_value_options(self.config.novelai.extra_parameters),
+            proxy_settings=self._get_proxy_settings("novelai"),
         )
 
     def supports_image_edit(self, model: str) -> bool:

@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.10+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.9.1-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.9.2-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -77,7 +77,15 @@ admin_user_ids = ["你的管理员用户ID"]
 [volcengine]
 api_key = "your-volcengine-api-key"
 models = ["doubao-seedream-3-0-t2i", "doubao-seedream-3-0-i2i"]
-default_size = "1024x1024"
+default_size = "2048*2048"
+
+[proxy]
+enabled = true
+use_system_proxy = false
+scheme = "http"
+host = "127.0.0.1"
+port = 7890
+bypass_china_providers = true
 
 [openai]
 base_url = "https://api.openai.com"
@@ -102,6 +110,10 @@ models = "relay-gpt-image=gpt-image-2"
 | **`general`** | `group_quota_enabled` / `private_quota_enabled` | 分别为群聊、私聊开启额度管理。配合对应周期与默认次数使用。 |
 | **`general`** | `image_edit_unsupported_models` | 仅支持文生图的模型黑名单，命中后直接拦截图生图请求。 |
 | **`general`** | `prompt_review_enabled` / `image_review_enabled` | 启用文本/图片审核，配合 `replyer` 和 `vlm` 任务模型保障内容安全。 |
+| **`proxy`** | `enabled` / `use_system_proxy` | 图片提供商全局代理开关；系统代理读取 `HTTP_PROXY`、`HTTPS_PROXY` 与 `NO_PROXY`。 |
+| **`proxy`** | `scheme` / `host` / `port` / `username` / `password` | 手动 HTTP/HTTPS 代理地址与可选认证信息；关闭系统代理后生效。 |
+| **`proxy`** | `bypass_china_providers` | 开启后阿里百炼、火山引擎、硅基流动直连，不使用插件全局代理。 |
+| **`novelai`** | `models` / `custom_models` | `models` 为官方模型多选；`custom_models` 可填写 NovelAPI 或兼容网关扩展模型，并自动合并去重。 |
 | **`openai`** | `default_openai_compatibility_mode` | 兼容模式 (`auto` / `images_api` / `chat_completions` / `novelai_images_api`)。 |
 | **`openai.instances`** | `name` / `base_url` / `api_key` / `models` | 额外 OpenAI 兼容实例；`models` 支持 `显示名=上游模型名`，适合多个中转站使用同名模型。WebUI 内为单行输入，多个模型用 `,` 或 `，` 分隔。 |
 | **通用平台** | `api_key` / `models` | 对应服务商的鉴权密钥与允许使用的模型名列表。 |
@@ -187,10 +199,16 @@ plugins/maimai-drawpic-plugin/
 
 ## 近期更新
 
+### v1.9.2
+
+* **NovelAI V3/V4/V4.5 兼容**：V3 保持 `uc` 反向提示词结构；V4 与 V4.5 自动使用 `params_version=3`、`negative_prompt`、`v4_prompt` 和 `v4_negative_prompt`，并使用独立的 V4/V4.5 `karras` 噪声调度配置。正向与反向提示词仍复用原有配置。
+* **NovelAI 官方模型多选与自定义扩展**：官方模型使用 SDK 多选框，提供当前的 V4.5 Full/Curated、V4 Full/Curated Preview、Anime V3 和 Furry V3；NovelAPI 或兼容网关的扩展模型可在独立自定义列表中填写。
+* **图片请求全局代理**：可使用系统代理或手动配置 HTTP/HTTPS 代理，支持认证；可单独让阿里百炼、火山引擎和硅基流动绕过代理直连。
+
 ### v1.9.1
 
-* **NovelAI 官方接口修复**：图像生成请求按官方规范以 HTTP `201` 判定成功，避免已生成的图片被误判为失败。
-* **NovelAI 响应格式对齐**：请求 `Accept` 固定为官方声明的 `application/zip`，由插件解析生成的图片包。
+* **NovelAI 官方接口修复**：图像生成请求按官方规范接受 HTTP `201`，同时兼容 NovelAPI 网关常见的 HTTP `200`。
+* **NovelAI 响应格式对齐**：优先请求官方 `application/zip`，并兼容 JSON 和直接图片响应。
 
 ### v1.9.0
 

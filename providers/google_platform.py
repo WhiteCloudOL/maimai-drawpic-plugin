@@ -4,6 +4,7 @@ from google import genai
 from google.genai import errors, types
 
 from ..core.image_utils import detect_image_dimensions, detect_mime_type
+from ..core.http_proxy import HttpProxySettings
 
 
 class GoogleImage:
@@ -24,14 +25,19 @@ class GoogleImage:
         guidance_scale: float = 0.0,
         add_watermark: bool = False,
         extra_parameters: dict[str, Any] | None = None,
-    ):
+        proxy_settings: HttpProxySettings | None = None,
+    ) -> None:
         client_kwargs: dict[str, Any] = {"api_key": api_key}
         http_options: dict[str, Any] = {"timeout": request_timeout_seconds * 1000}
         normalized_base_url = base_url.strip()
         self.base_url = normalized_base_url or "https://generativelanguage.googleapis.com"
         self.logger = logger
+        self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
         if normalized_base_url and normalized_base_url != "https://api.openai.com/v1":
             http_options["base_url"] = normalized_base_url
+        proxy_client_args = self.proxy_settings.google_client_args()
+        if proxy_client_args:
+            http_options["client_args"] = proxy_client_args
         client_kwargs["http_options"] = http_options
         self.client = genai.Client(**client_kwargs)
         self.number_of_images = max(int(number_of_images), 1)

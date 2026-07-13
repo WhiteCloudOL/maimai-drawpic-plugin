@@ -11,6 +11,7 @@ import time
 import zipfile
 
 from ..core.image_utils import detect_image_dimensions
+from ..core.http_proxy import HttpProxySettings
 
 
 class NovelAIImage:
@@ -35,10 +36,12 @@ class NovelAIImage:
         sm: bool = False,
         sm_dyn: bool = False,
         noise_schedule: str = "native",
+        v4_noise_schedule: str = "karras",
         img2img_strength: float = 0.6,
         img2img_noise: float = 0.1,
         max_images: int = 1,
         extra_parameters: dict[str, Any] | None = None,
+        proxy_settings: HttpProxySettings | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -61,10 +64,12 @@ class NovelAIImage:
         self.sm = sm
         self.sm_dyn = sm_dyn
         self.noise_schedule = noise_schedule.strip()
+        self.v4_noise_schedule = v4_noise_schedule.strip()
         self.img2img_strength = float(img2img_strength)
         self.img2img_noise = float(img2img_noise)
         self.max_images = max(int(max_images), 1)
         self.extra_parameters = dict(extra_parameters or {})
+        self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """调用 NovelAI / NovelAPI 文生图接口。"""
@@ -121,10 +126,35 @@ class NovelAIImage:
             "sm": self.sm,
             "sm_dyn": self.sm_dyn,
         }
-        if self.negative_prompt:
+        is_v4_model = self._is_v4_model(model)
+        if is_v4_model:
+            # V4 系列模型需要使用结构化 caption；仅传 V3 的 uc 会导致服务端错误。
+            parameters.update(
+                {
+                    "params_version": 3,
+                    "prefer_brownian": True,
+                    "negative_prompt": self.negative_prompt,
+                    "v4_negative_prompt": {
+                        "caption": {
+                            "base_caption": self.negative_prompt,
+                            "char_captions": [],
+                        }
+                    },
+                    "v4_prompt": {
+                        "caption": {
+                            "base_caption": prompt,
+                            "char_captions": [],
+                        },
+                        "use_coords": False,
+                        "use_order": True,
+                    },
+                }
+            )
+        elif self.negative_prompt:
             parameters["uc"] = self.negative_prompt
-        if self.noise_schedule:
-            parameters["noise_schedule"] = self.noise_schedule
+        noise_schedule = self.v4_noise_schedule if is_v4_model else self.noise_schedule
+        if noise_schedule:
+            parameters["noise_schedule"] = noise_schedule
         parameters.update(self.extra_parameters)
         return {
             "input": prompt,
@@ -132,6 +162,12 @@ class NovelAIImage:
             "action": action,
             "parameters": parameters,
         }
+
+    @staticmethod
+    def _is_v4_model(model: str) -> bool:
+        """判断模型是否使用 NovelAI V4 参数结构。"""
+
+        return model.strip().lower().startswith("nai-diffusion-4")
 
     def _resolve_size(self, model: str) -> tuple[int, int]:
         """按模型名解析图片尺寸。"""
@@ -229,7 +265,7 @@ class NovelAIImage:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "Accept": "application/zip",
+            "Accept": "application/zip, application/json, image/*",
         }
 
     async def _post_generation(self, url: str, payload: dict[str, Any]) -> tuple[bytes, str]:
@@ -237,12 +273,19 @@ class NovelAIImage:
 
         start_time = time.time()
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, headers=self._build_headers(), json=payload) as response:
+        async with aiohttp.ClientSession(
+            timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()
+        ) as session:
+            async with session.post(
+                url,
+                headers=self._build_headers(),
+                json=payload,
+                **self.proxy_settings.aiohttp_request_kwargs(),
+            ) as response:
                 duration = time.time() - start_time
                 content = await response.read()
                 content_type = response.headers.get("Content-Type", "")
-                if response.status != 201:
+                if response.status not in {200, 201}:
                     error_preview = content[:1200].decode("utf-8", errors="replace")
                     self._log_error(
                         "NovelAI 图片接口失败: status=%s duration=%.2fs url=%s response_preview=%s",
@@ -355,8 +398,10 @@ class NovelAIImage:
         """下载 URL 形式返回的图片。"""
 
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as response:
+        async with aiohttp.ClientSession(
+            timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()
+        ) as session:
+            async with session.get(url, **self.proxy_settings.aiohttp_request_kwargs()) as response:
                 if response.status != 200:
                     self._log_error("下载 NovelAI 生成图片失败: status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载 NovelAI 生成图片失败: status={response.status}")

@@ -5,7 +5,16 @@ from maibot_sdk import Field, PluginConfigBase
 
 
 OpenAICompatibilityMode = Literal["auto", "images_api", "chat_completions", "novelai_images_api"]
+NovelAIModelId = Literal[
+    "nai-diffusion-4-5-full",
+    "nai-diffusion-4-5-curated",
+    "nai-diffusion-4-full",
+    "nai-diffusion-4-curated-preview",
+    "nai-diffusion-3",
+    "nai-diffusion-furry-3",
+]
 QuotaPeriodMode = Literal["daily", "weekly", "monthly", "once"]
+ProxyScheme = Literal["http", "https"]
 CommandReplyMode = Literal["图片", "文本"]
 
 
@@ -24,7 +33,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.18.1",
+        default="2.18.4",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -221,6 +230,90 @@ class GeneralConfig(PluginConfigBase):
     )
 
 
+class ProxyConfig(PluginConfigBase):
+    """图片提供商的全局代理配置。"""
+
+    __ui_label__ = "网络代理"
+    __ui_order__ = 2
+
+    enabled: bool = Field(
+        default=False,
+        description="是否为图片提供商启用全局 HTTP 代理。",
+        json_schema_extra={
+            "label": "启用全局代理",
+            "hint": "开启后，除已配置绕过的国内提供商外，所有图片请求都会使用代理",
+            "order": 0,
+        },
+    )
+    use_system_proxy: bool = Field(
+        default=True,
+        description="是否读取系统环境变量中的 HTTP/HTTPS 代理。",
+        json_schema_extra={
+            "label": "使用系统代理",
+            "hint": "开启后读取 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY；关闭后使用下方手动代理地址",
+            "order": 1,
+        },
+    )
+    scheme: ProxyScheme = Field(
+        default="http",
+        description="手动代理使用的协议。",
+        json_schema_extra={
+            "label": "手动代理协议",
+            "hint": "仅支持 HTTP 或 HTTPS 代理；使用系统代理时忽略",
+            "options": ["http", "https"],
+            "order": 2,
+        },
+    )
+    host: str = Field(
+        default="127.0.0.1",
+        description="手动代理 Host。",
+        json_schema_extra={
+            "label": "手动代理 Host",
+            "hint": "例如 127.0.0.1、localhost 或代理服务器域名；使用系统代理时忽略",
+            "order": 3,
+        },
+    )
+    port: int = Field(
+        default=7890,
+        ge=1,
+        le=65535,
+        description="手动代理端口。",
+        json_schema_extra={
+            "label": "手动代理端口",
+            "hint": "例如 7890；使用系统代理时忽略",
+            "order": 4,
+        },
+    )
+    username: str = Field(
+        default="",
+        description="手动代理认证用户名。",
+        json_schema_extra={
+            "label": "代理用户名",
+            "hint": "代理无需认证时留空；使用系统代理时忽略",
+            "order": 5,
+        },
+    )
+    password: str = Field(
+        default="",
+        description="手动代理认证密码。",
+        json_schema_extra={
+            "label": "代理密码",
+            "hint": "代理无需认证时留空；使用系统代理时忽略",
+            "input_type": "password",
+            "order": 6,
+        },
+    )
+    bypass_china_providers: bool = Field(
+        default=True,
+        description="是否让阿里云、火山引擎和硅基流动绕过全局代理。",
+        json_schema_extra={
+            "label": "国内提供商绕过代理",
+            "hint": "开启后，阿里云、火山引擎、硅基流动直连；其他提供商仍按全局代理设置请求",
+            "order": 7,
+        },
+    )
+
+
 class OpenAICompatibleInstanceConfig(PluginConfigBase):
     """OpenAI 兼容接口实例配置。"""
 
@@ -394,7 +487,7 @@ class OpenAIModelConfig(PluginConfigBase):
     """OpenAI 模型配置。"""
 
     __ui_label__ = "OpenAI 配置"
-    __ui_order__ = 2
+    __ui_order__ = 3
 
     enabled: bool = Field(
         default=True,
@@ -547,7 +640,7 @@ class GoogleModelConfig(PluginConfigBase):
     """Google 模型配置。"""
 
     __ui_label__ = "Google 配置"
-    __ui_order__ = 3
+    __ui_order__ = 4
 
     enabled: bool = Field(
         default=True,
@@ -683,7 +776,7 @@ class ZhipuModelConfig(PluginConfigBase):
     """智谱模型配置。"""
 
     __ui_label__ = "智谱配置"
-    __ui_order__ = 4
+    __ui_order__ = 5
 
     enabled: bool = Field(
         default=True,
@@ -764,7 +857,7 @@ class AliyunModelConfig(PluginConfigBase):
     """阿里百炼模型配置。"""
 
     __ui_label__ = "阿里百炼配置"
-    __ui_order__ = 5
+    __ui_order__ = 6
 
     enabled: bool = Field(
         default=True,
@@ -887,7 +980,7 @@ class VolcengineModelConfig(PluginConfigBase):
     """火山引擎方舟模型配置。"""
 
     __ui_label__ = "火山引擎配置"
-    __ui_order__ = 6
+    __ui_order__ = 7
 
     enabled: bool = Field(
         default=True,
@@ -936,20 +1029,20 @@ class VolcengineModelConfig(PluginConfigBase):
         },
     )
     default_size: str = Field(
-        default="1024x1024",
+        default="2048*2048",
         description="火山引擎图片默认分辨率",
         json_schema_extra={
             "label": "默认分辨率",
-            "hint": "常见值：1024x1024、1328x1328、2048x2048；以模型实际支持为准",
+            "hint": "常见值：1024*1024、1328*1328、2048*2048；以模型实际支持为准",
             "order": 4,
         },
     )
     model_size_overrides: list[str] = Field(
         default=[],
-        description="火山引擎按模型覆盖分辨率。每项格式为 模型名=宽x高",
+        description="火山引擎按模型覆盖分辨率。每项格式为 模型名=宽*高",
         json_schema_extra={
             "label": "按模型覆盖分辨率",
-            "hint": "每行填写一个 模型名=宽x高，例如 doubao-seedream-3-0-t2i=1024x1024",
+            "hint": "每行填写一个 模型名=宽*高，例如 doubao-seedream-3-0-t2i=1024*1024",
             "order": 5,
         },
     )
@@ -1031,7 +1124,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
     """硅基流动模型配置。"""
 
     __ui_label__ = "硅基流动配置"
-    __ui_order__ = 7
+    __ui_order__ = 8
 
     enabled: bool = Field(
         default=True,
@@ -1161,7 +1254,7 @@ class NovelAIModelConfig(PluginConfigBase):
     """NovelAI / NovelAPI 模型配置。"""
 
     __ui_label__ = "NovelAI / NovelAPI 配置"
-    __ui_order__ = 8
+    __ui_order__ = 9
 
     enabled: bool = Field(
         default=True,
@@ -1191,17 +1284,29 @@ class NovelAIModelConfig(PluginConfigBase):
             "order": 1,
         },
     )
-    models: list[str] = Field(
+    models: list[NovelAIModelId] = Field(
         default=[
+            "nai-diffusion-4-5-full",
+            "nai-diffusion-4-5-curated",
             "nai-diffusion-4-full",
             "nai-diffusion-4-curated-preview",
             "nai-diffusion-3",
+            "nai-diffusion-furry-3",
         ],
-        description="NovelAI / NovelAPI 可用图片模型列表",
+        description="可多选的 NovelAI 官方图片模型列表。",
         json_schema_extra={
             "label": "NovelAI 模型列表",
-            "hint": "这里填写属于 NovelAI 官方图片接口或 NovelAPI 网关的模型",
+            "hint": "仅提供 NovelAI 当前官方模型；可多选。NovelAPI 网关的扩展模型请填写下方自定义模型列表",
             "order": 2,
+        },
+    )
+    custom_models: list[str] = Field(
+        default=[],
+        description="NovelAI / NovelAPI 自定义图片模型列表。",
+        json_schema_extra={
+            "label": "自定义模型列表",
+            "hint": "用于 NovelAPI 网关或其他兼容服务的扩展模型；每行填写一个模型 ID，会与上方官方模型列表合并",
+            "order": 3,
         },
     )
     width: int = Field(
@@ -1210,7 +1315,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "宽度",
             "hint": "常用值 832、1024、1216 等；以模型实际支持为准。",
-            "order": 3,
+            "order": 4,
         },
     )
     height: int = Field(
@@ -1219,7 +1324,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "高度",
             "hint": "常用值 832、1024、1216 等；以模型实际支持为准",
-            "order": 4,
+            "order": 5,
         },
     )
     model_size_overrides: list[str] = Field(
@@ -1228,7 +1333,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "按模型覆盖尺寸",
             "hint": "每行填写一个 模型名=宽x高，例如 nai-diffusion-3=832x1216",
-            "order": 5,
+            "order": 6,
         },
     )
     sampler: str = Field(
@@ -1237,7 +1342,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "采样器",
             "hint": "常见值：k_euler_ancestral、k_euler、k_dpmpp_2m、ddim 等",
-            "order": 6,
+            "order": 7,
         },
     )
     steps: int = Field(
@@ -1246,7 +1351,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "采样步数",
             "hint": "常见值 20 到 40。",
-            "order": 7,
+            "order": 8,
         },
     )
     scale: float = Field(
@@ -1255,7 +1360,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "Prompt Guidance",
             "hint": "常见值 4 到 8，值越高越贴近提示词",
-            "order": 8,
+            "order": 9,
         },
     )
     seed: int = Field(
@@ -1264,7 +1369,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "随机种子",
             "hint": "负数会在本地生成随机种子；非负整数固定 seed",
-            "order": 9,
+            "order": 10,
         },
     )
     negative_prompt: str = Field(
@@ -1274,7 +1379,7 @@ class NovelAIModelConfig(PluginConfigBase):
             "label": "反向提示词",
             "hint": "会写入 uc；留空则不传",
             "input_type": "textarea",
-            "order": 10,
+            "order": 11,
         },
     )
     uc_preset: int = Field(
@@ -1283,7 +1388,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "UC 预设",
             "hint": "常见值 0 到 3；不同模型含义可能不同",
-            "order": 11,
+            "order": 12,
         },
     )
     quality_toggle: bool = Field(
@@ -1292,7 +1397,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "质量增强",
             "hint": "对应 qualityToggle。",
-            "order": 12,
+            "order": 13,
         },
     )
     sm: bool = Field(
@@ -1301,7 +1406,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "SMEA",
             "hint": "对应 sm。",
-            "order": 13,
+            "order": 14,
         },
     )
     sm_dyn: bool = Field(
@@ -1310,7 +1415,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "动态 SMEA",
             "hint": "对应 sm_dyn。",
-            "order": 14,
+            "order": 15,
         },
     )
     noise_schedule: str = Field(
@@ -1319,7 +1424,16 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "噪声调度",
             "hint": "常见值 native、karras、exponential、polyexponential；留空则不传",
-            "order": 15,
+            "order": 16,
+        },
+    )
+    v4_noise_schedule: str = Field(
+        default="karras",
+        description="NovelAI V4/V4.5 专用 noise schedule。",
+        json_schema_extra={
+            "label": "V4/V4.5 噪声调度",
+            "hint": "V4/V4.5 默认使用 karras；留空则不传",
+            "order": 17,
         },
     )
     img2img_strength: float = Field(
@@ -1328,7 +1442,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "图生图强度",
             "hint": "仅 edit_image 使用，值越高越接近原图；常见值 0.4 到 0.8",
-            "order": 16,
+            "order": 18,
         },
     )
     img2img_noise: float = Field(
@@ -1337,7 +1451,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "图生图噪声",
             "hint": "仅 edit_image 使用；常见值 0 到 0.3",
-            "order": 17,
+            "order": 19,
         },
     )
     max_images: int = Field(
@@ -1346,7 +1460,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "单次图片数量",
             "hint": "会写入 n_samples，建议 1 到 4",
-            "order": 18,
+            "order": 20,
         },
     )
     extra_parameters: list[str] = Field(
@@ -1355,7 +1469,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "额外参数",
             "hint": "每行一个 key=value，值支持 true/false、数字或 JSON；会合并到 parameters",
-            "order": 19,
+            "order": 21,
         },
     )
     rewrite_prompt_to_english: bool = Field(
@@ -1364,7 +1478,7 @@ class NovelAIModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "英文提示词改写",
             "hint": "NovelAI 标签体系建议开启，避免中文提示词导致效果差或请求失败",
-            "order": 20,
+            "order": 22,
         },
     )
 
@@ -1373,7 +1487,7 @@ class PromptModerationConfig(PluginConfigBase):
     """提示词审核配置。"""
 
     __ui_label__ = "提示词审核"
-    __ui_order__ = 9
+    __ui_order__ = 10
 
     enabled: bool = Field(
         default=False,
@@ -1411,7 +1525,7 @@ class ImageModerationConfig(PluginConfigBase):
     """生成图片审核配置。"""
 
     __ui_label__ = "生成图片审核"
-    __ui_order__ = 10
+    __ui_order__ = 11
 
     enabled: bool = Field(
         default=False,
@@ -1451,6 +1565,7 @@ class DrawpicConfig(PluginConfigBase):
 
     plugin: PluginSectionConfig = Field(default_factory=PluginSectionConfig)
     general: GeneralConfig = Field(default_factory=GeneralConfig)
+    proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     prompt_review: PromptModerationConfig = Field(default_factory=PromptModerationConfig)
     image_review: ImageModerationConfig = Field(default_factory=ImageModerationConfig)
     openai: OpenAIModelConfig = Field(default_factory=OpenAIModelConfig)

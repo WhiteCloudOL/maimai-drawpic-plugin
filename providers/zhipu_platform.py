@@ -6,6 +6,8 @@ import aiohttp
 import base64
 import time
 
+from ..core.http_proxy import HttpProxySettings
+
 
 class ZhipuImage:
     """智谱图像生成接口封装。"""
@@ -21,6 +23,7 @@ class ZhipuImage:
         response_format: str = "url",
         user: str = "",
         extra_parameters: dict[str, Any] | None = None,
+        proxy_settings: HttpProxySettings | None = None,
     ) -> None:
         self.api_key = api_key
         self.logger = logger
@@ -29,6 +32,7 @@ class ZhipuImage:
         self.response_format = response_format.strip()
         self.user = user.strip()
         self.extra_parameters = dict(extra_parameters or {})
+        self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """调用智谱文生图接口。"""
@@ -77,8 +81,15 @@ class ZhipuImage:
 
         start_time = time.time()
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, headers=self._build_headers(), json=payload) as response:
+        async with aiohttp.ClientSession(
+            timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()
+        ) as session:
+            async with session.post(
+                url,
+                headers=self._build_headers(),
+                json=payload,
+                **self.proxy_settings.aiohttp_request_kwargs(),
+            ) as response:
                 duration = time.time() - start_time
                 if response.status != 200:
                     error_text = await response.text()
@@ -129,8 +140,10 @@ class ZhipuImage:
         """下载 URL 形式返回的图片。"""
 
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as response:
+        async with aiohttp.ClientSession(
+            timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()
+        ) as session:
+            async with session.get(url, **self.proxy_settings.aiohttp_request_kwargs()) as response:
                 if response.status != 200:
                     self._log_error("下载智谱生成图片失败: status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载智谱生成图片失败: status={response.status}")
