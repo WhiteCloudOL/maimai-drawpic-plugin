@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.10+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.9.2-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.10.0-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -20,7 +20,7 @@
 ## ✨ 功能特性
 
 * **🎨 双模式绘图**：支持纯文本驱动的“文生图”与基于参考图的“图生图”。智能识别消息或引用中的图片，支持多图并行处理，且在源数据缺失或不兼容时提供精准提示，拒绝无效的强制降级。
-* **🌐 多平台矩阵**：内置适配 OpenAI、Google Gemini、智谱、阿里百炼、火山引擎、硅基流动及 NovelAI 等主流服务商，轻松应对不同场景需求。
+* **🌐 多平台矩阵**：内置适配 OpenAI、Google Gemini、智谱、阿里百炼、火山引擎、硅基流动、NovelAI 及本地 ComfyUI 工作流，轻松应对不同场景需求。
 * **📐 智能尺寸自适应**：图生图模式下自动计算并适配源图比例，完美兼容官方标准与第三方中转接口的分辨率约束。
 * **🎀 会话级个性偏好**：群聊与私聊独立记忆首选模型与兼容模式设置，支持全局生图备选模型，重启服务数据不丢失。
 * **🤖 深度 LLM 赋能**：对外暴露 `draw`、`edit_image` 和 `draw_status` 工具，赋予大模型自主判断场景并调用绘图工具的能力，全程静默异步执行。
@@ -37,6 +37,7 @@
 | **火山引擎** | 豆包生图、即梦 AI 系列模型，内置官方接口地址。 | ✅ | ✅ | [火山引擎API-KEY管理](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey) |
 | **硅基流动** | Kolors、Stable Diffusion 3.5 等开源模型，按量计费。 | ✅ | ✅ | [硅基流动API-KEY管理](https://cloud.siliconflow.cn/account/ak) |
 | **NovelAI / NovelAPI** | NovelAI 官方接口或兼容 NovelAPI 网关，支持 `nai-diffusion` 全系列模型。 | ✅ | ✅ | [NovelAI官网](https://novelai.net/) |
+| **ComfyUI** | 调用自建或局域网 ComfyUI 的 API 工作流；统一模型 `comfyui` 会按任务自动选择文生图或图生图工作流。 | ✅ | ✅ | [ComfyUI](https://github.com/Comfy-Org/ComfyUI) |
 
 > 💡 标记为 ❌ 表示该平台不支持某一项功能，插件会在用户尝试图生图时提前拦截并提示切换模型。
 
@@ -92,6 +93,12 @@ base_url = "https://api.openai.com"
 api_key = "your-openai-api-key"
 models = ["gpt-image-2"]
 
+[comfyui]
+enabled = true
+base_url = "http://127.0.0.1:8188"
+t2i_workflow_path = "data/workflows/t2i.json"
+i2i_workflow_path = "data/workflows/i2i.json"
+
 [[openai.instances]]
 enabled = true
 name = "备用中转"
@@ -114,11 +121,91 @@ models = "relay-gpt-image=gpt-image-2"
 | **`proxy`** | `scheme` / `host` / `port` / `username` / `password` | 手动 HTTP/HTTPS 代理地址与可选认证信息；关闭系统代理后生效。 |
 | **`proxy`** | `bypass_china_providers` | 开启后阿里百炼、火山引擎、硅基流动直连，不使用插件全局代理。 |
 | **`novelai`** | `models` / `custom_models` | `models` 为官方模型多选；`custom_models` 可填写 NovelAPI 或兼容网关扩展模型，并自动合并去重。 |
+| **`volcengine`** | `unified_models` / `t2i_models` / `i2i_models` | `unified_models` 填写同时支持两种任务的模型；另两个列表分别保留仅文生图、仅图生图模型。统一模型可直接用于两类任务。 |
+| **`comfyui`** | `base_url` | ComfyUI 服务地址。启用后绘图模型列表固定提供 `comfyui`，选中后按任务类型自动路由到对应工作流。 |
+| **`comfyui`** | `t2i_workflow_path` / `i2i_workflow_path` | 文生图、图生图 API 工作流路径；相对路径相对于插件目录，默认在 `data/workflows/`，也支持 Windows、Linux 和 macOS 的绝对路径。 |
+| **`comfyui`** | `*_prompt_mode` / `*_prompt_node_id` / `*_positive_prompt_node_id` / `*_negative_prompt_node_id` | 配置工作流是单提示词，还是正向/反向提示词结构，并指定相应 API 工作流节点 ID。 |
 | **`openai`** | `default_openai_compatibility_mode` | 兼容模式 (`auto` / `images_api` / `chat_completions` / `novelai_images_api`)。 |
 | **`openai.instances`** | `name` / `base_url` / `api_key` / `models` | 额外 OpenAI 兼容实例；`models` 支持 `显示名=上游模型名`，适合多个中转站使用同名模型。WebUI 内为单行输入，多个模型用 `,` 或 `，` 分隔。 |
 | **通用平台** | `api_key` / `models` | 对应服务商的鉴权密钥与允许使用的模型名列表。 |
 | **通用平台** | `base_url` | 适用于 OpenAI、Google、NovelAI 的网关地址（其余平台使用内置官方地址）。 |
 | **通用平台** | `rewrite_prompt_to_english` | 开启后，调用接口前将使用 MaiBot 的 `replyer` 模型自动翻译并规范化提示词标点。 |
+
+## 🧩 ComfyUI 本地工作流
+
+ComfyUI 不需要 API Key。启用 `comfyui.enabled` 后，在 `/绘图 模型 comfyui` 中选择统一模型 `comfyui` 即可：`/绘图 文生图` 自动使用 `t2i_workflow_path`，`/绘图 图生图` 或 `edit_image` 自动使用 `i2i_workflow_path`。无需为两类任务分别选择模型。
+
+### 1. 导出正确的工作流文件
+
+插件仅接受 **ComfyUI API 格式** JSON。请在 ComfyUI 中完成并验证工作流后，使用菜单的“导出（API 格式）”保存：
+
+* 将文生图工作流保存为 `plugins/maimai-drawpic/data/workflows/t2i.json`。
+* 将图生图工作流保存为 `plugins/maimai-drawpic/data/workflows/i2i.json`。
+
+普通“保存”得到的画布工作流 JSON 通常包含 `nodes`、`links`、`last_node_id` 等字段，不能直接提交到 `/prompt` 接口。插件会拒绝该格式并在日志和任务错误中明确提示重新导出 API 格式。
+
+工作流路径支持：
+
+```toml
+# 相对插件目录，跨平台推荐
+t2i_workflow_path = "data/workflows/t2i.json"
+
+# Windows 绝对路径
+i2i_workflow_path = "C:/ComfyUI/workflows/i2i_api.json"
+
+# Linux / macOS 绝对路径
+# i2i_workflow_path = "/opt/comfyui/workflows/i2i_api.json"
+```
+
+### 2. 配置提示词节点
+
+插件会在提交前把用户提示词写入 API 工作流的节点 `inputs`。节点 ID 是 API JSON 顶层的键，例如 `"3"`；标准 `CLIPTextEncode` 的输入字段通常是 `text`，对应 `prompt_input_name = "text"`。
+
+正反提示词工作流示例：
+
+```toml
+[comfyui]
+t2i_prompt_mode = "positive_negative"
+t2i_positive_prompt_node_id = "3"
+t2i_negative_prompt_node_id = "4"
+t2i_negative_prompt = "low quality, blurry, watermark"
+
+i2i_prompt_mode = "positive_negative"
+i2i_positive_prompt_node_id = "12"
+i2i_negative_prompt_node_id = "13"
+i2i_negative_prompt = "low quality, blurry"
+```
+
+单提示词工作流示例（例如工作流只有一个接收完整提示词的自定义节点）：
+
+```toml
+[comfyui]
+t2i_prompt_mode = "single_prompt"
+t2i_prompt_node_id = "3"
+i2i_prompt_mode = "single_prompt"
+i2i_prompt_node_id = "12"
+prompt_input_name = "text"
+```
+
+`positive_negative` 模式会用用户提示词覆盖正向节点，用 `*_negative_prompt` 覆盖反向节点；`single_prompt` 模式仅写入 `*_prompt_node_id`，不会改动其他提示词节点。不同任务可独立选择模式。
+
+### 3. 配置图生图源图片节点
+
+图生图工作流应包含 `LoadImage` 或兼容节点。插件会将聊天中的第一张源图上传到 ComfyUI，再把上传后的文件名写入该节点；标准 `LoadImage` 配置如下：
+
+```toml
+[comfyui]
+i2i_image_node_id = "5"
+image_input_name = "image"
+```
+
+当前工作流注入一张源图；如果用户消息携带多张图，插件会记录警告并使用第一张。工作流中必须保留图片输出节点（例如 `SaveImage` 或 `PreviewImage`），否则 ComfyUI 历史记录没有可下载图片。
+
+### 4. 地址、超时与排错
+
+默认地址是 `http://127.0.0.1:8188`。远程或局域网 ComfyUI 可改为完整 HTTP 地址，例如 `http://192.168.1.14:8188`；请保证 MaiBot 机器可以访问该地址，并按需通过插件的全局代理设置访问远程实例。
+
+`comfyui.poll_interval_seconds` 控制查询任务状态的间隔（默认 1 秒），总时限沿用 `general.request_timeout_seconds`。调用日志会记录工作流加载路径、ComfyUI `prompt_id`、上传文件名、执行耗时和接口错误，便于定位路径、节点 ID 或工作流执行问题。
 
 ## 🔐 权限与额度管控
 
@@ -199,6 +286,18 @@ plugins/maimai-drawpic-plugin/
 
 ## 近期更新
 
+### v1.10.0
+
+**用户侧**
+
+* **ComfyUI 本地工作流支持**：新增 ComfyUI 提供商，启用后可在 `/绘图 模型 comfyui` 选择统一模型；插件会按任务自动使用文生图或图生图工作流。
+* **ComfyUI 工作流配置**：支持分别配置 T2I/I2I API 工作流、相对或 Windows/Linux/macOS 绝对路径、单提示词或正反提示词节点，以及图生图源图节点。
+* **火山引擎统一模型列表**：新增 `unified_models`，同时支持文生图和图生图的模型只需配置一次；原 `t2i_models`、`i2i_models` 保留用于单能力模型。
+
+**开发侧**
+
+* **ComfyUI 任务可观测性**：补充工作流加载、任务提交、图片上传、执行耗时、接口失败与工作流格式错误日志；普通画布 JSON 会明确提示导出 API 格式。
+
 ### v1.9.2
 
 * **NovelAI V3/V4/V4.5 兼容**：V3 保持 `uc` 反向提示词结构；V4 与 V4.5 自动使用 `params_version=3`、`negative_prompt`、`v4_prompt` 和 `v4_negative_prompt`，并使用独立的 V4/V4.5 `karras` 噪声调度配置。正向与反向提示词仍复用原有配置。
@@ -217,9 +316,3 @@ plugins/maimai-drawpic-plugin/
 * **额度失败不扣除**：绘图额度改为任务成功后扣除，任务失败、超时、审核拒绝或提交异常时均不消耗次数，不再需要预扣回退。
 * **管理员命令格式更新**：`/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量`，例如 `/绘图 设置 用户 12345678 10`。
 * **群聊用户级额度限制说明**：因 MaiBot 工具参数更新，群聊工具调用链路无法稳定获取发起用户的 `user_id`，群聊额度只能按群组整体扣除，已在 README 中补充说明。
-
-### v1.8.9
-
-* **工具用户识别修复**：LLM 工具不再暴露或必填 `user_id`，插件优先使用 MaiBot 主程序注入的工具执行上下文和通用 `message_info.user_info.user_id` 解析真实发起用户，旧版 LLM 参数仅作为兼容兜底。
-* **额度扣除修复**：绘图任务改为预扣额度并在任务失败、审核拒绝、后台取消或提交异常时自动回退；额度未启用时不再强制要求 `user_id`。
-* **额度日志增强**：额度预扣、跳过、失败、回退均记录归属用户、聊天流、群号、周期和失败原因，便于排查多扣或失败未返还问题。

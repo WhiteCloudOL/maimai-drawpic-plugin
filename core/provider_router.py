@@ -1,9 +1,11 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import re
 
 from ..providers.aliyun_platform import AliyunImage
+from ..providers.comfyui_platform import ComfyUIImage
 from ..providers.google_platform import GoogleImage
 from ..providers.novelai_platform import NovelAIImage
 from ..providers.openai_platform import OpenaiImage
@@ -14,7 +16,7 @@ from .config import DrawpicConfig, OpenAICompatibilityMode
 from .http_proxy import HttpProxySettings
 from .provider_options import parse_key_value_options, parse_model_value_overrides
 
-ProviderName = Literal["aliyun", "openai", "google", "zhipu", "volcengine", "siliconflow", "novelai"]
+ProviderName = Literal["aliyun", "openai", "google", "zhipu", "volcengine", "siliconflow", "novelai", "comfyui"]
 OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
 _DOMESTIC_PROXY_BYPASS_PROVIDERS = {"aliyun", "volcengine", "siliconflow"}
 
@@ -233,14 +235,26 @@ class ProviderRouter:
 
         if not self.config.volcengine.enabled:
             return []
-        return [model.strip() for model in self.config.volcengine.t2i_models if model.strip()]
+        return list(
+            dict.fromkeys(
+                model.strip()
+                for model in self.config.volcengine.unified_models + self.config.volcengine.t2i_models
+                if model.strip()
+            )
+        )
 
     def get_volcengine_i2i_models(self) -> list[str]:
         """获取火山引擎图生图模型列表。"""
 
         if not self.config.volcengine.enabled:
             return []
-        return [model.strip() for model in self.config.volcengine.i2i_models if model.strip()]
+        return list(
+            dict.fromkeys(
+                model.strip()
+                for model in self.config.volcengine.unified_models + self.config.volcengine.i2i_models
+                if model.strip()
+            )
+        )
 
     def get_volcengine_models(self) -> list[str]:
         """获取火山引擎全部模型列表（文生图 + 图生图，去重保序）。"""
@@ -266,6 +280,13 @@ class ProviderRouter:
         configured_models = self.config.novelai.models + self.config.novelai.custom_models
         return list(dict.fromkeys(model.strip() for model in configured_models if model.strip()))
 
+    def get_comfyui_models(self) -> list[str]:
+        """获取 ComfyUI 统一模型列表。"""
+
+        if not self.config.comfyui.enabled:
+            return []
+        return ["comfyui"]
+
     def get_all_models(self) -> list[str]:
         """获取全部可用模型列表。"""
 
@@ -277,6 +298,7 @@ class ProviderRouter:
             + self.get_volcengine_models()
             + self.get_siliconflow_models()
             + self.get_novelai_models()
+            + self.get_comfyui_models()
         )
 
     def get_model_provider(self, model: str) -> ProviderName | Literal[""]:
@@ -297,6 +319,8 @@ class ProviderRouter:
             return "siliconflow"
         if normalized_model in self.get_novelai_models():
             return "novelai"
+        if normalized_model in self.get_comfyui_models():
+            return "comfyui"
         return ""
 
     def resolve_default_model(self) -> str:
@@ -381,6 +405,8 @@ class ProviderRouter:
             return self.config.siliconflow.rewrite_prompt_to_english
         if normalized_provider == "novelai":
             return self.config.novelai.rewrite_prompt_to_english
+        if normalized_provider == "comfyui":
+            return self.config.comfyui.rewrite_prompt_to_english
         return False
 
     def resolve_model_name(self, model: str = "", allow_unknown_model: bool = False) -> str:
@@ -572,6 +598,34 @@ class ProviderRouter:
             proxy_settings=self._get_proxy_settings("novelai"),
         )
 
+    def create_comfyui_provider(self) -> ComfyUIImage:
+        """创建 ComfyUI 图片提供商实例。"""
+
+        config = self.config.comfyui
+        return ComfyUIImage(
+            base_url=config.base_url,
+            plugin_dir=Path(__file__).resolve().parent.parent,
+            logger=self.logger,
+            request_timeout_seconds=self.resolve_request_timeout_seconds(),
+            poll_interval_seconds=config.poll_interval_seconds,
+            t2i_workflow_path=config.t2i_workflow_path,
+            i2i_workflow_path=config.i2i_workflow_path,
+            t2i_prompt_mode=config.t2i_prompt_mode,
+            i2i_prompt_mode=config.i2i_prompt_mode,
+            t2i_prompt_node_id=config.t2i_prompt_node_id,
+            i2i_prompt_node_id=config.i2i_prompt_node_id,
+            t2i_positive_prompt_node_id=config.t2i_positive_prompt_node_id,
+            t2i_negative_prompt_node_id=config.t2i_negative_prompt_node_id,
+            i2i_positive_prompt_node_id=config.i2i_positive_prompt_node_id,
+            i2i_negative_prompt_node_id=config.i2i_negative_prompt_node_id,
+            t2i_negative_prompt=config.t2i_negative_prompt,
+            i2i_negative_prompt=config.i2i_negative_prompt,
+            i2i_image_node_id=config.i2i_image_node_id,
+            prompt_input_name=config.prompt_input_name,
+            image_input_name=config.image_input_name,
+            proxy_settings=self._get_proxy_settings("comfyui"),
+        )
+
     def supports_image_edit(self, model: str) -> bool:
         """判断模型是否支持图生图编辑。"""
 
@@ -603,6 +657,8 @@ class ProviderRouter:
                 return "火山引擎未配置图生图模型（i2i_models 为空），无法提交图生图任务"
             if normalized_model not in i2i_models:
                 return f"当前模型 {normalized_model} 属于火山引擎文生图模型；请切换到 i2i 类模型后再使用图生图"
+        if provider_name == "comfyui" and not self.config.comfyui.i2i_workflow_path.strip():
+            return "ComfyUI 未配置图生图工作流（i2i_workflow_path 为空），无法提交图生图任务"
         return ""
 
     def resolve_volcengine_model_for_task(
@@ -677,6 +733,8 @@ class ProviderRouter:
             provider = self.create_siliconflow_provider()
         elif provider_type == "novelai":
             provider = self.create_novelai_provider()
+        elif provider_type == "comfyui":
+            provider = self.create_comfyui_provider()
         elif provider_type == "openai":
             provider = self.create_openai_provider(
                 self.resolve_openai_compatibility_mode(openai_compatibility_mode, model),
