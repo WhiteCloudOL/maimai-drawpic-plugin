@@ -91,6 +91,8 @@ class DrawpicPlugin(MaiBotPlugin):
     def __init__(self) -> None:
         super().__init__()
         self._data_dir = Path(__file__).with_name("data")
+        self._workflows_dir = self._data_dir / "workflows"
+        self._workflows_readme_path = self._workflows_dir / "README.txt"
         self._session_preferences_path = self._data_dir / "session_preferences.json"
         self._task_store_path = self._data_dir / "draw_tasks.json"
         self._usage_store_path = self._data_dir / "user_quotas.json"
@@ -148,6 +150,7 @@ class DrawpicPlugin(MaiBotPlugin):
         """准备插件运行时数据目录，并迁移旧位置的数据文件。"""
 
         self._data_dir.mkdir(parents=True, exist_ok=True)
+        self._prepare_workflows_dir()
         legacy_paths = {
             Path(__file__).with_name("session_preferences.json"): self._session_preferences_path,
             Path(__file__).with_name("draw_tasks.json"): self._task_store_path,
@@ -155,6 +158,30 @@ class DrawpicPlugin(MaiBotPlugin):
         for legacy_path, current_path in legacy_paths.items():
             if legacy_path.exists() and not current_path.exists():
                 legacy_path.replace(current_path)
+
+    def _prepare_workflows_dir(self) -> None:
+        """创建 ComfyUI 工作流目录及首次使用说明，不覆盖用户内容。"""
+
+        self._workflows_dir.mkdir(parents=True, exist_ok=True)
+        if self._workflows_readme_path.exists():
+            return
+
+        self._workflows_readme_path.write_text(
+            """ComfyUI 工作流目录说明
+
+请将从 ComfyUI 菜单“导出（API 格式）”得到的 JSON 工作流放入本目录。
+
+默认文件名：
+1. t2i.json：文生图工作流，对应 comfyui.t2i_workflow_path。
+2. i2i.json：图生图工作流，对应 comfyui.i2i_workflow_path。
+
+普通“保存”得到的画布 JSON 不能直接使用；它通常包含 nodes、links 等字段。
+请在插件配置中填写提示词、种子和图生图源图片对应的 API 工作流节点 ID。
+详细配置说明请查看插件根目录 README.md 的“ComfyUI 本地工作流”章节。
+""",
+            encoding="utf-8",
+        )
+        self.ctx.logger.info("已创建 ComfyUI 工作流目录说明: path=%s", self._workflows_readme_path)
 
     def _refresh_services(self) -> None:
         """刷新内部服务对象。"""
@@ -1464,6 +1491,20 @@ class DrawpicPlugin(MaiBotPlugin):
             return False, "当前模型不支持图生图", 1
 
         try:
+            router.validate_forced_command_task(resolved_model, "edit_image")
+        except (OSError, ValueError) as exc:
+            self.ctx.logger.warning("/绘图 图生图命令配置校验失败: model=%s error=%s", resolved_model, exc)
+            await self._send_command_reply(
+                title="图生图配置错误",
+                body=str(exc),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "图生图配置错误", 1
+
+        try:
             image_base64_list, lookup_stream_ids, matched_message_id = await self._collect_forced_command_source_images(
                 message=message,
                 stream_id=stream_id,
@@ -1786,6 +1827,21 @@ class DrawpicPlugin(MaiBotPlugin):
                     platform=normalized_platform,
                 )
                 return False, "缺少提示词", 1
+
+            try:
+                resolved_model = self._require_draw_service().resolve_model_name(session_preference["model"])
+                self._require_router().validate_forced_command_task(resolved_model, "draw")
+            except (OSError, ValueError) as exc:
+                self.ctx.logger.warning("/绘图 文生图命令配置校验失败: error=%s", exc)
+                await self._send_command_reply(
+                    title="文生图配置错误",
+                    body=str(exc),
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=normalized_platform,
+                )
+                return False, "文生图配置错误", 1
 
             try:
                 try:

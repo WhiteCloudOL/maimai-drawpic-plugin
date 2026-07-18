@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 import asyncio
 import copy
 import json
+import secrets
 import time
 import uuid
 
@@ -44,6 +45,10 @@ class ComfyUIImage:
         i2i_image_node_id: str,
         prompt_input_name: str,
         image_input_name: str,
+        seed: int,
+        seed_input_name: str,
+        t2i_seed_node_id: str,
+        i2i_seed_node_id: str,
         proxy_settings: HttpProxySettings | None = None,
     ) -> None:
         normalized_base_url = base_url.strip().rstrip("/")
@@ -71,6 +76,10 @@ class ComfyUIImage:
         self.i2i_image_node_id = i2i_image_node_id
         self.prompt_input_name = prompt_input_name
         self.image_input_name = image_input_name
+        self.seed = int(seed)
+        self.seed_input_name = seed_input_name
+        self.t2i_seed_node_id = t2i_seed_node_id
+        self.i2i_seed_node_id = i2i_seed_node_id
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
@@ -88,6 +97,7 @@ class ComfyUIImage:
             negative_prompt=self.t2i_negative_prompt,
             task_name="文生图",
         )
+        self._inject_seed(workflow, self.t2i_seed_node_id, "文生图")
         return await self._execute_workflow(workflow, "文生图")
 
     async def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
@@ -110,6 +120,7 @@ class ComfyUIImage:
             negative_prompt=self.i2i_negative_prompt,
             task_name="图生图",
         )
+        self._inject_seed(workflow, self.i2i_seed_node_id, "图生图")
         uploaded_filename = await self._upload_image(image_bytes_list[0])
         self._set_node_input(
             workflow,
@@ -119,6 +130,42 @@ class ComfyUIImage:
             "图生图源图片",
         )
         return await self._execute_workflow(workflow, "图生图")
+
+    def validate_task_configuration(self, task_type: str) -> None:
+        """验证强制绘图命令所需的 ComfyUI 工作流与节点配置。"""
+
+        if task_type == "draw":
+            workflow = self._load_workflow(self.t2i_workflow_path, "文生图")
+            self._inject_prompt(
+                workflow=workflow,
+                prompt="",
+                mode=self.t2i_prompt_mode,
+                prompt_node_id=self.t2i_prompt_node_id,
+                positive_prompt_node_id=self.t2i_positive_prompt_node_id,
+                negative_prompt_node_id=self.t2i_negative_prompt_node_id,
+                negative_prompt=self.t2i_negative_prompt,
+                task_name="文生图",
+            )
+            self._validate_seed_target(workflow, self.t2i_seed_node_id, "文生图")
+            return
+
+        if task_type == "edit_image":
+            workflow = self._load_workflow(self.i2i_workflow_path, "图生图")
+            self._inject_prompt(
+                workflow=workflow,
+                prompt="",
+                mode=self.i2i_prompt_mode,
+                prompt_node_id=self.i2i_prompt_node_id,
+                positive_prompt_node_id=self.i2i_positive_prompt_node_id,
+                negative_prompt_node_id=self.i2i_negative_prompt_node_id,
+                negative_prompt=self.i2i_negative_prompt,
+                task_name="图生图",
+            )
+            self._validate_seed_target(workflow, self.i2i_seed_node_id, "图生图")
+            self._get_node_inputs(workflow, self.i2i_image_node_id, self.image_input_name, "图生图源图片")
+            return
+
+        raise ValueError(f"不支持的 ComfyUI 任务类型：{task_type}")
 
     def _load_workflow(self, configured_path: str, task_name: str) -> dict[str, Any]:
         """加载并验证 ComfyUI API 格式工作流。"""
@@ -186,15 +233,64 @@ class ComfyUIImage:
             return
         raise ValueError(f"ComfyUI {task_name}提示词模式无效：{mode}")
 
-    @staticmethod
+    def _inject_seed(self, workflow: dict[str, Any], configured_node_id: str, task_name: str) -> None:
+        """将固定或随机种子写入工作流的采样节点。"""
+
+        node_id = self._validate_seed_target(workflow, configured_node_id, task_name)
+        seed = self.seed if self.seed >= 0 else secrets.randbits(64)
+        self._set_node_input(workflow, node_id, self.seed_input_name, seed, f"{task_name}随机种子")
+        seed_mode = "固定" if self.seed >= 0 else "随机"
+        self._log_info("ComfyUI %s种子已写入: mode=%s seed=%s node_id=%s", task_name, seed_mode, seed, node_id)
+
+    def _validate_seed_target(self, workflow: dict[str, Any], configured_node_id: str, task_name: str) -> str:
+        """解析并验证种子节点；未配置时自动识别唯一的 seed 输入节点。"""
+
+        node_id = configured_node_id.strip()
+        if not node_id:
+            candidates = [
+                candidate_id
+                for candidate_id, node in workflow.items()
+                if isinstance(node, dict)
+                and isinstance(node.get("inputs"), dict)
+                and self.seed_input_name.strip() in node["inputs"]
+            ]
+            if len(candidates) == 1:
+                node_id = candidates[0]
+            elif not candidates:
+                raise ValueError(
+                    f"ComfyUI {task_name}工作流未找到 {self.seed_input_name.strip() or 'seed'} 输入；"
+                    "请填写种子输入字段名和种子节点 ID"
+                )
+            else:
+                raise ValueError(
+                    f"ComfyUI {task_name}工作流存在多个 {self.seed_input_name.strip() or 'seed'} 输入；"
+                    "请填写对应的种子节点 ID"
+                )
+        self._get_node_inputs(workflow, node_id, self.seed_input_name, f"{task_name}随机种子")
+        return node_id
+
+    @classmethod
     def _set_node_input(
+        cls,
         workflow: dict[str, Any],
         node_id: str,
         input_name: str,
-        value: str,
+        value: Any,
         field_name: str,
     ) -> None:
         """写入指定节点输入，并在配置错误时提供准确错误。"""
+
+        inputs = cls._get_node_inputs(workflow, node_id, input_name, field_name)
+        inputs[input_name.strip()] = value
+
+    @staticmethod
+    def _get_node_inputs(
+        workflow: dict[str, Any],
+        node_id: str,
+        input_name: str,
+        field_name: str,
+    ) -> dict[str, Any]:
+        """获取并校验指定节点输入。"""
 
         normalized_node_id = node_id.strip()
         normalized_input_name = input_name.strip()
@@ -208,7 +304,9 @@ class ComfyUIImage:
         inputs = node.get("inputs")
         if not isinstance(inputs, dict):
             raise ValueError(f"ComfyUI 工作流节点 {normalized_node_id} 缺少 inputs 对象，无法写入{field_name}")
-        inputs[normalized_input_name] = value
+        if normalized_input_name not in inputs:
+            raise ValueError(f"ComfyUI 工作流节点 {normalized_node_id} 不包含 {field_name}输入：{normalized_input_name}")
+        return inputs
 
     async def _execute_workflow(self, workflow: dict[str, Any], task_name: str) -> list[bytes]:
         """提交工作流、轮询执行结果并下载输出图片。"""

@@ -623,8 +623,18 @@ class ProviderRouter:
             i2i_image_node_id=config.i2i_image_node_id,
             prompt_input_name=config.prompt_input_name,
             image_input_name=config.image_input_name,
+            seed=config.seed,
+            seed_input_name=config.seed_input_name,
+            t2i_seed_node_id=config.t2i_seed_node_id,
+            i2i_seed_node_id=config.i2i_seed_node_id,
             proxy_settings=self._get_proxy_settings("comfyui"),
         )
+
+    def validate_forced_command_task(self, model: str, task_type: str) -> None:
+        """在聊天强制绘图命令提交前验证提供商配置。"""
+
+        if self.get_model_provider(model) == "comfyui":
+            self.create_comfyui_provider().validate_task_configuration(task_type)
 
     def supports_image_edit(self, model: str) -> bool:
         """判断模型是否支持图生图编辑。"""

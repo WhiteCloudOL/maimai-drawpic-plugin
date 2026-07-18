@@ -34,7 +34,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.19.0",
+        default="2.20.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -1674,6 +1674,44 @@ class ComfyUIModelConfig(PluginConfigBase):
             "label": "英文提示词改写",
             "hint": "Stable Diffusion、Flux 等英文提示词工作流可按需开启；中文提示词模型可保持关闭",
             "order": 17,
+        },
+    )
+    seed: int = Field(
+        default=-1,
+        ge=-1,
+        le=18_446_744_073_709_551_615,
+        description="ComfyUI 采样种子。-1 表示每次生成随机种子，非负整数表示固定种子",
+        json_schema_extra={
+            "label": "ComfyUI 种子",
+            "hint": "默认 -1，每次任务自动生成随机种子；填写非负整数后，文生图和图生图都会使用该固定种子",
+            "order": 18,
+        },
+    )
+    seed_input_name: str = Field(
+        default="seed",
+        description="采样节点中接收种子的输入字段名",
+        json_schema_extra={
+            "label": "种子输入字段名",
+            "hint": "标准 KSampler 节点为 seed。自定义采样节点使用其他字段名时请按实际填写",
+            "order": 19,
+        },
+    )
+    t2i_seed_node_id: str = Field(
+        default="",
+        description="文生图种子节点 ID。留空时自动识别唯一包含 seed 输入的节点",
+        json_schema_extra={
+            "label": "文生图种子节点 ID",
+            "hint": "留空会自动识别唯一的种子节点；工作流有多个种子节点时必须填写 API 工作流中的节点 ID",
+            "order": 20,
+        },
+    )
+    i2i_seed_node_id: str = Field(
+        default="",
+        description="图生图种子节点 ID。留空时自动识别唯一包含 seed 输入的节点",
+        json_schema_extra={
+            "label": "图生图种子节点 ID",
+            "hint": "留空会自动识别唯一的种子节点；工作流有多个种子节点时必须填写 API 工作流中的节点 ID",
+            "order": 21,
         },
     )
 

@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.10+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.10.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.10.1-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -98,6 +98,7 @@ enabled = true
 base_url = "http://127.0.0.1:8188"
 t2i_workflow_path = "data/workflows/t2i.json"
 i2i_workflow_path = "data/workflows/i2i.json"
+seed = -1
 
 [[openai.instances]]
 enabled = true
@@ -125,6 +126,7 @@ models = "relay-gpt-image=gpt-image-2"
 | **`comfyui`** | `base_url` | ComfyUI 服务地址。启用后绘图模型列表固定提供 `comfyui`，选中后按任务类型自动路由到对应工作流。 |
 | **`comfyui`** | `t2i_workflow_path` / `i2i_workflow_path` | 文生图、图生图 API 工作流路径；相对路径相对于插件目录，默认在 `data/workflows/`，也支持 Windows、Linux 和 macOS 的绝对路径。 |
 | **`comfyui`** | `*_prompt_mode` / `*_prompt_node_id` / `*_positive_prompt_node_id` / `*_negative_prompt_node_id` | 配置工作流是单提示词，还是正向/反向提示词结构，并指定相应 API 工作流节点 ID。 |
+| **`comfyui`** | `seed` / `*_seed_node_id` | `seed=-1` 时每次生成随机种子；非负整数固定种子。种子节点 ID 留空时自动识别唯一的 `seed` 输入节点。 |
 | **`openai`** | `default_openai_compatibility_mode` | 兼容模式 (`auto` / `images_api` / `chat_completions` / `novelai_images_api`)。 |
 | **`openai.instances`** | `name` / `base_url` / `api_key` / `models` | 额外 OpenAI 兼容实例；`models` 支持 `显示名=上游模型名`，适合多个中转站使用同名模型。WebUI 内为单行输入，多个模型用 `,` 或 `，` 分隔。 |
 | **通用平台** | `api_key` / `models` | 对应服务商的鉴权密钥与允许使用的模型名列表。 |
@@ -141,6 +143,8 @@ ComfyUI 不需要 API Key。启用 `comfyui.enabled` 后，在 `/绘图 模型 c
 
 * 将文生图工作流保存为 `plugins/maimai-drawpic/data/workflows/t2i.json`。
 * 将图生图工作流保存为 `plugins/maimai-drawpic/data/workflows/i2i.json`。
+
+插件启动时会自动创建 `data/workflows/README.txt`，其中说明默认文件名、API 工作流导出要求与配置文档位置；该文件只会在首次缺失时生成，不会覆盖你的修改。
 
 普通“保存”得到的画布工作流 JSON 通常包含 `nodes`、`links`、`last_node_id` 等字段，不能直接提交到 `/prompt` 接口。插件会拒绝该格式并在日志和任务错误中明确提示重新导出 API 格式。
 
@@ -201,7 +205,27 @@ image_input_name = "image"
 
 当前工作流注入一张源图；如果用户消息携带多张图，插件会记录警告并使用第一张。工作流中必须保留图片输出节点（例如 `SaveImage` 或 `PreviewImage`），否则 ComfyUI 历史记录没有可下载图片。
 
-### 4. 地址、超时与排错
+### 4. 随机种子与固定种子
+
+默认 `seed = -1`，插件会在每次文生图或图生图任务中生成新的 64 位随机种子；填写非负整数即可固定种子，方便复现结果。标准 `KSampler` 的输入字段为 `seed`，插件会自动识别工作流中唯一的种子节点。
+
+```toml
+[comfyui]
+# 每次随机，默认值
+seed = -1
+
+# 固定种子示例
+# seed = 123456789
+
+# 工作流存在多个 seed 节点时，分别指定 API 工作流节点 ID
+t2i_seed_node_id = "1"
+i2i_seed_node_id = "1"
+seed_input_name = "seed"
+```
+
+如果工作流没有标准 `seed` 输入，或存在多个种子节点但未指定对应 ID，强制 `/绘图 文生图`、`/绘图 图生图` 会直接在聊天中返回简短的配置错误，不会创建后台任务；LLM 工具调用不会主动发送该错误消息。
+
+### 5. 地址、超时与排错
 
 默认地址是 `http://127.0.0.1:8188`。远程或局域网 ComfyUI 可改为完整 HTTP 地址，例如 `http://192.168.1.14:8188`；请保证 MaiBot 机器可以访问该地址，并按需通过插件的全局代理设置访问远程实例。
 
@@ -285,6 +309,18 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 近期更新
+
+### v1.10.1
+
+**用户侧**
+
+* **ComfyUI 种子控制**：新增随机/固定种子配置，默认每次任务使用新的随机种子；标准工作流会自动识别唯一的种子节点。
+* **强制绘图命令即时校验**：`/绘图 文生图`、`/绘图 图生图` 在 ComfyUI 工作流、提示词节点、种子节点或图生图源图节点配置有误时，直接在聊天中返回问题，不再创建后台任务。
+* **工作流目录自动初始化**：插件启动时自动创建 `data/workflows` 及其 `README.txt` 说明文件，不覆盖已有说明或工作流。
+
+**开发侧**
+
+* **ComfyUI 命令预检**：仅对聊天强制绘图命令执行工作流静态预检；LLM 工具调用保持原有异步返回与消息行为。
 
 ### v1.10.0
 
