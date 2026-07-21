@@ -15,6 +15,7 @@ from .core.message_utils import (
     find_source_images,
 )
 from .core.moderation import DrawpicModerationService
+from .core.platform_identity import is_qq_identifier, is_qq_platform
 from .core.provider_router import ProviderRouter
 from .core.session_preferences import SessionPreferenceStore
 from .core.stream_service import ChatStreamService
@@ -319,7 +320,7 @@ class DrawpicPlugin(MaiBotPlugin):
 
     @staticmethod
     def _build_quota_key(platform: str, group_id: str, user_id: str) -> str:
-        """按平台和聊天类型构建额度归属键：群聊用 qq:group:群号，私聊用 qq:user:QQ号。"""
+        """按平台和聊天类型构建额度归属键。"""
 
         normalized_platform = platform.strip() or "qq"
         normalized_group_id = group_id.strip()
@@ -584,17 +585,14 @@ class DrawpicPlugin(MaiBotPlugin):
         group_id: str,
         user_id_candidates: list[Any],
     ) -> str:
-        """选择运行期真实用户 ID，QQ 群聊只接受数字用户号。"""
+        """选择运行期真实用户 ID，兼容 OneBot 与 QQ 官方身份。"""
 
         normalized_candidates = [str(value or "").strip() for value in user_id_candidates]
-        if cls._is_qq_platform(platform) and group_id.strip():
-            normalized_group_id = group_id.strip()
-            for candidate in normalized_candidates:
-                if candidate.isdigit() and candidate != normalized_group_id:
-                    return candidate
-            return ""
+        normalized_group_id = group_id.strip()
         for candidate in normalized_candidates:
-            if candidate:
+            if not candidate or candidate == normalized_group_id:
+                continue
+            if not cls._is_qq_platform(platform) or is_qq_identifier(candidate):
                 return candidate
         return ""
 
@@ -659,14 +657,16 @@ class DrawpicPlugin(MaiBotPlugin):
             normalized_group_id,
             normalized_platform,
         )
-        if (
+        invalid_qq_user_id = (
             any(str(value or "").strip() for value in (message_context_user_id, payload_user_id))
             and not normalized_user_id
             and normalized_group_id
             and self._is_qq_platform(normalized_platform)
-        ):
+        )
+        if invalid_qq_user_id and self._resolve_quota_config(normalized_group_id)[0]:
             self.ctx.logger.warning(
-                "绘图运行上下文收到无效QQ用户ID（昵称或群号），将拒绝用于个人额度 stream_id=%s user_id=%s group_id=%s platform=%s",
+                "绘图运行上下文收到无效 QQ 用户身份，将拒绝用于额度 "
+                "stream_id=%s user_id=%s group_id=%s platform=%s",
                 normalized_stream_id,
                 message_context_user_id or payload_user_id or "",
                 normalized_group_id,
@@ -710,9 +710,9 @@ class DrawpicPlugin(MaiBotPlugin):
 
     @staticmethod
     def _is_qq_platform(platform: str) -> bool:
-        """判断当前平台是否按 QQ 数字用户号处理额度。"""
+        """判断当前平台是否使用 QQ 身份规则。"""
 
-        return platform.strip().lower() in {"qq", "qqguild"}
+        return is_qq_platform(platform)
 
     @classmethod
     def _normalize_runtime_user_id(cls, user_id: str, platform: str) -> str:
@@ -721,7 +721,7 @@ class DrawpicPlugin(MaiBotPlugin):
         normalized_user_id = user_id.strip()
         if not normalized_user_id:
             return ""
-        if cls._is_qq_platform(platform) and not normalized_user_id.isdigit():
+        if cls._is_qq_platform(platform) and not is_qq_identifier(normalized_user_id):
             return ""
         return normalized_user_id
 
@@ -1314,7 +1314,7 @@ class DrawpicPlugin(MaiBotPlugin):
     ) -> tuple[bool, str, int]:
         """处理绘图次数调整命令。
 
-        命令格式：/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量
+        命令格式：/绘图 设置/增加/减少 群聊/用户 群ID/用户ID 数量
         例如：/绘图 设置 用户 12345678 10
         """
 
@@ -1335,7 +1335,7 @@ class DrawpicPlugin(MaiBotPlugin):
             await self._send_command_reply(
                 title="次数命令用法",
                 body=(
-                    "/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量\n"
+                    "/绘图 设置/增加/减少 群聊/用户 群ID/用户ID 数量\n"
                     "例如：/绘图 设置 用户 12345678 10"
                 ),
                 stream_id=stream_id,
@@ -1352,7 +1352,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 title="次数命令用法",
                 body=(
                     "请指定调整范围：群聊 或 用户。\n"
-                    "格式：/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量\n"
+                    "格式：/绘图 设置/增加/减少 群聊/用户 群ID/用户ID 数量\n"
                     "例如：/绘图 设置 群聊 673381211 50"
                 ),
                 stream_id=stream_id,
@@ -1371,7 +1371,7 @@ class DrawpicPlugin(MaiBotPlugin):
             await self._send_command_reply(
                 title="次数命令参数无效",
                 body=(
-                    "请提供有效的群号/QQ号和次数。\n"
+                    "请提供有效的群ID/用户ID和次数。\n"
                     "添加/减少需要正整数，设置可设置为 0。\n"
                     "例如：/绘图 设置 用户 12345678 10"
                 ),
