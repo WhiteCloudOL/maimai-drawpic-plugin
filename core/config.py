@@ -96,10 +96,10 @@ class GeneralConfig(PluginConfigBase):
     )
     admin_user_ids: list[str] = Field(
         default=[],
-        description="插件管理员用户 ID 列表，通常填写 QQ 号",
+        description="插件管理员用户 ID 列表，支持 OneBot QQ 号和 QQ 官方用户 OpenID",
         json_schema_extra={
             "label": "插件管理员列表",
-            "hint": "填写允许管理模型、兼容模式和用户次数的用户 ID，通常为 QQ 号",
+            "hint": "填写允许管理模型、兼容模式和用户次数的用户 ID；OneBot 填 QQ 号，QQ 官方适配器填用户 OpenID",
             "order": 5,
         },
     )

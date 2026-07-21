@@ -2,6 +2,8 @@ from typing import Any
 
 import base64
 
+from .platform_identity import is_qq_identifier, is_qq_platform
+
 
 class ChatStreamService:
     """负责聊天流解析与消息回发。"""
@@ -86,9 +88,9 @@ class ChatStreamService:
 
     @staticmethod
     def _is_qq_platform(platform: str) -> bool:
-        """判断当前平台是否按 QQ 数字 ID 解析私聊目标。"""
+        """判断当前平台是否使用 QQ 身份规则。"""
 
-        return platform.strip().lower() in {"qq", "qqguild"}
+        return is_qq_platform(platform)
 
     @classmethod
     def _is_usable_private_target_id(cls, target_id: str, platform: str) -> bool:
@@ -98,7 +100,7 @@ class ChatStreamService:
         if not normalized_target_id:
             return False
         if cls._is_qq_platform(platform):
-            return normalized_target_id.isdigit()
+            return is_qq_identifier(normalized_target_id)
         return True
 
     @classmethod

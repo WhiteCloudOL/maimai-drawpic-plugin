@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.10+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.10.1-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.10.3-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -239,7 +239,7 @@ seed_input_name = "seed"
 默认开启。生效后，所有核心配置的更改（如：设置会话首选模型、更改 OpenAI 兼容模式、调整他人额度等）仅限 `general.admin_user_ids` 列表中的管理员执行。
 
 * **额度消耗（群聊与私聊分离）**
-额度按聊天归属扣除：群聊消耗该群剩余次数（键 `qq:group:群号`），私聊消耗该用户剩余次数（键 `qq:user:QQ号`）。群聊与私聊各自独立配置开关、重置周期与默认次数。
+额度按聊天归属扣除：群聊消耗该群剩余次数，私聊消耗该用户剩余次数。OneBot v11 使用数字 QQ 号和群号；QQ 官方适配器使用 `user_openid` / `member_openid` 与 `group_openid`，插件会自动兼容两种身份格式。群聊与私聊各自独立配置开关、重置周期与默认次数。
   * `group_quota_enabled` / `group_quota_period` / `group_default_quota`：群聊额度开关、周期与默认次数。
   * `private_quota_enabled` / `private_quota_period` / `private_default_quota`：私聊额度开关、周期与默认次数。
 
@@ -277,7 +277,7 @@ seed_input_name = "seed"
 | `/绘图 兼容模式 <模式或跟随>` | 设定或清空当前会话的 OpenAI 兼容策略。 |
 | `/绘图 文生图 <prompt>` | 强制纯文本生图。若消息附带图片将拦截并提示切换模式。 |
 | `/绘图 图生图 <prompt>` | 强制基于参考图编辑，支持多图解析（优先读取附带图，其次读取引用图）。 |
-| `/绘图 设置/增加/减少 群聊/用户 群号/QQ号 数量` | 管理员调整群聊或用户的周期额度。例如 `/绘图 设置 用户 12345678 10`。 |
+| `/绘图 设置/增加/减少 群聊/用户 群ID/用户ID 数量` | 管理员调整群聊或用户的周期额度；支持 OneBot 数字 ID 与 QQ 官方 OpenID。例如 `/绘图 设置 用户 12345678 10`。 |
 
 ## 🔧 LLM 工具集
 
@@ -309,6 +309,17 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 近期更新
+
+### v1.10.3
+
+**用户侧**
+
+* **QQ 官方适配器兼容**：支持使用 `member_openid`、`user_openid` 与 `group_openid` 解析绘图上下文、回传图片和记录额度。
+* **关闭额度不再误报警告**：对应聊天场景关闭额度后，不再执行与额度有关的无效 QQ 用户身份警告。
+
+**开发侧**
+
+* **QQ 身份统一校验**：运行时身份同时支持 OneBot 数字 ID 与 QQ 官方 32 位 OpenID，仍拒绝昵称等不稳定值进入额度账本。
 
 ### v1.10.1
 
