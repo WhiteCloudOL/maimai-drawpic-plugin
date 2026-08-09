@@ -5,7 +5,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![MaiBot Version](https://img.shields.io/badge/MaiBot-1.0.10+-success.svg)
 ![SDK Version](https://img.shields.io/badge/maibot--sdk-2.x-blueviolet.svg)
-![Plugin Version](https://img.shields.io/badge/Plugin-1.10.3-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.10.4-informational.svg)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-lightgrey.svg)
 
 为 MaiBot 提供优雅、强大的图像生成与编辑能力。集成主流 AI 绘画平台，支持多模态场景下的对话式生图与工具调用。
@@ -309,6 +309,10 @@ plugins/maimai-drawpic-plugin/
 ```
 
 ## 近期更新
+
+### v1.10.4
+
+* **图片发送异常提示修正**：平台未确认发送成功时，不再误报“目标聊天流不可用”；现在会明确提示投递结果未知及图片可能已经送达，便于避免盲目重试产生重复图片。
 
 ### v1.10.3
 

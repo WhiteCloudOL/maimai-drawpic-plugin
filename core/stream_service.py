@@ -5,6 +5,18 @@ import base64
 from .platform_identity import is_qq_identifier, is_qq_platform
 
 
+class ChatStreamUnavailableError(RuntimeError):
+    """表示无法解析用于发送消息的真实聊天流。"""
+
+
+class ImageDeliveryError(RuntimeError):
+    """表示调用平台图片发送链路时发生异常。"""
+
+
+class ImageDeliveryUnconfirmedError(ImageDeliveryError):
+    """表示平台未确认图片发送成功，实际投递结果未知。"""
+
+
 class ChatStreamService:
     """负责聊天流解析与消息回发。"""
 
@@ -423,9 +435,33 @@ class ChatStreamService:
                 index,
                 total,
             )
-            send_result = await self.ctx.send.image(image_base64, stream_id)
+            try:
+                send_result = await self.ctx.send.image(image_base64, stream_id)
+            except Exception as exc:
+                self.ctx.logger.warning(
+                    "调用平台适配器发送图片异常: stream_id=%s progress=%s/%s error_type=%s error=%s",
+                    stream_id,
+                    index,
+                    total,
+                    type(exc).__name__,
+                    exc,
+                )
+                raise ImageDeliveryError(
+                    f"调用平台适配器发送图片时发生异常: stream_id={stream_id} error={exc}"
+                ) from exc
             if not send_result:
-                raise RuntimeError(f"发送图片失败，目标聊天流不可用: {stream_id}")
+                self.ctx.logger.warning(
+                    "平台未确认图片发送成功，投递结果未知: stream_id=%s progress=%s/%s；"
+                    "请检查平台适配器日志，避免盲目重试",
+                    stream_id,
+                    index,
+                    total,
+                )
+                raise ImageDeliveryUnconfirmedError(
+                    "图片发送未获得平台成功确认，可能是平台适配器返回失败或响应超时；"
+                    "不能据此判定聊天流不可用，图片也可能已经送达: "
+                    f"stream_id={stream_id}"
+                )
             sent_count += 1
         return sent_count
 
@@ -449,7 +485,17 @@ class ChatStreamService:
             platform=platform,
         )
         if not resolved_stream_id:
-            raise RuntimeError("未能解析到可用聊天流，无法发送图片")
+            self.ctx.logger.warning(
+                "未能解析到可用聊天流，无法发送绘图结果: original_stream_id=%s "
+                "user_id=%s group_id=%s platform=%s",
+                stream_id,
+                user_id,
+                group_id,
+                platform,
+            )
+            raise ChatStreamUnavailableError(
+                f"未能解析到可用聊天流，无法发送图片: original_stream_id={stream_id}"
+            )
         try:
             sent_count = await self.send_generated_images(resolved_stream_id, image_bytes_list)
             self.ctx.logger.info(
@@ -463,9 +509,10 @@ class ChatStreamService:
                 sent_count,
             )
             return sent_count
-        except Exception as first_error:
+        except ImageDeliveryError as first_error:
             self.ctx.logger.warning(
-                "首次发送图片失败，尝试重新解析聊天流: original_stream_id=%s resolved_stream_id=%s error=%s",
+                "首次发送图片未完成确认，尝试重新解析聊天流: "
+                "original_stream_id=%s resolved_stream_id=%s error=%s",
                 stream_id,
                 resolved_stream_id,
                 first_error,
@@ -477,6 +524,14 @@ class ChatStreamService:
                 platform=platform,
             )
             if not fallback_stream_id or fallback_stream_id == resolved_stream_id:
+                self.ctx.logger.warning(
+                    "重新解析未得到新的可用聊天流，不重复发送图片: original_stream_id=%s "
+                    "resolved_stream_id=%s fallback_stream_id=%s error_type=%s",
+                    stream_id,
+                    resolved_stream_id,
+                    fallback_stream_id,
+                    type(first_error).__name__,
+                )
                 raise
             self.ctx.logger.info(
                 "使用重新解析的聊天流重试发送图片: original_stream_id=%s fallback_stream_id=%s",
