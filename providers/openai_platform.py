@@ -9,7 +9,7 @@ import re
 import time
 
 from ..core.image_utils import detect_image_dimensions, detect_mime_type
-from ..core.http_proxy import HttpProxySettings
+from ..core.http_proxy import HttpProxySettings, read_response_bytes, read_response_json, read_response_text
 
 
 class OpenaiImage:
@@ -414,7 +414,7 @@ class OpenaiImage:
             ) as response:
                 duration = time.time() - start_time
                 if response.status != 200:
-                    error_text = await response.text()
+                    error_text = await read_response_text(response)
                     self._log_error(
                         "OpenAI API错误: status=%s duration=%.2fs url=%s response_preview=%s",
                         response.status,
@@ -423,9 +423,10 @@ class OpenaiImage:
                         error_text[:1200],
                     )
                     raise RuntimeError(
-                        f"OpenAI 图片生成接口错误 ({response.status}, 耗时: {duration:.2f}s): {error_text}"
+                        f"OpenAI 图片生成接口错误 ({response.status}, 耗时: {duration:.2f}s): "
+                        f"{error_text[:1200]}"
                     )
-                return await response.json()
+                return await read_response_json(response)
 
     async def _post_form(self, url: str, form: aiohttp.FormData) -> dict[str, Any]:
         """发送表单 POST 请求。"""
@@ -443,7 +444,7 @@ class OpenaiImage:
             ) as response:
                 duration = time.time() - start_time
                 if response.status != 200:
-                    error_text = await response.text()
+                    error_text = await read_response_text(response)
                     self._log_error(
                         "OpenAI API错误: status=%s duration=%.2fs url=%s response_preview=%s",
                         response.status,
@@ -452,9 +453,10 @@ class OpenaiImage:
                         error_text[:1200],
                     )
                     raise RuntimeError(
-                        f"OpenAI 图片编辑接口错误 ({response.status}, 耗时: {duration:.2f}s): {error_text}"
+                        f"OpenAI 图片编辑接口错误 ({response.status}, 耗时: {duration:.2f}s): "
+                        f"{error_text[:1200]}"
                     )
-                return await response.json()
+                return await read_response_json(response)
 
     async def _post_edit_form_with_fallback(
         self,
@@ -761,7 +763,7 @@ class OpenaiImage:
                 if response.status != 200:
                     self._log_error("OpenAI API错误: 下载图片失败 status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载生成图片失败: status={response.status}")
-                return await response.read()
+                return await read_response_bytes(response)
 
     def _log_error(self, message: str, *args: Any) -> None:
         """记录错误日志。"""

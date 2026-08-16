@@ -4,6 +4,8 @@ from io import BytesIO
 
 from PIL import Image as PILImage
 
+MAX_IMAGE_BYTES = 25 * 1024 * 1024
+
 
 _MIME_TYPE_MAP = {
     "BMP": "image/bmp",
@@ -14,6 +16,18 @@ _MIME_TYPE_MAP = {
     "TIFF": "image/tiff",
     "WEBP": "image/webp",
 }
+
+
+def validate_image_bytes(image_bytes: bytes) -> bytes:
+    """校验图片大小与内容，并返回原始字节。"""
+
+    if not image_bytes:
+        raise ValueError("图片数据为空")
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise ValueError(f"图片大小超过限制：{MAX_IMAGE_BYTES} 字节")
+    with PILImage.open(BytesIO(image_bytes)) as image:
+        image.verify()
+    return image_bytes
 
 
 def detect_mime_type(image_bytes: bytes) -> str:

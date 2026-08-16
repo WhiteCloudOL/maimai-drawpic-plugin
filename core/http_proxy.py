@@ -5,6 +5,60 @@ from typing import Any
 from urllib.parse import quote
 
 import aiohttp
+import json
+
+MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024 * 1024
+
+
+async def read_response_bytes(
+    response: aiohttp.ClientResponse,
+    max_bytes: int = MAX_PROVIDER_RESPONSE_BYTES,
+) -> bytes:
+    """读取受大小限制的 HTTP 响应。"""
+
+    content_length = response.headers.get("Content-Length", "").strip()
+    if content_length:
+        try:
+            parsed_content_length = int(content_length)
+            if parsed_content_length < 0:
+                raise ValueError
+            if parsed_content_length > max_bytes:
+                raise RuntimeError(f"图片服务响应超过大小限制：{max_bytes} 字节")
+        except ValueError as exc:
+            raise RuntimeError(f"图片服务返回了无效的 Content-Length：{content_length}") from exc
+
+    chunks: list[bytes] = []
+    total_bytes = 0
+    async for chunk in response.content.iter_chunked(64 * 1024):
+        total_bytes += len(chunk)
+        if total_bytes > max_bytes:
+            raise RuntimeError(f"图片服务响应超过大小限制：{max_bytes} 字节")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+async def read_response_text(
+    response: aiohttp.ClientResponse,
+    max_bytes: int = MAX_PROVIDER_RESPONSE_BYTES,
+) -> str:
+    """读取受大小限制的 HTTP 文本响应。"""
+
+    response_bytes = await read_response_bytes(response, max_bytes=max_bytes)
+    encoding = response.charset or "utf-8"
+    return response_bytes.decode(encoding, errors="replace")
+
+
+async def read_response_json(
+    response: aiohttp.ClientResponse,
+    max_bytes: int = MAX_PROVIDER_RESPONSE_BYTES,
+) -> Any:
+    """读取并解析受大小限制的 HTTP JSON 响应。"""
+
+    response_bytes = await read_response_bytes(response, max_bytes=max_bytes)
+    try:
+        return json.loads(response_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("图片服务返回了无效的 JSON 响应") from exc
 
 
 @dataclass(frozen=True, slots=True)

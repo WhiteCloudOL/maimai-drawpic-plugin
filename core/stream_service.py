@@ -12,6 +12,10 @@ class ChatStreamUnavailableError(RuntimeError):
 class ImageDeliveryError(RuntimeError):
     """表示调用平台图片发送链路时发生异常。"""
 
+    def __init__(self, message: str, sent_count: int = 0) -> None:
+        super().__init__(message)
+        self.sent_count = sent_count
+
 
 class ImageDeliveryUnconfirmedError(ImageDeliveryError):
     """表示平台未确认图片发送成功，实际投递结果未知。"""
@@ -447,7 +451,8 @@ class ChatStreamService:
                     exc,
                 )
                 raise ImageDeliveryError(
-                    f"调用平台适配器发送图片时发生异常: stream_id={stream_id} error={exc}"
+                    f"调用平台适配器发送图片时发生异常: stream_id={stream_id} error={exc}",
+                    sent_count=sent_count,
                 ) from exc
             if not send_result:
                 self.ctx.logger.warning(
@@ -460,7 +465,8 @@ class ChatStreamService:
                 raise ImageDeliveryUnconfirmedError(
                     "图片发送未获得平台成功确认，可能是平台适配器返回失败或响应超时；"
                     "不能据此判定聊天流不可用，图片也可能已经送达: "
-                    f"stream_id={stream_id}"
+                    f"stream_id={stream_id}",
+                    sent_count=sent_count,
                 )
             sent_count += 1
         return sent_count
@@ -509,6 +515,8 @@ class ChatStreamService:
                 sent_count,
             )
             return sent_count
+        except ImageDeliveryUnconfirmedError:
+            raise
         except ImageDeliveryError as first_error:
             self.ctx.logger.warning(
                 "首次发送图片未完成确认，尝试重新解析聊天流: "
@@ -538,7 +546,13 @@ class ChatStreamService:
                 stream_id,
                 fallback_stream_id,
             )
-            sent_count = await self.send_generated_images(fallback_stream_id, image_bytes_list)
+            remaining_images = image_bytes_list[first_error.sent_count :]
+            try:
+                fallback_sent_count = await self.send_generated_images(fallback_stream_id, remaining_images)
+            except ImageDeliveryError as fallback_error:
+                fallback_error.sent_count += first_error.sent_count
+                raise
+            sent_count = first_error.sent_count + fallback_sent_count
             self.ctx.logger.info(
                 "发送绘图结果成功: task_id=%s provider=%s model=%s original_stream_id=%s resolved_stream_id=%s platform=%s count=%s",
                 task_id,

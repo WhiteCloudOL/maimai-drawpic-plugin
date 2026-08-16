@@ -7,8 +7,11 @@ from PIL import Image as PILImage
 import base64
 import binascii
 
+from .image_utils import MAX_IMAGE_BYTES
+
 
 _MAX_CACHED_SOURCE_IMAGES = 80
+_MAX_SOURCE_IMAGES_PER_MESSAGE = 8
 # 源图缓存存活时长（秒），超过后按惰性过期清理，避免高频聊天下内存持续增长。
 _SOURCE_IMAGE_CACHE_TTL_SECONDS = 1800
 # 每条消息可能携带多张图片，因此缓存值为 (缓存时间, Base64 列表) 元组。
@@ -26,10 +29,8 @@ def _normalize_stream_ids(*stream_ids: Any) -> list[str]:
                 normalized_stream_ids.extend(_normalize_stream_ids(nested_stream_id))
             continue
         normalized_stream_id = str(stream_id or "").strip()
-        if normalized_stream_id not in normalized_stream_ids:
+        if normalized_stream_id and normalized_stream_id not in normalized_stream_ids:
             normalized_stream_ids.append(normalized_stream_id)
-    if "" not in normalized_stream_ids:
-        normalized_stream_ids.append("")
     return normalized_stream_ids
 
 
@@ -79,6 +80,9 @@ def decode_image_base64(value: Any) -> bytes:
     normalized_value = normalize_image_base64(value)
     if not normalized_value:
         raise ValueError("没有可用的真实图片数据")
+    estimated_size = len(normalized_value) * 3 // 4
+    if estimated_size > MAX_IMAGE_BYTES:
+        raise ValueError(f"source_image_base64 图片大小超过限制：{MAX_IMAGE_BYTES} 字节")
 
     try:
         image_bytes = base64.b64decode(normalized_value, validate=True)
@@ -277,7 +281,7 @@ def _validate_image_base64_list(image_base64_list: list[str]) -> list[str]:
     """逐张校验图片 Base64，跳过无法识别的图片。"""
 
     normalized_list: list[str] = []
-    for image_base64 in image_base64_list:
+    for image_base64 in image_base64_list[:_MAX_SOURCE_IMAGES_PER_MESSAGE]:
         try:
             normalized_list.append(validate_image_base64(image_base64))
         except ValueError:
@@ -337,7 +341,7 @@ async def get_message_by_id_for_image_lookup(
     stream_id: str | list[str],
     message_id: str,
 ) -> dict[str, Any] | None:
-    """通过运行时能力读取消息，先限定会话，失败后再全局查询。"""
+    """通过运行时能力在候选聊天流内读取消息。"""
 
     normalized_message_id = message_id.strip()
     if not normalized_message_id:

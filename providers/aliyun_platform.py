@@ -7,7 +7,7 @@ import base64
 import time
 
 from ..core.image_utils import detect_image_dimensions, detect_mime_type
-from ..core.http_proxy import HttpProxySettings
+from ..core.http_proxy import HttpProxySettings, read_response_bytes, read_response_json, read_response_text
 
 
 class AliyunImage:
@@ -208,8 +208,8 @@ class AliyunImage:
                 **self.proxy_settings.aiohttp_request_kwargs(),
             ) as response:
                 duration = time.time() - start_time
-                response_text = await response.text()
                 if response.status != 200:
+                    response_text = await read_response_text(response)
                     self._log_error(
                         "阿里百炼图片接口失败: status=%s duration=%.2fs url=%s response_preview=%s",
                         response.status,
@@ -218,10 +218,11 @@ class AliyunImage:
                         response_text[:1200],
                     )
                     raise RuntimeError(
-                        f"阿里百炼图片接口错误 ({response.status}, 耗时: {duration:.2f}s): {response_text}"
+                        f"阿里百炼图片接口错误 ({response.status}, 耗时: {duration:.2f}s): "
+                        f"{response_text[:1200]}"
                     )
 
-                response_json = await response.json()
+                response_json = await read_response_json(response)
                 if response_json.get("code"):
                     error_code = response_json.get("code")
                     error_message = response_json.get("message") or "未知错误"
@@ -285,7 +286,7 @@ class AliyunImage:
                 if response.status != 200:
                     self._log_error("下载阿里百炼生成图片失败: status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载阿里百炼生成图片失败: status={response.status}")
-                return await response.read()
+                return await read_response_bytes(response)
 
     def _log_info(self, message: str, *args: Any) -> None:
         """记录信息日志。"""

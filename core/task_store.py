@@ -8,6 +8,8 @@ from uuid import uuid4
 
 import json
 
+from .storage_utils import write_json_atomically
+
 
 DrawTaskStatus = Literal["pending", "running", "completed", "failed", "rejected"]
 DrawTaskType = Literal["draw", "edit_image"]
@@ -34,6 +36,8 @@ class DrawTaskRecord:
 
 class DrawTaskStore:
     """管理插件内部后台绘图任务状态。"""
+
+    MAX_TASK_RECORDS = 500
 
     def __init__(self, path: Path, logger: Any | None = None) -> None:
         self.path = path
@@ -112,11 +116,11 @@ class DrawTaskStore:
 
         self._tasks = normalized_tasks
         self._latest_task_id_by_session = normalized_latest
+        self._prune_tasks()
 
     def save(self) -> None:
         """保存后台绘图任务到本地文件。"""
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         serialized_tasks = {
             task_id: self._serialize_record(record)
             for task_id, record in self._tasks.items()
@@ -125,10 +129,7 @@ class DrawTaskStore:
             "tasks": serialized_tasks,
             "latest_task_id_by_session": self._latest_task_id_by_session,
         }
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        write_json_atomically(self.path, payload)
 
     def get_task_count(self) -> int:
         """返回当前缓存中的任务数量。"""
@@ -154,13 +155,14 @@ class DrawTaskStore:
             session_key=session_key.strip(),
             stream_id=stream_id.strip(),
             task_type=task_type,
-            prompt=prompt,
+            prompt="",
             model=model,
             provider=provider,
             message=message,
         )
         self._tasks[task_id] = record
         self._latest_task_id_by_session[record.session_key] = task_id
+        self._prune_tasks()
         self.save()
         return record
 
@@ -249,7 +251,7 @@ class DrawTaskStore:
                 session_key=str(payload.get("session_key") or "").strip(),
                 stream_id=str(payload.get("stream_id") or "").strip(),
                 task_type=str(payload.get("task_type") or "draw").strip(),  # type: ignore[arg-type]
-                prompt=str(payload.get("prompt") or ""),
+                prompt="",
                 model=str(payload.get("model") or "").strip(),
                 provider=str(payload.get("provider") or "").strip(),
                 status=str(payload.get("status") or "pending").strip(),  # type: ignore[arg-type]
@@ -267,3 +269,23 @@ class DrawTaskStore:
 
         if self.logger is not None:
             self.logger.warning(message, *args)
+
+    def _prune_tasks(self) -> None:
+        """仅保留最近的任务记录，并重建会话索引。"""
+
+        if len(self._tasks) > self.MAX_TASK_RECORDS:
+            newest_tasks = sorted(
+                self._tasks.values(),
+                key=lambda record: record.created_at,
+                reverse=True,
+            )[: self.MAX_TASK_RECORDS]
+            self._tasks = {record.task_id: record for record in newest_tasks}
+
+        latest_by_session: dict[str, DrawTaskRecord] = {}
+        for record in self._tasks.values():
+            current = latest_by_session.get(record.session_key)
+            if current is None or record.created_at > current.created_at:
+                latest_by_session[record.session_key] = record
+        self._latest_task_id_by_session = {
+            session_key: record.task_id for session_key, record in latest_by_session.items()
+        }

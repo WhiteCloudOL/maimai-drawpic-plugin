@@ -1,0 +1,105 @@
+name: 平台接入请求
+description: 请求支持新的图片平台、接口或模型系列
+title: "[平台请求] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请提供可公开访问的官方资料。平台必须提供适合程序调用的图片生成接口。
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索 README 和现有 Issue，确认该平台或模型尚未被支持或请求。
+          required: true
+        - label: 该平台提供可用的公开 API，并允许通过程序生成或编辑图片。
+          required: true
+
+  - type: input
+    id: platform_name
+    attributes:
+      label: 平台名称
+      placeholder: 例如 Example AI
+    validations:
+      required: true
+
+  - type: input
+    id: website
+    attributes:
+      label: 官方网站
+      placeholder: https://example.com
+    validations:
+      required: true
+
+  - type: input
+    id: api_docs
+    attributes:
+      label: API 文档
+      placeholder: https://example.com/docs/image-api
+    validations:
+      required: true
+
+  - type: dropdown
+    id: capabilities
+    attributes:
+      label: 支持能力
+      multiple: true
+      options:
+        - 文生图
+        - 图生图
+        - 多图输入
+        - 图片编辑
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: models
+    attributes:
+      label: 模型信息
+      description: 列出希望支持的模型名称、模型 ID 和各自能力。
+      placeholder: |
+        - 模型 ID：example-image-1
+          能力：文生图、图生图
+    validations:
+      required: true
+
+  - type: textarea
+    id: authentication
+    attributes:
+      label: 鉴权方式
+      description: 说明 API Key、Bearer Token、签名认证等鉴权方式，并附相关文档链接。
+    validations:
+      required: true
+
+  - type: textarea
+    id: parameters
+    attributes:
+      label: 常用参数
+      description: 列出尺寸、比例、数量、质量等常用参数及限制。
+    validations:
+      required: true
+
+  - type: textarea
+    id: response
+    attributes:
+      label: 返回结果
+      description: 说明接口返回图片 URL、Base64、二进制或异步任务 ID，并附文档链接。
+    validations:
+      required: true
+
+  - type: textarea
+    id: pricing
+    attributes:
+      label: 额度与费用
+      description: 说明是否需要付费、是否提供免费额度及已知的调用限制。
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 添加示例请求、示例响应或其他有助于评估接入的信息。请隐藏密钥。

@@ -10,8 +10,8 @@ import random
 import time
 import zipfile
 
-from ..core.image_utils import detect_image_dimensions
-from ..core.http_proxy import HttpProxySettings
+from ..core.image_utils import MAX_IMAGE_BYTES, detect_image_dimensions
+from ..core.http_proxy import MAX_PROVIDER_RESPONSE_BYTES, HttpProxySettings, read_response_bytes
 
 
 class NovelAIImage:
@@ -283,7 +283,7 @@ class NovelAIImage:
                 **self.proxy_settings.aiohttp_request_kwargs(),
             ) as response:
                 duration = time.time() - start_time
-                content = await response.read()
+                content = await read_response_bytes(response)
                 content_type = response.headers.get("Content-Type", "")
                 if response.status not in {200, 201}:
                     error_preview = content[:1200].decode("utf-8", errors="replace")
@@ -325,12 +325,18 @@ class NovelAIImage:
 
         image_bytes_list: list[bytes] = []
         with zipfile.ZipFile(BytesIO(content)) as image_zip:
+            extracted_bytes = 0
             for file_info in image_zip.infolist():
                 if file_info.is_dir():
                     continue
                 filename = file_info.filename.lower()
                 if not filename.endswith((".png", ".jpg", ".jpeg", ".webp")):
                     continue
+                if file_info.file_size > MAX_IMAGE_BYTES:
+                    raise RuntimeError(f"NovelAI zip 图片超过大小限制：{file_info.filename}")
+                extracted_bytes += file_info.file_size
+                if extracted_bytes > MAX_PROVIDER_RESPONSE_BYTES:
+                    raise RuntimeError("NovelAI zip 解压后内容超过大小限制")
                 image_bytes_list.append(image_zip.read(file_info))
 
         if not image_bytes_list:
@@ -405,7 +411,7 @@ class NovelAIImage:
                 if response.status != 200:
                     self._log_error("下载 NovelAI 生成图片失败: status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载 NovelAI 生成图片失败: status={response.status}")
-                return await response.read()
+                return await read_response_bytes(response)
 
     def _log_info(self, message: str, *args: Any) -> None:
         """记录信息日志。"""

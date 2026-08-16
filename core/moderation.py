@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import base64
+import re
 
 from .config import DrawpicConfig
 from .image_utils import detect_image_format
@@ -20,6 +21,11 @@ class ModerationResult:
 
 class DrawpicModerationService:
     """负责提示词与生成图片审核。"""
+
+    _REVIEW_CONCLUSION_PATTERN = re.compile(
+        r"^\s*(?:结论|CONCLUSION)\s*[:：]\s*(PASS|REJECT)\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
 
     def __init__(self, config: DrawpicConfig, ctx: Any) -> None:
         self.config = config
@@ -112,66 +118,32 @@ class DrawpicModerationService:
     def _parse_review_response(raw_response: str | None) -> ModerationResult:
         """解析模型返回的审核结论。
 
-        采用分层匹配策略，兼容审核模型可能附加的多行前置说明：
-        1. 优先全文精确匹配 `结论：PASS` / `结论：REJECT`（含全角冒号）
-        2. 退化到逐行查找首个包含 PASS / REJECT 的结论行
-        3. 再退化到全文模糊匹配 PASS / REJECT
-        4. 仍无法识别时抛出 RuntimeError，由调用方决定拒绝或放行
+        仅接受独立、结构化的 PASS / REJECT 结论行，避免否定句中的关键词造成误判。
         """
 
         normalized_response = str(raw_response or "").strip()
         if not normalized_response:
             raise RuntimeError("审核模型返回了空结果")
 
-        # 1) 全文精确匹配结论行（兼容全角/半角冒号）
-        if "结论：REJECT" in normalized_response or "结论:REJECT" in normalized_response or "结论: REJECT" in normalized_response:
+        conclusion_matches = list(
+            DrawpicModerationService._REVIEW_CONCLUSION_PATTERN.finditer(normalized_response)
+        )
+        if len(conclusion_matches) != 1:
+            raise RuntimeError(f"审核模型返回了无法识别的结果：{normalized_response}")
+
+        conclusion_match = conclusion_matches[0]
+        conclusion = conclusion_match.group(1).upper()
+        if conclusion == "REJECT":
             return ModerationResult(
                 passed=False,
                 reason=DrawpicModerationService._extract_reason(normalized_response, default_reason="审核未通过"),
                 raw_response=normalized_response,
             )
-        if "结论：PASS" in normalized_response or "结论:PASS" in normalized_response or "结论: PASS" in normalized_response:
-            return ModerationResult(
-                passed=True,
-                reason=DrawpicModerationService._extract_reason(normalized_response),
-                raw_response=normalized_response,
-            )
-
-        # 2) 逐行查找首个包含明确 PASS / REJECT 关键词的行
-        for raw_line in normalized_response.splitlines():
-            normalized_line = raw_line.strip().upper()
-            if not normalized_line:
-                continue
-            if "REJECT" in normalized_line:
-                return ModerationResult(
-                    passed=False,
-                    reason=DrawpicModerationService._extract_reason(normalized_response, default_reason="审核未通过"),
-                    raw_response=normalized_response,
-                )
-            if "PASS" in normalized_line:
-                return ModerationResult(
-                    passed=True,
-                    reason=DrawpicModerationService._extract_reason(normalized_response),
-                    raw_response=normalized_response,
-                )
-
-        # 3) 全文模糊兜底（模型可能把结论拼接在一段话中）
-        upper_response = normalized_response.upper()
-        if "REJECT" in upper_response:
-            return ModerationResult(
-                passed=False,
-                reason=DrawpicModerationService._extract_reason(normalized_response, default_reason="审核未通过"),
-                raw_response=normalized_response,
-            )
-        if "PASS" in upper_response:
-            return ModerationResult(
-                passed=True,
-                reason=DrawpicModerationService._extract_reason(normalized_response),
-                raw_response=normalized_response,
-            )
-
-        # 4) 无法识别
-        raise RuntimeError(f"审核模型返回了无法识别的结果：{normalized_response}")
+        return ModerationResult(
+            passed=True,
+            reason=DrawpicModerationService._extract_reason(normalized_response),
+            raw_response=normalized_response,
+        )
 
     @staticmethod
     def _extract_reason(response_text: str, default_reason: str = "") -> str:

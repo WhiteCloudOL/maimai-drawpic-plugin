@@ -10,8 +10,9 @@ import re
 import unicodedata
 
 from .moderation import DrawpicModerationService
+from .image_utils import validate_image_bytes
 from .provider_router import ProviderName, ProviderRouter
-from .stream_service import ChatStreamService
+from .stream_service import ChatStreamService, ImageDeliveryError
 from .task_store import DrawTaskRecord, DrawTaskStore
 
 
@@ -281,7 +282,7 @@ class DrawService:
             image_bytes_list = await asyncio.wait_for(call(*args), timeout=timeout_seconds)
         else:
             image_bytes_list = await asyncio.wait_for(asyncio.to_thread(call, *args), timeout=timeout_seconds)
-        return image_bytes_list
+        return [validate_image_bytes(image_bytes) for image_bytes in image_bytes_list]
 
     def resolve_fallback_model_name(self, primary_model: str = "") -> str:
         """解析生图备选模型名称。"""
@@ -456,11 +457,14 @@ class DrawService:
         task.add_done_callback(self.background_tasks.discard)
         del task_id
 
-    def cancel_background_tasks(self) -> None:
+    async def cancel_background_tasks(self) -> None:
         """取消当前全部后台任务。"""
 
-        for task in list(self.background_tasks):
+        tasks = list(self.background_tasks)
+        for task in tasks:
             task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def build_task_status_message(self, record: DrawTaskRecord) -> str:
         """构建任务状态说明。"""
@@ -632,8 +636,9 @@ class DrawService:
                 message=running_message,
             )
             if running_record is None:
-                # 任务记录已被配置重载清空，无法继续追踪状态，静默退出避免 KeyError 崩溃
+                # 任务记录已失效时结束执行，并通知调用方释放预留资源。
                 self.ctx.logger.warning("绘图任务记录已失效，终止后台执行: task_id=%s task_type=%s", task_id, task_type)
+                await _notify_task_unsuccessful("failed", "任务记录已失效")
                 return
             primary_attempt = self._build_image_request_attempt(
                 model=resolved_model,
@@ -842,6 +847,39 @@ class DrawService:
             await _notify_task_unsuccessful("failed", "任务已取消")
             self.ctx.logger.warning("绘图任务已取消: task_id=%s task_type=%s model=%s", task_id, task_type, resolved_model)
             raise
+        except ImageDeliveryError as exc:
+            if exc.sent_count <= 0:
+                self.task_store.update_task(
+                    task_id,
+                    status="failed",
+                    message=str(exc),
+                )
+                await _notify_task_unsuccessful("failed", str(exc))
+                self.ctx.logger.error(
+                    "绘图任务投递失败: task_id=%s task_type=%s model=%s error=%s",
+                    task_id,
+                    task_type,
+                    resolved_model,
+                    exc,
+                )
+                return
+
+            partial_message = f"部分图片已发送，数量={exc.sent_count}；其余图片投递失败：{exc}"
+            self.task_store.update_task(
+                task_id,
+                status="completed",
+                message=partial_message,
+                sent_count=exc.sent_count,
+            )
+            await _notify_task_successful("completed", partial_message)
+            self.ctx.logger.warning(
+                "绘图任务部分投递完成: task_id=%s task_type=%s model=%s sent_count=%s error=%s",
+                task_id,
+                task_type,
+                resolved_model,
+                exc.sent_count,
+                exc,
+            )
         except TimeoutError:
             timeout_seconds = self.resolve_request_timeout_seconds()
             self.task_store.update_task(

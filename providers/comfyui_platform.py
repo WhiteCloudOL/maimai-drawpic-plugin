@@ -13,7 +13,7 @@ import uuid
 
 import aiohttp
 
-from ..core.http_proxy import HttpProxySettings
+from ..core.http_proxy import HttpProxySettings, read_response_bytes, read_response_text
 
 
 PromptMode = Literal["single_prompt", "positive_negative"]
@@ -426,9 +426,9 @@ class ComfyUIImage:
         async with aiohttp.ClientSession(timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()) as session:
             async with session.get(url, **self.proxy_settings.aiohttp_request_kwargs()) as response:
                 if response.status != 200:
-                    error_text = await response.text()
+                    error_text = await read_response_text(response)
                     raise RuntimeError(f"下载 ComfyUI 图片失败 ({response.status})：{error_text[:1000]}")
-                return await response.read()
+                return await read_response_bytes(response)
 
     async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         """向 ComfyUI 发送 JSON 请求。"""
@@ -452,7 +452,7 @@ class ComfyUIImage:
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
         async with aiohttp.ClientSession(timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()) as session:
             async with session.request(method, url, **kwargs, **self.proxy_settings.aiohttp_request_kwargs()) as response:
-                response_text = await response.text()
+                response_text = await read_response_text(response)
                 try:
                     response_json = json.loads(response_text)
                 except json.JSONDecodeError as exc:

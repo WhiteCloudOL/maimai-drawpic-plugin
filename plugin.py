@@ -27,7 +27,7 @@ from .core.texts import (
     build_quota_adjust_text,
     build_session_status_text,
 )
-from .core.usage_store import UserQuotaStore
+from .core.usage_store import QuotaPeriod, UserQuotaStore
 
 
 DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
@@ -302,7 +302,7 @@ class DrawpicPlugin(MaiBotPlugin):
 
         return bool(group_id.strip())
 
-    def _resolve_quota_config(self, group_id: str) -> tuple[bool, str, int]:
+    def _resolve_quota_config(self, group_id: str) -> tuple[bool, QuotaPeriod, int]:
         """按群聊/私聊选择额度配置，返回 (enabled, period, default_quota)。"""
 
         general = self.config.general
@@ -465,46 +465,78 @@ class DrawpicPlugin(MaiBotPlugin):
         )
         return True, f"{scope_label} {scope_value} 当前周期剩余 {remaining} 次", quota_key
 
-    def _commit_draw_quota(
+    def _reserve_draw_quota(
+        self,
+        user_id: str,
+        group_id: str,
+        stream_id: str,
+    ) -> tuple[bool, str, str]:
+        """原子检查并预留一次绘图额度。"""
+
+        allowed, message, quota_key = self._check_draw_quota(user_id, group_id, stream_id)
+        if not allowed or not quota_key:
+            return allowed, message, quota_key
+        quota_enabled, quota_period, default_quota = self._resolve_quota_config(group_id)
+        if not quota_enabled:
+            return True, message, ""
+        success, remaining = self._usage_store.consume(
+            quota_key,
+            period=quota_period,
+            default_quota=default_quota,
+        )
+        if not success:
+            self.ctx.logger.warning(
+                "绘图额度预留失败: quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s",
+                quota_key,
+                remaining,
+                quota_period,
+                stream_id,
+                group_id,
+            )
+            return False, "绘图次数已用尽", ""
+        self.ctx.logger.info(
+            "绘图额度已预留: quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s",
+            quota_key,
+            remaining,
+            quota_period,
+            stream_id,
+            group_id,
+        )
+        return True, message, quota_key
+
+    def _refund_draw_quota(
         self,
         quota_key: str,
         group_id: str,
         stream_id: str,
         task_id: str = "",
+        *,
+        quota_period: QuotaPeriod | None = None,
+        default_quota: int | None = None,
     ) -> None:
-        """绘图任务成功后扣除一次额度。"""
+        """退回失败任务预留的绘图额度。"""
 
         normalized_quota_key = quota_key.strip()
         if not normalized_quota_key:
             return
-        quota_enabled, quota_period, default_quota = self._resolve_quota_config(group_id)
-        if not quota_enabled:
-            return
-        success, remaining = self._usage_store.consume(
+        if quota_period is None or default_quota is None:
+            quota_enabled, quota_period, default_quota = self._resolve_quota_config(group_id)
+            if not quota_enabled:
+                return
+        remaining = self._usage_store.refund(
             normalized_quota_key,
             period=quota_period,
             default_quota=default_quota,
         )
-        if success:
-            self.ctx.logger.info(
-                "绘图额度已扣除(任务成功): quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s task_id=%s",
-                normalized_quota_key,
-                remaining,
-                quota_period,
-                stream_id,
-                group_id,
-                task_id,
-            )
-        else:
-            self.ctx.logger.warning(
-                "绘图额度扣除失败(任务成功但额度已耗尽): quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s task_id=%s",
-                normalized_quota_key,
-                remaining,
-                quota_period,
-                stream_id,
-                group_id,
-                task_id,
-            )
+        self.ctx.logger.info(
+            "绘图额度已退回: quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s task_id=%s",
+            normalized_quota_key,
+            remaining,
+            quota_period,
+            stream_id,
+            group_id,
+            task_id,
+        )
 
     @staticmethod
     def _resolve_stream_id_from_hook_message(message: Any) -> str:
@@ -907,7 +939,7 @@ class DrawpicPlugin(MaiBotPlugin):
     async def on_unload(self) -> None:
         """插件卸载回调。"""
 
-        self._require_draw_service().cancel_background_tasks()
+        await self._require_draw_service().cancel_background_tasks()
         self._require_session_store().save()
         self._task_store.save()
         self._usage_store.save()
@@ -918,6 +950,8 @@ class DrawpicPlugin(MaiBotPlugin):
 
         del config_data
         if scope in {CONFIG_RELOAD_SCOPE_SELF, ON_MODEL_CONFIG_RELOAD, ON_BOT_CONFIG_RELOAD}:
+            if self._draw_service is not None:
+                await self._draw_service.cancel_background_tasks()
             self._refresh_services()
             self._require_session_store().normalize_all()
             self._require_session_store().save()
@@ -1015,37 +1049,50 @@ class DrawpicPlugin(MaiBotPlugin):
             raise ValueError(f"{image_edit_unsupported_reason}。请改用 /绘图 文生图 <prompt>，或切换到支持图生图的模型")
 
         await draw_service.review_prompt_or_raise(prompt)
-        quota_allowed, quota_message, quota_key = self._check_draw_quota(
+        quota_allowed, quota_message, quota_key = self._reserve_draw_quota(
             resolved_user_id,
             resolved_group_id,
             resolved_stream_id,
         )
         if not quota_allowed:
             raise PermissionError(quota_message)
+        _, reserved_quota_period, reserved_default_quota = self._resolve_quota_config(resolved_group_id)
 
-        async def _commit_quota_on_task_successful(task_id: str, status: str, reason: str) -> None:
+        async def _refund_quota_on_task_unsuccessful(task_id: str, status: str, reason: str) -> None:
             del status, reason
-            self._commit_draw_quota(
+            self._refund_draw_quota(
                 quota_key,
                 resolved_group_id,
                 resolved_stream_id,
                 task_id,
+                quota_period=reserved_quota_period,
+                default_quota=reserved_default_quota,
             )
 
-        return await draw_service.start_background_image_request(
-            prompt=prompt,
-            stream_id=resolved_stream_id,
-            resolved_model=resolved_model,
-            resolved_openai_mode=resolved_openai_mode,
-            provider_name=provider_name,
-            user_id=resolved_user_id,
-            group_id=resolved_group_id,
-            platform_name=resolved_platform,
-            source_image_bytes_list=normalized_source_images,
-            matched_message_id=matched_message_id,
-            notify_start=notify_start,
-            on_task_successful=_commit_quota_on_task_successful if quota_key else None,
-        )
+        try:
+            return await draw_service.start_background_image_request(
+                prompt=prompt,
+                stream_id=resolved_stream_id,
+                resolved_model=resolved_model,
+                resolved_openai_mode=resolved_openai_mode,
+                provider_name=provider_name,
+                user_id=resolved_user_id,
+                group_id=resolved_group_id,
+                platform_name=resolved_platform,
+                source_image_bytes_list=normalized_source_images,
+                matched_message_id=matched_message_id,
+                notify_start=notify_start,
+                on_task_unsuccessful=_refund_quota_on_task_unsuccessful if quota_key else None,
+            )
+        except Exception:
+            self._refund_draw_quota(
+                quota_key,
+                resolved_group_id,
+                resolved_stream_id,
+                quota_period=reserved_quota_period,
+                default_quota=reserved_default_quota,
+            )
+            raise
 
     @Tool(
         "draw",

@@ -1,0 +1,144 @@
+name: 错误报告
+description: 报告运行错误、异常结果或功能故障
+title: "[错误] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请完整填写以下信息，并在日志、截图和配置中隐藏 API Key、Token、Cookie 等敏感内容。
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已更新到插件的最新版本，并确认问题仍然存在。
+          required: true
+        - label: 我已搜索现有 Issue，确认没有相同问题。
+          required: true
+        - label: 我已隐藏日志、截图和配置中的密钥及个人信息。
+          required: true
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: 插件版本
+      description: 可在插件管理页面或 `_manifest.json` 中查看。
+      placeholder: 例如 1.10.5
+    validations:
+      required: true
+
+  - type: input
+    id: maibot_version
+    attributes:
+      label: MaiBot 版本
+      placeholder: 例如 1.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: 运行环境
+      options:
+        - Windows
+        - Linux
+        - Docker
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: 任务类型
+      options:
+        - 文生图
+        - 图生图
+        - 图片审核
+        - 模型或会话设置
+        - 额度与权限
+        - 插件加载或配置
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: 图片平台
+      description: 填写 OpenAI、Gemini、智谱、阿里百炼、火山引擎、硅基流动、NovelAI、ComfyUI 等实际使用的平台。
+      placeholder: 例如 火山引擎
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: 模型
+      placeholder: 例如 doubao-seedream-4-0
+    validations:
+      required: true
+
+  - type: textarea
+    id: parameters
+    attributes:
+      label: 相关参数
+      description: 填写尺寸、比例、生成数量、质量、步数、采样器、工作流等与问题有关的参数；没有时填写“无”。
+      placeholder: |
+        尺寸：2048*2048
+        生成数量：1
+        其他参数：无
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 请按操作顺序说明如何稳定触发问题。
+      placeholder: |
+        1. 启用……
+        2. 发送……
+        3. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+      description: 说明你认为正常情况下应该出现的结果。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 说明实际出现的现象和错误提示。
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 日志或截图
+      description: 请粘贴问题发生前后的完整日志，或将截图拖入此处。务必隐藏密钥及个人信息。
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: 相关配置
+      description: 可粘贴与问题有关的配置片段。请将 API Key、Token 等值替换为 `***`。
+      render: toml
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 填写代理、网络环境、近期变更或其他可能有关的信息。

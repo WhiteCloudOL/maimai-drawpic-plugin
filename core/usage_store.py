@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 import json
 
+from .storage_utils import write_json_atomically
+
 
 QuotaPeriod = Literal["daily", "weekly", "monthly", "once"]
 QuotaAction = Literal["add", "remove", "set"]
@@ -68,14 +70,9 @@ class UserQuotaStore:
     def save(self) -> None:
         """保存额度数据。"""
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {user_id: asdict(record) for user_id, record in self.records.items()},
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+        write_json_atomically(
+            self.path,
+            {user_id: asdict(record) for user_id, record in self.records.items()},
         )
 
     def get_remaining(self, user_id: str, *, period: QuotaPeriod, default_quota: int) -> int:

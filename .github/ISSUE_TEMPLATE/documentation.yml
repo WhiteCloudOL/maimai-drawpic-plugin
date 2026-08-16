@@ -1,0 +1,75 @@
+name: 文档与使用反馈
+description: 反馈说明不清、配置疑问或文档缺漏
+title: "[文档/使用] "
+labels:
+  - documentation
+body:
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已查阅最新版本 README，并搜索过现有 Issue。
+          required: true
+
+  - type: dropdown
+    id: feedback_type
+    attributes:
+      label: 反馈类型
+      options:
+        - 安装问题
+        - 配置问题
+        - 命令或使用问题
+        - 文档内容错误
+        - 文档内容缺失
+        - 示例请求
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: 插件版本
+      placeholder: 例如 1.10.5
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: 相关章节或功能
+      description: 填写 README 章节、配置项或命令名称。
+      placeholder: 例如“快速配置”或 /draw
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 遇到的问题
+      description: 说明哪些内容不清楚、错误或缺失，以及你已经尝试过什么。
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 希望获得的信息
+      description: 说明期望补充的解释、步骤或示例。
+    validations:
+      required: true
+
+  - type: input
+    id: platform_model
+    attributes:
+      label: 相关平台与模型
+      description: 与特定平台或模型无关时填写“无”。
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 可添加截图、链接或已隐藏敏感信息的配置片段。

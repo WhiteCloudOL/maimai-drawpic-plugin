@@ -6,7 +6,7 @@ import aiohttp
 import base64
 import time
 
-from ..core.http_proxy import HttpProxySettings
+from ..core.http_proxy import HttpProxySettings, read_response_bytes, read_response_json, read_response_text
 
 
 class ZhipuImage:
@@ -92,7 +92,7 @@ class ZhipuImage:
             ) as response:
                 duration = time.time() - start_time
                 if response.status != 200:
-                    error_text = await response.text()
+                    error_text = await read_response_text(response)
                     self._log_error(
                         "智谱图片生成接口失败: status=%s duration=%.2fs url=%s response_preview=%s",
                         response.status,
@@ -101,9 +101,10 @@ class ZhipuImage:
                         error_text[:1200],
                     )
                     raise RuntimeError(
-                        f"智谱图片生成接口错误 ({response.status}, 耗时: {duration:.2f}s): {error_text}"
+                        f"智谱图片生成接口错误 ({response.status}, 耗时: {duration:.2f}s): "
+                        f"{error_text[:1200]}"
                     )
-                response_json = await response.json()
+                response_json = await read_response_json(response)
                 data_count = len(response_json.get("data", [])) if isinstance(response_json.get("data"), list) else 0
                 self._log_info("智谱接口成功: status=%s duration=%.2fs data_count=%s", response.status, duration, data_count)
                 return response_json
@@ -147,7 +148,7 @@ class ZhipuImage:
                 if response.status != 200:
                     self._log_error("下载智谱生成图片失败: status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载智谱生成图片失败: status={response.status}")
-                image_bytes = await response.read()
+                image_bytes = await read_response_bytes(response)
                 return image_bytes
 
     def _log_info(self, message: str, *args: Any) -> None:

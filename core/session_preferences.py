@@ -4,6 +4,7 @@ from typing import Any
 import json
 
 from .provider_router import ProviderRouter
+from .storage_utils import write_json_atomically
 
 OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
 
@@ -72,11 +73,7 @@ class SessionPreferenceStore:
         """保存会话级模型配置到本地文件。"""
 
         self.normalize_all()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(self.preferences, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        write_json_atomically(self.path, self.preferences)
 
     def normalize_all(self) -> None:
         """校正所有会话级模型配置。"""

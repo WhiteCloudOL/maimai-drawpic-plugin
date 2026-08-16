@@ -7,7 +7,7 @@ import base64
 import time
 
 from ..core.image_utils import detect_image_dimensions, detect_mime_type
-from ..core.http_proxy import HttpProxySettings
+from ..core.http_proxy import HttpProxySettings, read_response_bytes, read_response_json, read_response_text
 
 
 
@@ -196,7 +196,7 @@ class SiliconFlowImage:
             ) as response:
                 duration = time.time() - start_time
                 if response.status != 200:
-                    error_text = await response.text()
+                    error_text = await read_response_text(response)
                     self._log_error(
                         "硅基流动图片接口失败: status=%s duration=%.2fs url=%s response_preview=%s",
                         response.status,
@@ -205,9 +205,10 @@ class SiliconFlowImage:
                         error_text[:1200],
                     )
                     raise RuntimeError(
-                        f"硅基流动图片接口错误 ({response.status}, 耗时: {duration:.2f}s): {error_text}"
+                        f"硅基流动图片接口错误 ({response.status}, 耗时: {duration:.2f}s): "
+                        f"{error_text[:1200]}"
                     )
-                response_json = await response.json()
+                response_json = await read_response_json(response)
                 self._log_info("硅基流动接口成功: status=%s duration=%.2fs", response.status, duration)
                 return response_json
 
@@ -249,7 +250,7 @@ class SiliconFlowImage:
                 if response.status != 200:
                     self._log_error("下载硅基流动生成图片失败: status=%s url=%s", response.status, url)
                     raise RuntimeError(f"下载硅基流动生成图片失败: status={response.status}")
-                return await response.read()
+                return await read_response_bytes(response)
 
     def _log_info(self, message: str, *args: Any) -> None:
         """记录信息日志。"""
