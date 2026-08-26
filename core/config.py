@@ -6,6 +6,8 @@ from maibot_sdk import Field, PluginConfigBase
 
 OpenAICompatibilityMode = Literal["auto", "images_api", "chat_completions", "novelai_images_api"]
 NovelAIModelId = Literal[
+    "nai-diffusion-5-full",
+    "nai-diffusion-5-curated",
     "nai-diffusion-4-5-full",
     "nai-diffusion-4-5-curated",
     "nai-diffusion-4-full",
@@ -1296,6 +1298,8 @@ class NovelAIModelConfig(PluginConfigBase):
     )
     models: list[NovelAIModelId] = Field(
         default=[
+            "nai-diffusion-5-full",
+            "nai-diffusion-5-curated",
             "nai-diffusion-4-5-full",
             "nai-diffusion-4-5-curated",
             "nai-diffusion-4-full",
@@ -1306,7 +1310,7 @@ class NovelAIModelConfig(PluginConfigBase):
         description="可多选的 NovelAI 官方图片模型列表。",
         json_schema_extra={
             "label": "NovelAI 模型列表",
-            "hint": "仅提供 NovelAI 当前官方模型；可多选。NovelAPI 网关的扩展模型请填写下方自定义模型列表",
+            "hint": "提供 NovelAI V5、V4.5、V4 和 V3 官方模型；可多选。NovelAPI 网关的扩展模型请填写下方自定义模型列表",
             "order": 2,
         },
     )
@@ -1439,10 +1443,10 @@ class NovelAIModelConfig(PluginConfigBase):
     )
     v4_noise_schedule: str = Field(
         default="karras",
-        description="NovelAI V4/V4.5 专用 noise schedule。",
+        description="NovelAI V4/V4.5 专用 noise schedule；V5 使用官方推荐设置。",
         json_schema_extra={
             "label": "V4/V4.5 噪声调度",
-            "hint": "V4/V4.5 默认使用 karras；留空则不传",
+            "hint": "V4/V4.5 默认使用 karras；V5 使用官方推荐设置；留空则不传",
             "order": 17,
         },
     )

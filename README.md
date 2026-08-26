@@ -2,7 +2,7 @@
 
 # 🎨 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-1.10.5-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.10.6-informational.svg)
 ![MaiBot](https://img.shields.io/badge/MaiBot-1.x-blue.svg)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
@@ -34,6 +34,8 @@
 
 提交日志、截图和配置前，请隐藏 API Key、Token、Cookie 等敏感信息。
 
+另外也可以加入交流QQ群：637174573，建议优先通过issue反馈
+
 ## 图片平台
 
 | 平台 | 文生图 | 图生图 | 说明 |
@@ -44,7 +46,7 @@
 | 阿里百炼 | ✅ | ✅ | 支持通义万相及 Qwen Image 系列 |
 | 火山引擎 | ✅ | ✅ | 支持统一模型以及文生图、图生图模型分组 |
 | 硅基流动 | ✅ | ✅ | 支持平台开放的图片模型 |
-| NovelAI / NovelAPI | ✅ | ✅ | 支持 V3、V4、V4.5 与兼容网关 |
+| NovelAI / NovelAPI | ✅ | ✅ | 支持 V3、V4、V4.5、V5 与兼容网关 |
 | ComfyUI | ✅ | ✅ | 使用本地 API 工作流 |
 
 ## 安装
@@ -128,6 +130,19 @@ models = "relay-image=gpt-image-2"
 | `siliconflow` | `api_key`、`models`、`image_size` |
 | `novelai` | `base_url`、`api_key`、`models`、`custom_models`、`width`、`height` |
 | `comfyui` | `base_url`、工作流路径和节点 ID |
+
+NovelAI 官方模型可直接填写以下模型 ID：
+
+- `nai-diffusion-5-full`
+- `nai-diffusion-5-curated`
+- `nai-diffusion-4-5-full`
+- `nai-diffusion-4-5-curated`
+- `nai-diffusion-4-full`
+- `nai-diffusion-4-curated-preview`
+- `nai-diffusion-3`
+- `nai-diffusion-furry-3`
+
+V5 支持文生图和图生图；使用 NovelAPI 兼容网关时，请以网关提供的模型 ID 和参数说明为准。
 
 额外参数使用 `key=value` 格式，每行填写一项。值支持布尔值、数字和 JSON。
 
@@ -315,10 +330,6 @@ data/
 ### 命令提示权限不足
 
 将当前用户 ID 加入 `general.admin_user_ids`，或关闭 `permission_enabled`。
-
-## 交流
-
-QQ群：637174573
 
 ## License
 

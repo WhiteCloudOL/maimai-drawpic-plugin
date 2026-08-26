@@ -46,6 +46,7 @@ for _sub in ("core", "providers"):
         sys.modules[_full_name] = _ns
 
 from core.image_utils import detect_image_dimensions, detect_image_format, detect_mime_type  # noqa: E402
+from core.config import NovelAIModelConfig  # noqa: E402
 from core.http_proxy import read_response_bytes, read_response_json  # noqa: E402
 from core.message_utils import (  # noqa: E402
     _SOURCE_IMAGE_CACHE,
@@ -61,6 +62,7 @@ from core.stream_service import (  # noqa: E402
 )
 from core.task_store import DrawTaskStore  # noqa: E402
 from core.usage_store import UserQuotaStore  # noqa: E402
+from maimai_drawpic_pkg.providers.novelai_platform import NovelAIImage  # noqa: E402
 
 # 构造一张最小 PNG 字节用于图片工具测试
 _MINIMAL_PNG = (
@@ -138,6 +140,73 @@ def test_provider_response_size_limit_applies_to_json() -> None:
 
     asyncio.run(_run())
     print("[OK] http_proxy: JSON 与二进制响应大小限制")
+
+
+def test_novelai_v5_payload_uses_v5_parameters() -> None:
+    """NovelAI V5 请求使用结构化提示词和官方推荐噪声调度。"""
+
+    provider = NovelAIImage(
+        api_key="test-key",
+        noise_schedule="native",
+        v4_noise_schedule="exponential",
+        negative_prompt="low quality",
+    )
+    payload = provider._build_payload(
+        prompt="1girl",
+        model="nai-diffusion-5-full",
+        action="generate",
+        n=1,
+    )
+    parameters = payload["parameters"]
+
+    assert parameters["params_version"] == 4
+    assert parameters["noise_schedule"] == "karras"
+    assert parameters["negative_prompt"] == "low quality"
+    assert parameters["v4_prompt"]["caption"]["base_caption"] == "1girl"
+    assert parameters["v4_negative_prompt"]["caption"]["base_caption"] == "low quality"
+    assert "uc" not in parameters
+    print("[OK] NovelAI V5: 使用 V5 参数、结构化提示词和 karras 调度")
+
+
+def test_novelai_v4_and_v3_payloads_keep_existing_parameters() -> None:
+    """NovelAI V4 与 V3 请求仍使用各自原有的参数格式。"""
+
+    provider = NovelAIImage(
+        api_key="test-key",
+        noise_schedule="native",
+        v4_noise_schedule="exponential",
+        negative_prompt="low quality",
+    )
+    v4_parameters = provider._build_payload(
+        prompt="1girl",
+        model="nai-diffusion-4-5-full",
+        action="generate",
+        n=1,
+    )["parameters"]
+    assert v4_parameters["params_version"] == 3
+    assert v4_parameters["noise_schedule"] == "exponential"
+    assert v4_parameters["prefer_brownian"] is True
+    assert "uc" not in v4_parameters
+
+    v3_parameters = provider._build_payload(
+        prompt="1girl",
+        model="nai-diffusion-3",
+        action="generate",
+        n=1,
+    )["parameters"]
+    assert v3_parameters["noise_schedule"] == "native"
+    assert v3_parameters["uc"] == "low quality"
+    assert "params_version" not in v3_parameters
+    print("[OK] NovelAI V4/V3: 保留原有参数格式")
+
+
+def test_novelai_defaults_include_v5_models() -> None:
+    """NovelAI 默认模型列表包含 V5 Full 与 Curated。"""
+
+    configured_models = NovelAIModelConfig().models
+    assert "nai-diffusion-5-full" in configured_models
+    assert "nai-diffusion-5-curated" in configured_models
+    print("[OK] NovelAI 配置：默认模型列表包含 V5")
 
 
 def test_task_store_update_missing_task_returns_none() -> None:
@@ -725,6 +794,9 @@ def test_task_store_limits_history_and_omits_prompt() -> None:
 def main() -> None:
     test_image_utils_detect_mime_type()
     test_provider_response_size_limit_applies_to_json()
+    test_novelai_v5_payload_uses_v5_parameters()
+    test_novelai_v4_and_v3_payloads_keep_existing_parameters()
+    test_novelai_defaults_include_v5_models()
     test_task_store_update_missing_task_returns_none()
     test_task_store_normal_flow_still_works()
     test_moderation_parse_review_response_robust()

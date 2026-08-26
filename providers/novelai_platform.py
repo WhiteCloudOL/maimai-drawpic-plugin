@@ -127,7 +127,30 @@ class NovelAIImage:
             "sm_dyn": self.sm_dyn,
         }
         is_v4_model = self._is_v4_model(model)
-        if is_v4_model:
+        is_v5_model = self._is_v5_model(model)
+        if is_v5_model:
+            # V5 使用新版本参数和结构化 caption，且采用官方推荐的 karras 调度。
+            parameters.update(
+                {
+                    "params_version": 4,
+                    "negative_prompt": self.negative_prompt,
+                    "v4_negative_prompt": {
+                        "caption": {
+                            "base_caption": self.negative_prompt,
+                            "char_captions": [],
+                        }
+                    },
+                    "v4_prompt": {
+                        "caption": {
+                            "base_caption": prompt,
+                            "char_captions": [],
+                        },
+                        "use_coords": False,
+                        "use_order": True,
+                    },
+                }
+            )
+        elif is_v4_model:
             # V4 系列模型需要使用结构化 caption；仅传 V3 的 uc 会导致服务端错误。
             parameters.update(
                 {
@@ -152,7 +175,10 @@ class NovelAIImage:
             )
         elif self.negative_prompt:
             parameters["uc"] = self.negative_prompt
-        noise_schedule = self.v4_noise_schedule if is_v4_model else self.noise_schedule
+        if is_v5_model:
+            noise_schedule = "karras"
+        else:
+            noise_schedule = self.v4_noise_schedule if is_v4_model else self.noise_schedule
         if noise_schedule:
             parameters["noise_schedule"] = noise_schedule
         parameters.update(self.extra_parameters)
@@ -168,6 +194,12 @@ class NovelAIImage:
         """判断模型是否使用 NovelAI V4 参数结构。"""
 
         return model.strip().lower().startswith("nai-diffusion-4")
+
+    @staticmethod
+    def _is_v5_model(model: str) -> bool:
+        """判断模型是否使用 NovelAI V5 参数结构。"""
+
+        return model.strip().lower().startswith("nai-diffusion-5")
 
     def _resolve_size(self, model: str) -> tuple[int, int]:
         """按模型名解析图片尺寸。"""
