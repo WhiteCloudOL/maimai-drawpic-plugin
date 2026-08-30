@@ -1398,10 +1398,10 @@ class NovelAIModelConfig(PluginConfigBase):
     )
     uc_preset: int = Field(
         default=0,
-        description="NovelAI undesired content 预设",
+        description="NovelAI / NovelAPI 旧版 undesired content 预设编号。",
         json_schema_extra={
-            "label": "UC 预设",
-            "hint": "常见值 0 到 3；不同模型含义可能不同",
+            "label": "旧版 UC 预设",
+            "hint": "官方 V3/V4/V5 使用上方反向提示词；兼容网关可按其文档填写旧版编号",
             "order": 12,
         },
     )
@@ -1410,7 +1410,7 @@ class NovelAIModelConfig(PluginConfigBase):
         description="NovelAI 是否启用质量标签增强",
         json_schema_extra={
             "label": "质量增强",
-            "hint": "对应 qualityToggle。",
+            "hint": "官方模型会按 V3、V4、V4.5、V5 自动添加对应质量标签",
             "order": 13,
         },
     )
@@ -1419,7 +1419,7 @@ class NovelAIModelConfig(PluginConfigBase):
         description="NovelAI smea 开关",
         json_schema_extra={
             "label": "SMEA",
-            "hint": "对应 sm。",
+            "hint": "仅 V3 文生图支持；V4 及以上模型和图生图会忽略",
             "order": 14,
         },
     )
@@ -1428,7 +1428,7 @@ class NovelAIModelConfig(PluginConfigBase):
         description="NovelAI dynamic smea 开关",
         json_schema_extra={
             "label": "动态 SMEA",
-            "hint": "对应 sm_dyn。",
+            "hint": "仅 V3 文生图支持；需同时开启 SMEA；V4 及以上模型和图生图会忽略",
             "order": 15,
         },
     )

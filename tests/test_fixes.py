@@ -150,6 +150,15 @@ def test_novelai_v5_payload_uses_v5_parameters() -> None:
         noise_schedule="native",
         v4_noise_schedule="exponential",
         negative_prompt="low quality",
+        quality_toggle=False,
+        sm=True,
+        sm_dyn=True,
+        extra_parameters={
+            "params_version": 3,
+            "noise_schedule": "exponential",
+            "reference_image_multiple": ["unsupported"],
+            "skip_cfg_above_sigma": 19,
+        },
     )
     payload = provider._build_payload(
         prompt="1girl",
@@ -162,42 +171,183 @@ def test_novelai_v5_payload_uses_v5_parameters() -> None:
     assert parameters["params_version"] == 4
     assert parameters["noise_schedule"] == "karras"
     assert parameters["negative_prompt"] == "low quality"
+    assert "uc" not in parameters
+    assert parameters["cfg_rescale"] == 0
+    assert parameters["dynamic_thresholding"] is False
+    assert parameters["deliberate_euler_ancestral_bug"] is False
+    assert parameters["prefer_brownian"] is True
     assert parameters["v4_prompt"]["caption"]["base_caption"] == "1girl"
     assert parameters["v4_negative_prompt"]["caption"]["base_caption"] == "low quality"
-    assert "uc" not in parameters
-    print("[OK] NovelAI V5: 使用 V5 参数、结构化提示词和 karras 调度")
+    assert "qualityToggle" not in parameters
+    assert "ucPreset" not in parameters
+    assert "sm" not in parameters
+    assert "sm_dyn" not in parameters
+    assert "reference_image_multiple" not in parameters
+    assert "skip_cfg_above_sigma" not in parameters
+    print("[OK] NovelAI V5: 使用官方参数并清理不支持字段")
 
 
-def test_novelai_v4_and_v3_payloads_keep_existing_parameters() -> None:
-    """NovelAI V4 与 V3 请求仍使用各自原有的参数格式。"""
+def test_novelai_v4_and_v3_payloads_use_supported_parameters() -> None:
+    """NovelAI V4 与 V3 请求使用各自支持的参数格式。"""
 
     provider = NovelAIImage(
         api_key="test-key",
         noise_schedule="native",
         v4_noise_schedule="exponential",
         negative_prompt="low quality",
+        quality_toggle=False,
+        sm=True,
+        sm_dyn=True,
     )
-    v4_parameters = provider._build_payload(
+    for model in (
+        "nai-diffusion-4-full",
+        "nai-diffusion-4-curated-preview",
+        "nai-diffusion-4-5-full",
+        "nai-diffusion-4-5-curated",
+    ):
+        v4_parameters = provider._build_payload(
+            prompt="1girl",
+            model=model,
+            action="generate",
+            n=1,
+        )["parameters"]
+        assert v4_parameters["params_version"] == 4
+        assert v4_parameters["noise_schedule"] == "exponential"
+        assert v4_parameters["prefer_brownian"] is True
+        assert v4_parameters["deliberate_euler_ancestral_bug"] is False
+        assert "uc" not in v4_parameters
+        assert "sm" not in v4_parameters
+        assert "sm_dyn" not in v4_parameters
+        assert "qualityToggle" not in v4_parameters
+        assert "ucPreset" not in v4_parameters
+
+    for model in ("nai-diffusion-3", "nai-diffusion-furry-3"):
+        v3_parameters = provider._build_payload(
+            prompt="1girl",
+            model=model,
+            action="generate",
+            n=1,
+        )["parameters"]
+        assert v3_parameters["noise_schedule"] == "native"
+        assert "uc" not in v3_parameters
+        assert v3_parameters["negative_prompt"] == "low quality"
+        assert v3_parameters["params_version"] == 4
+        assert v3_parameters["sm"] is True
+        assert v3_parameters["sm_dyn"] is True
+        assert "qualityToggle" not in v3_parameters
+        assert "ucPreset" not in v3_parameters
+
+    v3_img2img_parameters = provider._build_payload(
         prompt="1girl",
-        model="nai-diffusion-4-5-full",
-        action="generate",
+        model="nai-diffusion-3",
+        action="img2img",
         n=1,
     )["parameters"]
-    assert v4_parameters["params_version"] == 3
-    assert v4_parameters["noise_schedule"] == "exponential"
-    assert v4_parameters["prefer_brownian"] is True
-    assert "uc" not in v4_parameters
+    assert "sm" not in v3_img2img_parameters
+    assert "sm_dyn" not in v3_img2img_parameters
+    assert v3_img2img_parameters["add_original_image"] is True
+    assert v3_img2img_parameters["extra_noise_seed"] == v3_img2img_parameters["seed"]
+    print("[OK] NovelAI V4/V3: 使用模型支持的参数格式")
 
+
+def test_novelai_quality_tags_follow_model_family() -> None:
+    """NovelAI 质量增强按模型追加官方质量标签。"""
+
+    provider = NovelAIImage(api_key="test-key", quality_toggle=True)
+    quality_suffixes = {
+        "nai-diffusion-5-full": "very aesthetic, masterpiece, no text",
+        "nai-diffusion-5-curated": "very aesthetic, masterpiece, no text",
+        "nai-diffusion-4-5-full": "very aesthetic, masterpiece, no text",
+        "nai-diffusion-4-5-curated": (
+            "very aesthetic, masterpiece, no text, -0.8::feet::, rating:general"
+        ),
+        "nai-diffusion-4-full": "no text, best quality, very aesthetic, absurdres",
+        "nai-diffusion-4-curated-preview": "rating:general, best quality, very aesthetic, absurdres",
+        "nai-diffusion-3": "best quality, amazing quality, very aesthetic, absurdres",
+        "nai-diffusion-furry-3": "{best quality}, {amazing quality}",
+    }
+    for model, suffix in quality_suffixes.items():
+        payload = provider._build_payload(
+            prompt="1girl",
+            model=model,
+            action="generate",
+            n=1,
+        )
+        assert payload["input"] == f"1girl, {suffix}"
+
+    v5_payload = provider._build_payload(
+        prompt="1girl\nText: HELLO",
+        model="nai-diffusion-5-full",
+        action="generate",
+        n=1,
+    )
+    assert v5_payload["input"] == "1girl, very aesthetic, masterpiece, no text\nText: HELLO"
+    assert v5_payload["parameters"]["v4_prompt"]["caption"]["base_caption"] == v5_payload["input"]
+
+    furry_v3_payload = provider._build_payload(
+        prompt="1girl|forest:0.4",
+        model="nai-diffusion-furry-3",
+        action="generate",
+        n=1,
+    )
+    assert furry_v3_payload["input"] == (
+        "1girl, {best quality}, {amazing quality}|forest, {best quality}, {amazing quality}:0.4"
+    )
+    print("[OK] NovelAI 质量增强：按模型追加标签并保留 Text/混合提示词结构")
+
+
+def test_novelai_sampler_compatibility_is_model_specific() -> None:
+    """NovelAI DDIM 采样器按 V3 与 V4+ 的兼容规则转换。"""
+
+    provider = NovelAIImage(
+        api_key="test-key",
+        sampler="ddim",
+        quality_toggle=False,
+    )
     v3_parameters = provider._build_payload(
         prompt="1girl",
         model="nai-diffusion-3",
         action="generate",
         n=1,
     )["parameters"]
-    assert v3_parameters["noise_schedule"] == "native"
-    assert v3_parameters["uc"] == "low quality"
-    assert "params_version" not in v3_parameters
-    print("[OK] NovelAI V4/V3: 保留原有参数格式")
+    assert v3_parameters["sampler"] == "ddim_v3"
+    assert "prefer_brownian" not in v3_parameters
+    assert "sm" not in v3_parameters
+    assert "sm_dyn" not in v3_parameters
+
+    for model in ("nai-diffusion-4-full", "nai-diffusion-5-full"):
+        parameters = provider._build_payload(
+            prompt="1girl",
+            model=model,
+            action="generate",
+            n=1,
+        )["parameters"]
+        assert parameters["sampler"] == "k_euler_ancestral"
+        assert parameters["prefer_brownian"] is True
+    print("[OK] NovelAI 采样器：V3 与 V4+ 使用对应 DDIM 兼容规则")
+
+
+def test_novelai_custom_gateway_keeps_legacy_parameters() -> None:
+    """NovelAPI 自定义模型继续接收兼容网关所需的旧版字段。"""
+
+    provider = NovelAIImage(
+        api_key="test-key",
+        uc_preset=2,
+        quality_toggle=True,
+        sm=True,
+        sm_dyn=True,
+    )
+    parameters = provider._build_payload(
+        prompt="1girl",
+        model="gateway-custom-model",
+        action="generate",
+        n=1,
+    )["parameters"]
+    assert parameters["ucPreset"] == 2
+    assert parameters["qualityToggle"] is True
+    assert parameters["sm"] is True
+    assert parameters["sm_dyn"] is True
+    print("[OK] NovelAPI 兼容网关：保留旧版参数")
 
 
 def test_novelai_defaults_include_v5_models() -> None:
@@ -795,7 +945,10 @@ def main() -> None:
     test_image_utils_detect_mime_type()
     test_provider_response_size_limit_applies_to_json()
     test_novelai_v5_payload_uses_v5_parameters()
-    test_novelai_v4_and_v3_payloads_keep_existing_parameters()
+    test_novelai_v4_and_v3_payloads_use_supported_parameters()
+    test_novelai_quality_tags_follow_model_family()
+    test_novelai_sampler_compatibility_is_model_specific()
+    test_novelai_custom_gateway_keeps_legacy_parameters()
     test_novelai_defaults_include_v5_models()
     test_task_store_update_missing_task_returns_none()
     test_task_store_normal_flow_still_works()

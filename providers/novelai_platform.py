@@ -3,15 +3,40 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 
-import aiohttp
 import base64
 import json
 import random
+import re
 import time
 import zipfile
 
+import aiohttp
+
 from ..core.image_utils import MAX_IMAGE_BYTES, detect_image_dimensions
 from ..core.http_proxy import MAX_PROVIDER_RESPONSE_BYTES, HttpProxySettings, read_response_bytes
+
+
+_QUALITY_SUFFIX_BY_MODEL = {
+    "nai-diffusion-5-full": "very aesthetic, masterpiece, no text",
+    "nai-diffusion-5-curated": "very aesthetic, masterpiece, no text",
+    "nai-diffusion-4-5-full": "very aesthetic, masterpiece, no text",
+    "nai-diffusion-4-5-curated": "very aesthetic, masterpiece, no text, -0.8::feet::, rating:general",
+    "nai-diffusion-4-full": "no text, best quality, very aesthetic, absurdres",
+    "nai-diffusion-4-curated-preview": "rating:general, best quality, very aesthetic, absurdres",
+    "nai-diffusion-3": "best quality, amazing quality, very aesthetic, absurdres",
+    "nai-diffusion-furry-3": "{best quality}, {amazing quality}",
+}
+_V5_UNSUPPORTED_PARAMETER_KEYS = {
+    "director_reference_descriptions",
+    "director_reference_images",
+    "director_reference_information_extracted",
+    "director_reference_secondary_strength_values",
+    "director_reference_strength_values",
+    "reference_image_multiple",
+    "reference_information_extracted_multiple",
+    "reference_strength_multiple",
+    "skip_cfg_above_sigma",
+}
 
 
 class NovelAIImage:
@@ -113,6 +138,12 @@ class NovelAIImage:
         """构建 NovelAI 图片请求体。"""
 
         width, height = size_override if size_override is not None else self._resolve_size(model)
+        normalized_model = model.strip().lower()
+        is_v3_model = self._is_v3_model(normalized_model)
+        is_v4_model = self._is_v4_model(normalized_model)
+        is_v5_model = self._is_v5_model(normalized_model)
+        is_official_model = is_v3_model or is_v4_model or is_v5_model
+        effective_prompt = self._apply_quality_tags(prompt, normalized_model) if is_official_model else prompt
         parameters: dict[str, Any] = {
             "width": width,
             "height": height,
@@ -126,37 +157,21 @@ class NovelAIImage:
             "sm": self.sm,
             "sm_dyn": self.sm_dyn,
         }
-        is_v4_model = self._is_v4_model(model)
-        is_v5_model = self._is_v5_model(model)
-        if is_v5_model:
-            # V5 使用新版本参数和结构化 caption，且采用官方推荐的 karras 调度。
+        if is_official_model:
             parameters.update(
                 {
                     "params_version": 4,
+                    "cfg_rescale": 0,
+                    "dynamic_thresholding": False,
+                    "legacy": False,
+                    "legacy_v3_extend": False,
                     "negative_prompt": self.negative_prompt,
-                    "v4_negative_prompt": {
-                        "caption": {
-                            "base_caption": self.negative_prompt,
-                            "char_captions": [],
-                        }
-                    },
-                    "v4_prompt": {
-                        "caption": {
-                            "base_caption": prompt,
-                            "char_captions": [],
-                        },
-                        "use_coords": False,
-                        "use_order": True,
-                    },
                 }
             )
-        elif is_v4_model:
-            # V4 系列模型需要使用结构化 caption；仅传 V3 的 uc 会导致服务端错误。
+        if is_v4_model or is_v5_model:
             parameters.update(
                 {
-                    "params_version": 3,
-                    "prefer_brownian": True,
-                    "negative_prompt": self.negative_prompt,
+                    "legacy_uc": False,
                     "v4_negative_prompt": {
                         "caption": {
                             "base_caption": self.negative_prompt,
@@ -165,7 +180,7 @@ class NovelAIImage:
                     },
                     "v4_prompt": {
                         "caption": {
-                            "base_caption": prompt,
+                            "base_caption": effective_prompt,
                             "char_captions": [],
                         },
                         "use_coords": False,
@@ -173,7 +188,7 @@ class NovelAIImage:
                     },
                 }
             )
-        elif self.negative_prompt:
+        elif not is_v3_model and self.negative_prompt:
             parameters["uc"] = self.negative_prompt
         if is_v5_model:
             noise_schedule = "karras"
@@ -182,12 +197,116 @@ class NovelAIImage:
         if noise_schedule:
             parameters["noise_schedule"] = noise_schedule
         parameters.update(self.extra_parameters)
+        if is_official_model:
+            self._sanitize_official_parameters(
+                parameters,
+                model=normalized_model,
+                action=action,
+            )
         return {
-            "input": prompt,
+            "input": effective_prompt,
             "model": model,
             "action": action,
             "parameters": parameters,
         }
+
+    def _apply_quality_tags(self, prompt: str, model: str) -> str:
+        """按模型追加 NovelAI 官方质量标签。"""
+
+        suffix = _QUALITY_SUFFIX_BY_MODEL.get(model, "")
+        if not self.quality_toggle or not suffix or suffix.lower() in prompt.lower():
+            return prompt
+        if self._is_v3_model(model):
+            return "|".join(self._append_quality_suffix(part, suffix) for part in prompt.split("|"))
+
+        text_block_match = re.search(r"\n(?=\s*Text:)", prompt, flags=re.IGNORECASE)
+        if text_block_match is None:
+            return self._append_quality_suffix(prompt, suffix)
+        prompt_body = prompt[: text_block_match.start()]
+        text_block = prompt[text_block_match.start() :]
+        return self._append_quality_suffix(prompt_body, suffix) + text_block
+
+    @staticmethod
+    def _append_quality_suffix(prompt: str, suffix: str) -> str:
+        """在提示词权重后缀之前添加质量标签。"""
+
+        stripped_prompt = prompt.rstrip()
+        weight_match = re.search(r"(:-?\d+(?:\.\d+)?)$", stripped_prompt)
+        weight_suffix = weight_match.group(1) if weight_match is not None else ""
+        prompt_body = stripped_prompt[: weight_match.start()] if weight_match is not None else stripped_prompt
+        if not prompt_body:
+            return suffix + weight_suffix
+        separator = " " if prompt_body.endswith(",") else ", "
+        return f"{prompt_body}{separator}{suffix}{weight_suffix}"
+
+    def _sanitize_official_parameters(
+        self,
+        parameters: dict[str, Any],
+        *,
+        model: str,
+        action: str,
+    ) -> None:
+        """按 NovelAI 当前模型能力清理并补全请求参数。"""
+
+        is_v3_model = self._is_v3_model(model)
+        is_v4_model = self._is_v4_model(model)
+        is_v5_model = self._is_v5_model(model)
+        parameters.pop("qualityToggle", None)
+        parameters.pop("ucPreset", None)
+        parameters.pop("uc", None)
+        parameters["params_version"] = 4
+        parameters["legacy"] = False
+        parameters["legacy_v3_extend"] = False
+        parameters["dynamic_thresholding"] = False
+        parameters.setdefault("cfg_rescale", 0)
+
+        if is_v5_model:
+            for key in _V5_UNSUPPORTED_PARAMETER_KEYS:
+                parameters.pop(key, None)
+            parameters.pop("sm", None)
+            parameters.pop("sm_dyn", None)
+            parameters["noise_schedule"] = "karras"
+        elif is_v4_model:
+            parameters.pop("sm", None)
+            parameters.pop("sm_dyn", None)
+            if parameters.get("noise_schedule") not in {"karras", "exponential", "polyexponential"}:
+                parameters["noise_schedule"] = "karras"
+        elif is_v3_model and action == "img2img":
+            # NovelAI 官方说明 SMEA 与图生图不兼容。
+            parameters.pop("sm", None)
+            parameters.pop("sm_dyn", None)
+
+        sampler = str(parameters.get("sampler", "")).strip().lower()
+        if (is_v4_model or is_v5_model) and sampler in {"ddim", "ddim_v3"}:
+            sampler = "k_euler_ancestral"
+            parameters["sampler"] = sampler
+        elif is_v3_model and sampler == "ddim":
+            sampler = "ddim_v3"
+            parameters["sampler"] = sampler
+
+        if is_v3_model and (action == "img2img" or sampler == "ddim_v3"):
+            parameters.pop("sm", None)
+            parameters.pop("sm_dyn", None)
+        elif is_v3_model and not parameters.get("sm"):
+            parameters["sm_dyn"] = False
+
+        noise_schedule = str(parameters.get("noise_schedule", "")).strip().lower()
+        if sampler == "k_euler_ancestral" and noise_schedule != "native":
+            parameters["deliberate_euler_ancestral_bug"] = False
+            parameters["prefer_brownian"] = True
+        else:
+            parameters.pop("deliberate_euler_ancestral_bug", None)
+            parameters.pop("prefer_brownian", None)
+
+        if action == "img2img":
+            parameters["add_original_image"] = True
+            parameters["extra_noise_seed"] = parameters["seed"]
+
+    @staticmethod
+    def _is_v3_model(model: str) -> bool:
+        """判断模型是否属于 NovelAI V3。"""
+
+        return model.strip().lower() in {"nai-diffusion-3", "nai-diffusion-furry-3"}
 
     @staticmethod
     def _is_v4_model(model: str) -> bool:

@@ -2,7 +2,7 @@
 
 # 🎨 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-1.10.6-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.10.7-informational.svg)
 ![MaiBot](https://img.shields.io/badge/MaiBot-1.x-blue.svg)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
@@ -142,7 +142,7 @@ NovelAI 官方模型可直接填写以下模型 ID：
 - `nai-diffusion-3`
 - `nai-diffusion-furry-3`
 
-V5 支持文生图和图生图；使用 NovelAPI 兼容网关时，请以网关提供的模型 ID 和参数说明为准。
+V3、V4、V4.5 和 V5 均支持文生图和图生图。插件会按模型自动使用对应提示词格式、质量标签和采样设置；SMEA 仅用于 V3 文生图。使用 NovelAPI 兼容网关时，请以网关提供的模型 ID 和参数说明为准。
 
 额外参数使用 `key=value` 格式，每行填写一项。值支持布尔值、数字和 JSON。
 
