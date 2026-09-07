@@ -30,7 +30,7 @@ def build_command_usage_text() -> str:
             "使用全平台风格提示词模板；附带或引用图片时自动图生图，否则文生图。",
             "",
             "/绘图 nai",
-            "查看 NAI 模型、Anime/Furry/Background mode、参数与绘图用法。",
+            "查看 NAI 模型、Anime/Furry/Background mode、画师标签、参数与绘图用法。",
             "",
             "/绘图 添加/减少/设置 群聊/用户 群ID/用户ID 数量",
             "管理员调整群聊或用户当前周期剩余绘图次数。",
@@ -85,6 +85,9 @@ def build_session_status_text(
     lock_status = "已锁定" if session_preference["model"] else "未锁定，跟随默认首选模型"
     openai_mode_text = session_preference["openai_compatibility_mode"] or "未锁定，跟随模型配置"
     novelai_mode_text = session_preference.get("novelai_mode") or router.config.novelai.default_mode
+    novelai_artist_tags = router.resolve_novelai_artist_tags(
+        session_preference.get("novelai_artist_tags", "")
+    )
     task_text = _format_task(latest_task)
     fallback_model = router.resolve_fallback_model(model_name)
     fallback_model_text = fallback_model or "未启用"
@@ -98,6 +101,7 @@ def build_session_status_text(
             f"生图备选模型：{fallback_model_text}",
             f"OpenAI 兼容模式：{openai_mode_text}（仅对 OpenAI 提供商生效）",
             f"NovelAI 模式：{novelai_mode_text}（仅对 NAI 提供商生效）",
+            f"NovelAI 画师标签：{novelai_artist_tags or '未配置'}（仅对 NAI 提供商生效）",
             f"默认首选模型：{router.resolve_default_model()}",
             f"当前绘图任务：{task_text}",
             f"用户次数：{quota_text}",
@@ -131,16 +135,20 @@ def build_novelai_text(router: ProviderRouter, session_preference: dict[str, str
         else (router.get_novelai_models()[0] if router.get_novelai_models() else "未配置")
     )
     mode = session_preference.get("novelai_mode") or router.config.novelai.default_mode
+    session_artist_tags = session_preference.get("novelai_artist_tags", "")
+    artist_tags = router.resolve_novelai_artist_tags(session_artist_tags)
     config = router.config.novelai
     return "\n".join(
         [
             f"当前 NAI 模型：{model}",
             f"当前 NAI mode：{mode}",
+            f"当前 NAI 画师标签：{artist_tags or '未配置'}（{'会话设置' if session_artist_tags else '插件默认配置'}）",
             f"采样参数：sampler={config.sampler}，steps={config.steps}，scale={config.scale}，seed={config.seed}",
             f"图生图参数：strength={config.img2img_strength}，noise={config.img2img_noise}",
             f"可用 NAI 模型：{'、'.join(router.get_novelai_models()) or '未配置'}",
             "",
             "/绘图 nai 模式 [anime|furry|background|跟随]",
+            "/绘图 nai 画师 [画师标签|跟随]",
             "/绘图 nai 模型 [NAI模型名]",
             "/绘图 nai 参数",
             "/绘图 nai 文生图 <正向提示词> [--反向 <反向提示词>]",

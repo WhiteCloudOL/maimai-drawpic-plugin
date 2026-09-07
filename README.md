@@ -4,7 +4,7 @@
 
 # 🎨 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-1.11.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.11.1-informational.svg)
 ![MaiBot](https://img.shields.io/badge/MaiBot-1.x-blue.svg)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
@@ -25,7 +25,7 @@
 - 支持 HTTP/HTTPS 代理与系统代理。
 - 支持后台任务和状态查询。
 - 支持全平台正向/反向提示词风格模板，以及文生图、图生图自动识别。
-- 支持 NovelAI Anime、Furry、Background 会话级 mode 和 NAI 专属指令。
+- 支持 NovelAI Anime、Furry、Background 会话级 mode、会话画师标签和 NAI 专属指令。
 - 绘图失败会由插件直接发送状态，可选附带脱敏后的简要原因，不经过 LLM。
 
 ## Issue 反馈
@@ -127,7 +127,7 @@ models = "relay-image=gpt-image-2"
 | `request_timeout_seconds` | 单次图片请求超时时间 |
 | `command_reply_mode` | 命令回复形式，可选“图片”或“文本” |
 | `failure_reason_enabled` | 失败通知是否附带脱敏、截断后的简要原因；失败状态始终直接发送 |
-| `permission_enabled` | 模型、OpenAI 兼容模式、NAI mode 和额度管理命令的权限开关 |
+| `permission_enabled` | 模型、OpenAI 兼容模式、NAI mode、NAI 画师标签和额度管理命令的权限开关 |
 | `admin_user_ids` | 插件管理员用户 ID 列表 |
 | `image_edit_unsupported_models` | 仅支持文生图的模型名单 |
 | `prompt_review_enabled` | 提示词审核开关 |
@@ -171,7 +171,7 @@ negative_prompt_template = "3d render, oil painting, {negative_prompt}"
 | `aliyun` | `api_key`、`models`、`default_size` |
 | `volcengine` | `api_key`、`unified_models`、`t2i_models`、`i2i_models`、`default_size` |
 | `siliconflow` | `api_key`、`models`、`image_size` |
-| `novelai` | `base_url`、`api_key`、`models`、`custom_models`、`default_mode`、`positive_prompt`、`negative_prompt`、`width`、`height` |
+| `novelai` | `base_url`、`api_key`、`models`、`custom_models`、`default_mode`、`default_artist_tags`、`positive_prompt`、`negative_prompt`、`width`、`height` |
 | `comfyui` | `base_url`、工作流路径和节点 ID |
 
 NovelAI 官方模型可直接填写以下模型 ID：
@@ -192,6 +192,7 @@ NovelAI 配置示例：
 ```toml
 [novelai]
 default_mode = "anime" # anime / furry / background
+default_artist_tags = "artist:example_name"
 positive_prompt = ""
 negative_prompt = "lowres, bad anatomy, bad hands, worst quality, watermark"
 img2img_strength = 0.6
@@ -201,6 +202,8 @@ img2img_noise = 0.1
 - V4、V4.5、V5 的 Furry mode 会按官方规则把 `fur dataset` 放在提示词最前方。
 - V3 的 Furry mode 会在 `nai-diffusion-3` 与 `nai-diffusion-furry-3` 间切换，因此两个模型都应启用。
 - Background mode 会添加 `background dataset`，仅适用于 V4.5、V5 及声明兼容的自定义模型。
+- `default_artist_tags` 是 NAI 默认画师标签；会话可以用 `/绘图 nai 画师 <标签>` 覆盖，标签会放在数据集 mode 标签之后、普通正向提示词之前。
+- 画师标签按原始文本传给 NovelAI，多个标签使用英文逗号分隔；重置为插件默认值可使用 `/绘图 nai 画师 跟随`。
 - `positive_prompt` 是 NAI 平台默认正向词，会与用户正向提示词合并；`negative_prompt` 是独立的默认 UC，会继续合并风格反向模板和用户 `--反向` 内容。
 - 图生图 `strength` 越高允许模型改动原图越多，越低则越接近原图；`noise` 可增加细节，但过高可能产生伪影。
 
@@ -338,6 +341,7 @@ OneBot v11 可填写数字 QQ 号和群号；QQ 官方适配器可填写用户 O
 | `/绘图 风格 <风格名称> <正向提示词> [--反向 <反向提示词>]` | 套用风格模板；附带/引用图片时自动图生图 |
 | `/绘图 nai` | 查看 NAI 当前模型、mode、参数和用法 |
 | `/绘图 nai 模式 <anime/furry/background/跟随>` | 设置会话级 NAI mode |
+| `/绘图 nai 画师 <画师标签/跟随>` | 设置会话级 NAI 画师标签，支持逗号分隔多个标签 |
 | `/绘图 nai 模型 <NAI模型名>` | 设置当前会话 NAI 模型 |
 | `/绘图 nai 参数` | 查看 NAI 采样与图生图参数 |
 | `/绘图 nai 文生图 <正向词> [--反向 <反向词>]` | 强制使用 NAI 文生图 |
@@ -373,7 +377,7 @@ data/
 └── workflows/
 ```
 
-- 会话偏好记录首选模型、OpenAI 兼容模式和 NovelAI mode。
+- 会话偏好记录首选模型、OpenAI 兼容模式、NovelAI mode 和 NAI 画师标签。
 - 任务记录保留最近 500 条状态，不保存用户提示词。
 - 额度账本记录当前周期的使用量和管理员调整值。
 - 入站源图缓存在内存中保存 30 分钟。

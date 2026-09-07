@@ -318,6 +318,7 @@ class DrawpicPlugin(MaiBotPlugin):
         model: str | None = None,
         openai_compatibility_mode: str | None = None,
         novelai_mode: str | None = None,
+        novelai_artist_tags: str | None = None,
     ) -> dict[str, str]:
         """更新当前会话的模型配置。"""
 
@@ -329,6 +330,7 @@ class DrawpicPlugin(MaiBotPlugin):
             model=model,
             openai_compatibility_mode=openai_compatibility_mode,
             novelai_mode=novelai_mode,
+            novelai_artist_tags=novelai_artist_tags,
         )
 
     def _is_admin(self, user_id: str) -> bool:
@@ -1167,6 +1169,9 @@ class DrawpicPlugin(MaiBotPlugin):
         resolved_novelai_mode = self._require_router().resolve_novelai_mode(
             requested_novelai_mode or session_preference.get("novelai_mode", "")
         )
+        resolved_novelai_artist_tags = self._require_router().resolve_novelai_artist_tags(
+            session_preference.get("novelai_artist_tags", "")
+        )
         provider_name = self._require_router().get_model_provider(resolved_model)
         if not provider_name:
             raise ValueError(f"指定模型不可用：{resolved_model}")
@@ -1218,6 +1223,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 resolved_openai_mode=resolved_openai_mode,
                 provider_name=provider_name,
                 novelai_mode=resolved_novelai_mode,
+                novelai_artist_tags=resolved_novelai_artist_tags,
                 request_negative_prompt=request_negative_prompt.strip(),
                 user_id=resolved_user_id,
                 group_id=resolved_group_id,
@@ -2081,7 +2087,7 @@ class DrawpicPlugin(MaiBotPlugin):
         group_id: str,
         platform: str,
     ) -> tuple[bool, str, int]:
-        """处理 NAI 专属模型、mode、参数、文生图和图生图指令。"""
+        """处理 NAI 专属模型、mode、画师标签、参数和绘图指令。"""
 
         router = self._require_router()
         first_word, remaining = self._split_command_payload(rest_payload)
@@ -2148,6 +2154,53 @@ class DrawpicPlugin(MaiBotPlugin):
                 platform=platform,
             )
             return True, "已切换 NovelAI mode", 2
+
+        if normalized_action in {"画师", "artist", "artists"}:
+            artist_tags = remaining.strip()
+            if not artist_tags:
+                await self._send_command_reply(
+                    title="NovelAI 画师标签",
+                    body=build_novelai_text(router, session_preference),
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return True, "已显示 NovelAI 画师标签", 2
+            if not self._can_manage_session(user_id):
+                await self._send_command_reply(
+                    title="权限不足",
+                    body="当前已启用权限管理，只有插件管理员可以设置会话级 NovelAI 画师标签。",
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return False, "权限不足", 1
+            clear_aliases = {"默认", "跟随", "清空", "default", "unset", "clear"}
+            session_artist_tags = "" if artist_tags.casefold() in clear_aliases else artist_tags
+            next_preference = self._set_session_preference(
+                stream_id,
+                user_id,
+                group_id,
+                platform,
+                novelai_artist_tags=session_artist_tags,
+            )
+            effective_artist_tags = router.resolve_novelai_artist_tags(
+                next_preference["novelai_artist_tags"]
+            )
+            await self._send_command_reply(
+                title="NovelAI 画师标签已设置",
+                body=(
+                    f"当前会话 NAI 画师标签：{effective_artist_tags or '未配置'}\n"
+                    f"来源：{'会话设置' if next_preference['novelai_artist_tags'] else '插件默认配置'}"
+                ),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return True, "已设置 NovelAI 画师标签", 2
 
         if normalized_action in {"模型", "model"}:
             model_name = remaining.strip()

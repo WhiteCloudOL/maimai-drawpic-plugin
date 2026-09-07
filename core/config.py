@@ -37,7 +37,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.21.0",
+        default="2.22.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -99,10 +99,10 @@ class GeneralConfig(PluginConfigBase):
     )
     permission_enabled: bool = Field(
         default=True,
-        description="是否启用权限管理。启用后，仅插件管理员可设置首选模型、切换兼容模式或 NAI mode，以及修改用户次数",
+        description="是否启用权限管理。启用后，仅插件管理员可设置首选模型、切换兼容模式、NAI mode 或画师标签，以及修改用户次数",
         json_schema_extra={
             "label": "启用权限管理",
-            "hint": "启用后，首选模型设置、兼容模式或 NAI mode 切换和次数管理命令仅允许插件管理员使用",
+            "hint": "启用后，首选模型设置、兼容模式、NAI mode、NAI 画师标签和次数管理命令仅允许插件管理员使用",
             "order": 4,
         },
     )
@@ -1488,6 +1488,18 @@ class NovelAIModelConfig(PluginConfigBase):
             "x-widget": "textarea",
             "rows": 4,
             "order": 10.5,
+        },
+    )
+    default_artist_tags: str = Field(
+        default="",
+        description="NovelAI 默认画师标签。会话未单独设置时，将这些标签放在普通正向提示词之前",
+        json_schema_extra={
+            "label": "默认画师标签",
+            "hint": "填写 NovelAI 可识别的原始画师标签，多个标签用英文逗号分隔；例如 artist:name。此项仅对 NAI 平台生效",
+            "input_type": "textarea",
+            "x-widget": "textarea",
+            "rows": 3,
+            "order": 10.7,
         },
     )
     negative_prompt: str = Field(

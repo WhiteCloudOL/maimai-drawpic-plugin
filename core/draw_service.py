@@ -24,6 +24,7 @@ class ImageRequestAttempt:
     provider_name: ProviderName
     openai_compatibility_mode: str
     novelai_mode: str = ""
+    novelai_artist_tags: str = ""
     is_fallback: bool = False
 
 
@@ -297,6 +298,7 @@ class DrawService:
         task_type: str,
         openai_compatibility_mode: str,
         novelai_mode: str = "",
+        novelai_artist_tags: str = "",
         is_fallback: bool = False,
     ) -> ImageRequestAttempt:
         """构建一次图片请求尝试的最终模型与提供商信息。"""
@@ -349,6 +351,11 @@ class DrawService:
                 if provider_name == "novelai"
                 else ""
             ),
+            novelai_artist_tags=(
+                self.router.resolve_novelai_artist_tags(novelai_artist_tags)
+                if provider_name == "novelai"
+                else ""
+            ),
             is_fallback=is_fallback,
         )
 
@@ -360,6 +367,7 @@ class DrawService:
         task_type: str,
         openai_compatibility_mode: str,
         novelai_mode: str = "",
+        novelai_artist_tags: str = "",
     ) -> ImageRequestAttempt | None:
         """在首选模型失败后构建备选模型请求。"""
 
@@ -386,6 +394,7 @@ class DrawService:
                 task_type=task_type,
                 openai_compatibility_mode=openai_compatibility_mode,
                 novelai_mode=novelai_mode,
+                novelai_artist_tags=novelai_artist_tags,
                 is_fallback=True,
             )
         except Exception as exc:
@@ -451,6 +460,7 @@ class DrawService:
             attempt.openai_compatibility_mode,
             request_negative_prompt=provider_negative_prompt,
             novelai_mode=attempt.novelai_mode,
+            novelai_artist_tags=attempt.novelai_artist_tags,
         )
 
         if task_type == "edit_image":
@@ -628,6 +638,7 @@ class DrawService:
         resolved_model: str,
         openai_compatibility_mode: str = "",
         novelai_mode: str = "",
+        novelai_artist_tags: str = "",
         request_negative_prompt: str = "",
         source_image_bytes_list: list[bytes] | None = None,
         matched_message_id: str = "",
@@ -694,6 +705,7 @@ class DrawService:
                 task_type=task_type,
                 openai_compatibility_mode=openai_compatibility_mode,
                 novelai_mode=novelai_mode,
+                novelai_artist_tags=novelai_artist_tags,
             )
             self.task_store.update_task(
                 task_id,
@@ -752,6 +764,7 @@ class DrawService:
                     task_type=task_type,
                     openai_compatibility_mode=openai_compatibility_mode,
                     novelai_mode=novelai_mode,
+                    novelai_artist_tags=novelai_artist_tags,
                 )
                 if fallback_attempt is not None:
                     self.ctx.logger.warning(
@@ -960,6 +973,7 @@ class DrawService:
         resolved_openai_mode: str,
         provider_name: str,
         novelai_mode: str = "",
+        novelai_artist_tags: str = "",
         request_negative_prompt: str = "",
         user_id: str = "",
         group_id: str = "",
@@ -981,6 +995,7 @@ class DrawService:
             task_type=task_type,
             openai_compatibility_mode=resolved_openai_mode,
             novelai_mode=novelai_mode,
+            novelai_artist_tags=novelai_artist_tags,
         )
         if is_image_edit and self.router.get_image_edit_unsupported_reason(primary_attempt.model):
             self.ctx.logger.info(
@@ -1005,6 +1020,7 @@ class DrawService:
                     task_type=task_type,
                     openai_compatibility_mode=resolved_openai_mode,
                     novelai_mode=novelai_mode,
+                    novelai_artist_tags=novelai_artist_tags,
                     is_fallback=True,
                 )
                 if fallback_attempt.model == primary_attempt.model:
@@ -1048,6 +1064,7 @@ class DrawService:
                 resolved_model=primary_attempt.model,
                 openai_compatibility_mode=primary_attempt.openai_compatibility_mode,
                 novelai_mode=primary_attempt.novelai_mode,
+                novelai_artist_tags=primary_attempt.novelai_artist_tags,
                 request_negative_prompt=request_negative_prompt,
                 source_image_bytes_list=normalized_source_images,
                 matched_message_id=matched_message_id,

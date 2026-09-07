@@ -55,6 +55,7 @@ class NovelAIImage:
         steps: int = 28,
         scale: float = 5.0,
         seed: int = -1,
+        artist_tags: str = "",
         positive_prompt: str = "",
         negative_prompt: str = "",
         mode: str = "anime",
@@ -85,6 +86,7 @@ class NovelAIImage:
         self.steps = int(steps)
         self.scale = float(scale)
         self.seed = int(seed)
+        self.artist_tags = artist_tags.strip()
         self.positive_prompt = positive_prompt.strip()
         self.negative_prompt = negative_prompt.strip()
         self.mode = mode.strip().lower() or "anime"
@@ -147,7 +149,7 @@ class NovelAIImage:
         is_v4_model = self._is_v4_model(normalized_model)
         is_v5_model = self._is_v5_model(normalized_model)
         is_official_model = is_v3_model or is_v4_model or is_v5_model
-        merged_prompt = self._merge_prompt_parts(self.positive_prompt, prompt)
+        merged_prompt = self._merge_prompt_parts(self.artist_tags, self.positive_prompt, prompt)
         mode_prompt = self._apply_mode_prompt(merged_prompt, normalized_model)
         effective_prompt = self._apply_quality_tags(mode_prompt, normalized_model) if is_official_model else mode_prompt
         parameters: dict[str, Any] = {

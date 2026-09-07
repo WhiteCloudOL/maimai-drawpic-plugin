@@ -433,6 +433,11 @@ class ProviderRouter:
             raise ValueError(f"不支持的 NovelAI 模式：{normalized_mode}")
         return normalized_mode
 
+    def resolve_novelai_artist_tags(self, artist_tags: str = "") -> str:
+        """解析会话级 NovelAI 画师标签；空值跟随插件默认配置。"""
+
+        return artist_tags.strip() or self.config.novelai.default_artist_tags.strip()
+
     def resolve_novelai_model_for_mode(self, model: str, mode: str = "") -> str:
         """按 NAI mode 解析 V3 Anime/Furry 的实际模型。"""
 
@@ -632,6 +637,7 @@ class ProviderRouter:
         self,
         request_negative_prompt: str = "",
         novelai_mode: str = "",
+        novelai_artist_tags: str = "",
     ) -> NovelAIImage:
         """创建 NovelAI / NovelAPI 图片提供商实例。"""
 
@@ -647,6 +653,7 @@ class ProviderRouter:
             steps=self.config.novelai.steps,
             scale=self.config.novelai.scale,
             seed=self.config.novelai.seed,
+            artist_tags=self.resolve_novelai_artist_tags(novelai_artist_tags),
             positive_prompt=self.config.novelai.positive_prompt,
             negative_prompt=self.merge_prompt_parts(
                 self.config.novelai.negative_prompt,
@@ -797,6 +804,7 @@ class ProviderRouter:
         *,
         request_negative_prompt: str = "",
         novelai_mode: str = "",
+        novelai_artist_tags: str = "",
     ) -> tuple[ImageProvider, ProviderName]:
         """根据模型解析并创建对应的平台实例，带实例缓存避免重复构造。"""
 
@@ -804,9 +812,14 @@ class ProviderRouter:
         normalized_model = model.strip()
         normalized_negative_prompt = request_negative_prompt.strip()
         normalized_novelai_mode = novelai_mode.strip().lower()
+        normalized_novelai_artist_tags = novelai_artist_tags.strip()
         # 非 OpenAI 平台的 provider 不依赖 compatibility_mode，缓存键用空串占位
         cache_key = (provider_type, normalized_model, openai_compatibility_mode.strip() if provider_type == "openai" else "")
-        use_cache = not normalized_negative_prompt and not normalized_novelai_mode
+        use_cache = (
+            not normalized_negative_prompt
+            and not normalized_novelai_mode
+            and not normalized_novelai_artist_tags
+        )
         if use_cache:
             cached_provider = self._provider_cache.get(cache_key)
             if cached_provider is not None:
@@ -826,6 +839,7 @@ class ProviderRouter:
             provider = self.create_novelai_provider(
                 normalized_negative_prompt,
                 normalized_novelai_mode,
+                normalized_novelai_artist_tags,
             )
         elif provider_type == "comfyui":
             provider = self.create_comfyui_provider(normalized_negative_prompt)

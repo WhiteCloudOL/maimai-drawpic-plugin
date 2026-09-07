@@ -67,6 +67,7 @@ class SessionPreferenceStore:
                 "model": str(session_value.get("model") or "").strip(),
                 "openai_compatibility_mode": str(session_value.get("openai_compatibility_mode") or "").strip(),
                 "novelai_mode": str(session_value.get("novelai_mode") or "").strip(),
+                "novelai_artist_tags": str(session_value.get("novelai_artist_tags") or "").strip(),
             }
         self.preferences = normalized_preferences
         self.normalize_all()
@@ -85,12 +86,14 @@ class SessionPreferenceStore:
             model = str(session_value.get("model") or "").strip()
             openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
             novelai_mode = str(session_value.get("novelai_mode") or "").strip()
+            novelai_artist_tags = str(session_value.get("novelai_artist_tags") or "").strip()
             normalized_preferences[session_key] = {
                 "model": model if model and self.router.get_model_provider(model) else "",
                 "openai_compatibility_mode": (
                     openai_compatibility_mode if openai_compatibility_mode in OPENAI_COMPATIBILITY_MODES else ""
                 ),
                 "novelai_mode": novelai_mode if novelai_mode in NOVELAI_MODES else "",
+                "novelai_artist_tags": novelai_artist_tags,
             }
         self.preferences = normalized_preferences
 
@@ -108,12 +111,14 @@ class SessionPreferenceStore:
         model = str(session_value.get("model") or "").strip()
         openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
         novelai_mode = str(session_value.get("novelai_mode") or "").strip()
+        novelai_artist_tags = str(session_value.get("novelai_artist_tags") or "").strip()
         resolved_preference = {
             "model": self.router.resolve_model_name(model, allow_unknown_model=False) if model else "",
             "openai_compatibility_mode": (
                 openai_compatibility_mode if openai_compatibility_mode in OPENAI_COMPATIBILITY_MODES else ""
             ),
             "novelai_mode": novelai_mode if novelai_mode in NOVELAI_MODES else "",
+            "novelai_artist_tags": novelai_artist_tags,
         }
         return resolved_preference
 
@@ -127,6 +132,7 @@ class SessionPreferenceStore:
         model: str | None = None,
         openai_compatibility_mode: str | None = None,
         novelai_mode: str | None = None,
+        novelai_artist_tags: str | None = None,
     ) -> dict[str, str]:
         """更新当前会话的模型配置并持久化。"""
 
@@ -136,6 +142,7 @@ class SessionPreferenceStore:
             "model": current_value["model"],
             "openai_compatibility_mode": current_value["openai_compatibility_mode"],
             "novelai_mode": current_value["novelai_mode"],
+            "novelai_artist_tags": current_value["novelai_artist_tags"],
         }
         if model is not None:
             next_value["model"] = self.router.resolve_model_name(model, allow_unknown_model=False)
@@ -149,6 +156,8 @@ class SessionPreferenceStore:
             next_value["novelai_mode"] = (
                 normalized_novelai_mode if normalized_novelai_mode in NOVELAI_MODES else ""
             )
+        if novelai_artist_tags is not None:
+            next_value["novelai_artist_tags"] = novelai_artist_tags.strip()
         self.preferences[session_key] = next_value
         self.save()
         return next_value

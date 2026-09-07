@@ -365,6 +365,7 @@ def test_novelai_mode_and_prompt_merging() -> None:
 
     provider = NovelAIImage(
         api_key="test-key",
+        artist_tags="artist:example_one, artist:example_two",
         positive_prompt="default positive",
         negative_prompt="default negative, user negative",
         mode="furry",
@@ -376,7 +377,9 @@ def test_novelai_mode_and_prompt_merging() -> None:
         action="generate",
         n=1,
     )
-    assert payload["input"] == "fur dataset, default positive, user positive"
+    assert payload["input"] == (
+        "fur dataset, artist:example_one, artist:example_two, default positive, user positive"
+    )
     assert payload["parameters"]["negative_prompt"] == "default negative, user negative"
     assert payload["parameters"]["v4_negative_prompt"]["caption"]["base_caption"] == (
         "default negative, user negative"
@@ -449,6 +452,9 @@ def test_novelai_v3_mode_switches_effective_model() -> None:
     from maimai_drawpic_pkg.core.provider_router import ProviderRouter
 
     router = ProviderRouter(DrawpicConfig(), logger=_FakeLogger())
+    router.config.novelai.default_artist_tags = "artist:default"
+    assert router.resolve_novelai_artist_tags() == "artist:default"
+    assert router.resolve_novelai_artist_tags("artist:session") == "artist:session"
     assert router.resolve_novelai_model_for_mode("nai-diffusion-3", "furry") == (
         "nai-diffusion-furry-3"
     )
@@ -477,13 +483,19 @@ def test_novelai_mode_is_persisted_per_session() -> None:
             group_id="10000",
             platform="qq",
             novelai_mode="furry",
+            novelai_artist_tags="artist:session_artist",
         )
         assert stored["novelai_mode"] == "furry"
+        assert stored["novelai_artist_tags"] == "artist:session_artist"
 
         reloaded = SessionPreferenceStore(path=path, router=router, logger=_FakeLogger())
         reloaded.load()
         assert reloaded.get_preference("stream-1", group_id="10000")["novelai_mode"] == "furry"
+        assert reloaded.get_preference("stream-1", group_id="10000")["novelai_artist_tags"] == (
+            "artist:session_artist"
+        )
         assert reloaded.get_preference("stream-2", group_id="20000")["novelai_mode"] == ""
+        assert reloaded.get_preference("stream-2", group_id="20000")["novelai_artist_tags"] == ""
     print("[OK] session_preferences: NovelAI mode 会话级持久化与隔离")
 
 
@@ -934,6 +946,7 @@ def _build_context_test_plugin():
     plugin._test_config = types.SimpleNamespace(
         general=types.SimpleNamespace(
             failure_reason_enabled=True,
+            permission_enabled=False,
             group_quota_enabled=False,
             group_quota_period="daily",
             group_default_quota=1,
@@ -997,6 +1010,62 @@ def test_failure_notice_is_direct_brief_and_configurable() -> None:
     )
     assert "原因：" not in stream_service.messages[-1]
     print("[OK] plugin: 失败通知直接发送，错误原因可配置并脱敏")
+
+
+def test_novelai_artist_command_sets_session_preference() -> None:
+    """NAI 画师子命令应保存完整标签串，并直接返回生效值。"""
+
+    class _ArtistRouter:
+        config = types.SimpleNamespace(
+            novelai=types.SimpleNamespace(default_artist_tags="artist:default")
+        )
+
+        def resolve_novelai_artist_tags(self, artist_tags: str = "") -> str:
+            return artist_tags.strip() or self.config.novelai.default_artist_tags
+
+    plugin = _build_context_test_plugin()
+    router = _ArtistRouter()
+    stored_tags: list[str] = []
+    replies: list[str] = []
+
+    def _require_router(self):
+        del self
+        return router
+
+    def _set_session_preference(self, *args, **kwargs):
+        del self, args
+        artist_tags = kwargs["novelai_artist_tags"]
+        stored_tags.append(artist_tags)
+        return {"novelai_artist_tags": artist_tags}
+
+    async def _send_command_reply(self, **kwargs):
+        del self
+        replies.append(kwargs["body"])
+        return True
+
+    plugin._require_router = types.MethodType(_require_router, plugin)
+    plugin._set_session_preference = types.MethodType(_set_session_preference, plugin)
+    plugin._send_command_reply = types.MethodType(_send_command_reply, plugin)
+    result = asyncio.run(
+        plugin._handle_novelai_command(
+            rest_payload="画师 artist:example_one, artist:example_two",
+            message={},
+            session_preference={
+                "model": "",
+                "openai_compatibility_mode": "",
+                "novelai_mode": "",
+                "novelai_artist_tags": "",
+            },
+            stream_id="stream-1",
+            user_id="user-1",
+            group_id="group-1",
+            platform="qq",
+        )
+    )
+    assert result[0] is True
+    assert stored_tags == ["artist:example_one, artist:example_two"]
+    assert "artist:example_one, artist:example_two" in replies[-1]
+    print("[OK] plugin: /绘图 nai 画师 保存会话级画师标签")
 
 
 def test_tool_runtime_context_reads_generic_message_info() -> None:
@@ -1210,6 +1279,7 @@ def main() -> None:
     test_style_negative_prompt_routing()
     test_tool_runtime_context_prefers_host_user_id()
     test_failure_notice_is_direct_brief_and_configurable()
+    test_novelai_artist_command_sets_session_preference()
     test_tool_runtime_context_reads_generic_message_info()
     test_tool_runtime_context_accepts_qq_official_openids()
     test_tool_runtime_context_uses_llm_user_id_only_as_compat_fallback()
