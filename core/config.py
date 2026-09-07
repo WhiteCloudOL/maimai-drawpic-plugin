@@ -37,7 +37,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.22.0",
+        default="2.23.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -90,10 +90,10 @@ class GeneralConfig(PluginConfigBase):
     )
     failure_reason_enabled: bool = Field(
         default=True,
-        description="绘图失败通知是否附带简要错误原因。失败状态始终由插件直接发送，不经过 LLM",
+        description="是否由插件主动发送绘图失败状态和简要原因。关闭后仅保留日志、任务状态和工具返回，不主动发送通知",
         json_schema_extra={
             "label": "失败通知附带原因",
-            "hint": "开启后，工具和指令的绘图失败通知会附带截断、脱敏后的简要原因；关闭后仅发送失败状态与任务 ID",
+            "hint": "开启后，工具和指令失败时会主动发送状态及截断、脱敏后的简要原因；关闭后仅通知 LLM、保留日志和任务状态，不主动发送消息",
             "order": 3.5,
         },
     )

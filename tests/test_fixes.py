@@ -467,6 +467,62 @@ def test_novelai_v3_mode_switches_effective_model() -> None:
     print("[OK] NovelAI mode：V3 切换模型，V4+ 保持模型并使用数据集标签")
 
 
+def test_regular_novelai_route_uses_session_settings_and_prompts() -> None:
+    """普通绘图选中 NAI 后应与 NAI 专属入口使用同一套请求参数。"""
+
+    from maimai_drawpic_pkg.core.config import DrawpicConfig
+    from maimai_drawpic_pkg.core.draw_service import DrawService
+    from maimai_drawpic_pkg.core.provider_router import ProviderRouter
+
+    config = DrawpicConfig()
+    config.novelai.positive_prompt = "default positive"
+    config.novelai.negative_prompt = "default negative"
+    config.novelai.default_artist_tags = "artist:default"
+    config.novelai.img2img_strength = 0.72
+    config.novelai.img2img_noise = 0.18
+    config.novelai.quality_toggle = False
+    router = ProviderRouter(config, logger=_FakeLogger())
+    service = DrawService(
+        ctx=types.SimpleNamespace(logger=_FakeLogger()),
+        router=router,
+        stream_service=None,
+        moderation_service=None,
+        task_store=None,
+    )
+
+    attempt = service._build_image_request_attempt(
+        model="nai-diffusion-3",
+        task_type="draw",
+        openai_compatibility_mode="",
+        novelai_mode="furry",
+        novelai_artist_tags="artist:session",
+    )
+    assert attempt.model == "nai-diffusion-furry-3"
+    assert attempt.novelai_mode == "furry"
+    assert attempt.novelai_artist_tags == "artist:session"
+
+    provider, provider_name = router.require_platform_for_model(
+        attempt.model,
+        attempt.openai_compatibility_mode,
+        request_negative_prompt="user negative",
+        novelai_mode=attempt.novelai_mode,
+        novelai_artist_tags=attempt.novelai_artist_tags,
+    )
+    assert provider_name == "novelai"
+    assert isinstance(provider, NovelAIImage)
+    payload = provider._build_payload(
+        prompt="user positive",
+        model=attempt.model,
+        action="generate",
+        n=1,
+    )
+    assert payload["input"] == "artist:session, default positive, user positive"
+    assert payload["parameters"]["negative_prompt"] == "default negative, user negative"
+    assert provider.img2img_strength == 0.72
+    assert provider.img2img_noise == 0.18
+    print("[OK] 普通 NAI 路由：mode、画师标签、平台参数和正反向提示词保持一致")
+
+
 def test_novelai_mode_is_persisted_per_session() -> None:
     """NAI mode 按平台和聊天目标持久化，不与其他会话混用。"""
 
@@ -533,6 +589,147 @@ def test_task_store_normal_flow_still_works() -> None:
         queried = store.mark_status_queried(record.task_id)
         assert queried is not None and queried.last_status_query_at is not None
         print("[OK] task_store: 正常任务流程仍然工作")
+
+
+def test_background_tasks_are_concurrent_and_user_isolated() -> None:
+    """多个用户的绘图请求应独立并发，且任务状态不可相互覆盖或查询。"""
+
+    from maimai_drawpic_pkg.core.draw_service import DrawService
+
+    class _ConcurrentProvider:
+        def __init__(self) -> None:
+            self.started_prompts: list[str] = []
+            self.all_started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
+            del model, n
+            self.started_prompts.append(prompt)
+            if len(self.started_prompts) == 2:
+                self.all_started.set()
+            await self.release.wait()
+            return [_MINIMAL_PNG]
+
+    class _ConcurrentRouter:
+        def __init__(self, provider: _ConcurrentProvider) -> None:
+            self.provider = provider
+            self.config = types.SimpleNamespace(
+                general=types.SimpleNamespace(fallback_model="")
+            )
+
+        @staticmethod
+        def get_model_provider(model: str) -> str:
+            return "openai" if model == "model" else ""
+
+        @staticmethod
+        def resolve_openai_compatibility_mode(mode: str, model: str) -> str:
+            del mode, model
+            return "images_api"
+
+        @staticmethod
+        def get_image_edit_unsupported_reason(model: str) -> str:
+            del model
+            return ""
+
+        @staticmethod
+        def resolve_fallback_model(primary_model: str = "") -> str:
+            del primary_model
+            return ""
+
+        @staticmethod
+        def get_fallback_model_unavailable_reason(primary_model: str = "") -> str:
+            del primary_model
+            return ""
+
+        @staticmethod
+        def resolve_request_timeout_seconds() -> int:
+            return 10
+
+        @staticmethod
+        def supports_separate_negative_prompt(model: str, task_type: str) -> bool:
+            del model, task_type
+            return False
+
+        @staticmethod
+        def should_rewrite_prompt_to_english(provider_name: str, model: str) -> bool:
+            del provider_name, model
+            return False
+
+        def require_platform_for_model(self, model: str, mode: str, **kwargs):
+            del model, mode, kwargs
+            return self.provider, "openai"
+
+    class _NoModeration:
+        @staticmethod
+        def is_image_review_enabled() -> bool:
+            return False
+
+    class _ConcurrentStream:
+        async def send_generated_images_with_fallback(self, **kwargs) -> int:
+            del kwargs
+            return 1
+
+    async def _run() -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = _ConcurrentProvider()
+            task_store = DrawTaskStore(
+                path=Path(tmp) / "tasks.json",
+                logger=_FakeLogger(),
+            )
+            service = DrawService(
+                ctx=types.SimpleNamespace(logger=_FakeLogger()),
+                router=_ConcurrentRouter(provider),
+                stream_service=_ConcurrentStream(),
+                moderation_service=_NoModeration(),
+                task_store=task_store,
+            )
+            first = await service.start_background_image_request(
+                prompt="first",
+                stream_id="group-stream",
+                resolved_model="model",
+                resolved_openai_mode="images_api",
+                provider_name="openai",
+                user_id="user-1",
+                group_id="group-1",
+            )
+            second = await service.start_background_image_request(
+                prompt="second",
+                stream_id="group-stream",
+                resolved_model="model",
+                resolved_openai_mode="images_api",
+                provider_name="openai",
+                user_id="user-2",
+                group_id="group-1",
+            )
+
+            await asyncio.wait_for(provider.all_started.wait(), timeout=1)
+            assert set(provider.started_prompts) == {"first", "second"}
+            assert len(service.background_tasks) == 2
+            assert first["task_id"] != second["task_id"]
+
+            first_status = service.get_task_status_payload(
+                "group-stream",
+                first["task_id"],
+                user_id="user-1",
+                group_id="group-1",
+            )
+            cross_user_status = service.get_task_status_payload(
+                "group-stream",
+                first["task_id"],
+                user_id="user-2",
+                group_id="group-1",
+            )
+            assert first_status["success"] is True
+            assert cross_user_status["success"] is False
+
+            provider.release.set()
+            running_tasks = list(service.background_tasks)
+            await asyncio.gather(*running_tasks)
+            assert task_store.get_task(first["task_id"]).status == "completed"
+            assert task_store.get_task(second["task_id"]).status == "completed"
+
+    asyncio.run(_run())
+    print("[OK] draw_service: 多用户绘图任务独立并发且状态按用户隔离")
 
 
 def test_moderation_parse_review_response_robust() -> None:
@@ -973,8 +1170,39 @@ def test_tool_runtime_context_prefers_host_user_id() -> None:
     print("[OK] plugin: 工具上下文优先使用主程序注入 user_id")
 
 
+def test_regular_draw_tool_forwards_negative_prompt() -> None:
+    """普通 draw 工具应把本次反向提示词传入统一后台任务链路。"""
+
+    plugin = _build_context_test_plugin()
+    captured: dict[str, object] = {}
+
+    async def _start_background_image_request(self, **kwargs):
+        del self
+        captured.update(kwargs)
+        return {"success": True, "task_id": "task-1"}
+
+    plugin._start_background_image_request = types.MethodType(
+        _start_background_image_request,
+        plugin,
+    )
+    result = asyncio.run(
+        plugin.handle_draw(
+            prompt="a cat",
+            negative_prompt="blurry",
+            user_id="12345",
+            stream_id="stream-1",
+            group_id="10000",
+            platform="qq",
+        )
+    )
+    assert result["success"] is True
+    assert captured["prompt"] == "a cat"
+    assert captured["request_negative_prompt"] == "blurry"
+    print("[OK] plugin: 普通 draw 工具向统一后台任务传递反向提示词")
+
+
 def test_failure_notice_is_direct_brief_and_configurable() -> None:
-    """失败通知直接发往聊天流，原因可配置且会脱敏截断。"""
+    """失败通知开启时直接发送并脱敏，关闭时仅保留内部结果。"""
 
     class _DirectStream:
         def __init__(self) -> None:
@@ -1002,14 +1230,16 @@ def test_failure_notice_is_direct_brief_and_configurable() -> None:
     assert "secret-token" not in stream_service.messages[-1]
 
     plugin._test_config.general.failure_reason_enabled = False
-    asyncio.run(
+    previous_message_count = len(stream_service.messages)
+    send_result = asyncio.run(
         plugin._send_draw_failure_notice(
             reason="不应显示的错误",
             stream_id="stream-1",
         )
     )
-    assert "原因：" not in stream_service.messages[-1]
-    print("[OK] plugin: 失败通知直接发送，错误原因可配置并脱敏")
+    assert send_result is False
+    assert len(stream_service.messages) == previous_message_count
+    print("[OK] plugin: 失败通知开启时脱敏发送，关闭时不主动发送")
 
 
 def test_novelai_artist_command_sets_session_preference() -> None:
@@ -1266,9 +1496,11 @@ def main() -> None:
     test_novelai_mode_and_prompt_merging()
     test_style_prompt_templates_are_platform_independent()
     test_novelai_v3_mode_switches_effective_model()
+    test_regular_novelai_route_uses_session_settings_and_prompts()
     test_novelai_mode_is_persisted_per_session()
     test_task_store_update_missing_task_returns_none()
     test_task_store_normal_flow_still_works()
+    test_background_tasks_are_concurrent_and_user_isolated()
     test_moderation_parse_review_response_robust()
     test_source_image_cache_ttl()
     test_image_lookup_candidates_stay_in_current_streams()
@@ -1278,6 +1510,7 @@ def main() -> None:
     test_provider_router_fallback_model_resolution()
     test_style_negative_prompt_routing()
     test_tool_runtime_context_prefers_host_user_id()
+    test_regular_draw_tool_forwards_negative_prompt()
     test_failure_notice_is_direct_brief_and_configurable()
     test_novelai_artist_command_sets_session_preference()
     test_tool_runtime_context_reads_generic_message_info()

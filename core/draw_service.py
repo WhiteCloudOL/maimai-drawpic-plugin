@@ -563,11 +563,11 @@ class DrawService:
             platform=platform,
         )
 
-        record = (
-            self.task_store.get_task(normalized_task_id)
-            if normalized_task_id
-            else self.task_store.get_latest_task(session_key)
-        )
+        record = self.task_store.get_task(normalized_task_id) if normalized_task_id else None
+        if record is not None and record.session_key != session_key:
+            record = None
+        if not normalized_task_id:
+            record = self.task_store.get_latest_task(session_key)
         if record is None:
             if normalized_task_id:
                 return {"success": False, "message": f"未找到 task_id={normalized_task_id} 对应的绘图任务"}
@@ -1073,7 +1073,8 @@ class DrawService:
                 platform_name=platform_name,
                 on_task_unsuccessful=on_task_unsuccessful,
                 on_task_successful=on_task_successful,
-            )
+            ),
+            name=f"maimai-drawpic:{task_record.task_id}",
         )
         self.track_background_task(background_task, task_record.task_id)
         if notify_start:

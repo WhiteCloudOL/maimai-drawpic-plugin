@@ -47,6 +47,10 @@ DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
         },
+        "negative_prompt": {
+            "type": "string",
+            "description": "可选，本次绘图的反向提示词；支持独立反向字段的平台会单独传递，否则合并到正向提示词",
+        },
     },
     "required": ["prompt"],
 }
@@ -70,6 +74,10 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
         "model": {
             "type": "string",
             "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
+        },
+        "negative_prompt": {
+            "type": "string",
+            "description": "可选，本次图生图的反向提示词；会与平台默认反向词合并",
         },
     },
     "required": ["prompt"],
@@ -985,12 +993,20 @@ class DrawpicPlugin(MaiBotPlugin):
     ) -> bool:
         """不经 LLM，直接向原聊天流发送绘图失败状态。"""
 
+        if not self.config.general.failure_reason_enabled:
+            self.ctx.logger.info(
+                "绘图失败主动通知已关闭: task_id=%s stream_id=%s status=%s",
+                task_id,
+                stream_id,
+                status,
+            )
+            return False
+
         title = "绘图未通过审核" if status == "rejected" else "绘图失败"
         lines = [title]
         if task_id.strip():
             lines.append(f"任务 ID：{task_id.strip()}")
-        if self.config.general.failure_reason_enabled:
-            lines.append(f"原因：{self._summarize_failure_reason(reason)}")
+        lines.append(f"原因：{self._summarize_failure_reason(reason)}")
         try:
             return await self._require_stream_service().send_text_with_fallback(
                 text="\n".join(lines),
@@ -1245,7 +1261,10 @@ class DrawpicPlugin(MaiBotPlugin):
 
     @Tool(
         "draw",
-        description="根据纯文本提示调用绘图模型创建新图片，并发送到当前聊天流；用户要求修改、编辑、重绘已有图片时不要调用本工具，应调用 edit_image",
+        description=(
+            "根据纯文本提示创建独立的后台绘图任务，并在完成后发送到当前聊天流；可选传入反向提示词。"
+            "用户要求修改、编辑、重绘已有图片时不要调用本工具，应调用 edit_image"
+        ),
         parameters=DRAW_TOOL_PARAMETERS_SCHEMA,
     )
     async def handle_draw(
@@ -1253,6 +1272,7 @@ class DrawpicPlugin(MaiBotPlugin):
         prompt: str,
         user_id: str = "",
         model: str = "",
+        negative_prompt: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """创建图片。"""
@@ -1271,6 +1291,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 prompt=prompt.strip(),
                 stream_id=context["stream_id"],
                 requested_model=model.strip(),
+                request_negative_prompt=negative_prompt.strip(),
                 user_id=context["user_id"],
                 group_id=context["group_id"],
                 platform_name=context["platform"],
@@ -1291,7 +1312,8 @@ class DrawpicPlugin(MaiBotPlugin):
         description=(
             "基于当前聊天中的真实图片执行图生图编辑；仅当用户明确要求修改、编辑、重绘已有图片时调用。"
             "如果用户回复/引用了一张图片，直接调用本工具，插件会从引用消息中提取真实图片。"
-            "找不到真实图片或模型平台不支持图片编辑时，插件会直接向聊天流发送失败状态并返回原因"
+            "每次调用会创建独立后台任务；找不到真实图片或平台不支持图片编辑时返回原因，"
+            "并按插件配置决定是否直接向聊天流发送失败通知"
         ),
         parameters=EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA,
     )
@@ -1302,6 +1324,7 @@ class DrawpicPlugin(MaiBotPlugin):
         source_message_id: str = "",
         source_image_base64: str = "",
         model: str = "",
+        negative_prompt: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """编辑图片。"""
@@ -1409,6 +1432,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 stream_id=normalized_stream_id,
                 requested_model=resolved_model,
                 requested_openai_compatibility_mode=resolved_openai_mode,
+                request_negative_prompt=negative_prompt.strip(),
                 source_image_bytes_list=source_image_bytes_list,
                 matched_message_id=matched_message_id,
                 user_id=normalized_user_id,
@@ -1788,7 +1812,7 @@ class DrawpicPlugin(MaiBotPlugin):
     ) -> tuple[bool, str, int]:
         """处理 /绘图 图生图 命令，基于命令携带或引用的图片强制走图生图。"""
 
-        prompt = rest_payload.strip()
+        prompt, negative_prompt = self._split_negative_prompt(rest_payload)
         if not prompt:
             await self._send_command_reply(
                 title="缺少图生图提示词",
@@ -1897,6 +1921,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 stream_id=stream_id,
                 requested_model=resolved_model,
                 requested_openai_compatibility_mode=session_preference["openai_compatibility_mode"],
+                request_negative_prompt=negative_prompt,
                 source_image_bytes_list=source_image_bytes_list,
                 matched_message_id=matched_message_id,
                 user_id=user_id,
@@ -2534,7 +2559,7 @@ class DrawpicPlugin(MaiBotPlugin):
             )
 
         if normalized_command == "draw_text":
-            prompt = rest_payload.strip()
+            prompt, negative_prompt = self._split_negative_prompt(rest_payload)
             if not prompt:
                 await self._send_command_reply(
                     title="缺少绘图提示词",
@@ -2608,6 +2633,7 @@ class DrawpicPlugin(MaiBotPlugin):
 
                 start_result = await self._start_background_image_request(
                     prompt=prompt,
+                    request_negative_prompt=negative_prompt,
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
                     group_id=normalized_group_id,

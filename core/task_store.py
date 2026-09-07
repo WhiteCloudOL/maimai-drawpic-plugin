@@ -65,6 +65,11 @@ class DrawTaskStore:
         normalized_stream_id = stream_id.strip()
 
         if normalized_group_id:
+            if normalized_user_id:
+                return (
+                    f"{normalized_platform}:group:{normalized_group_id}:"
+                    f"user:{normalized_user_id}"
+                )
             return f"{normalized_platform}:group:{normalized_group_id}"
         if normalized_user_id:
             return f"{normalized_platform}:user:{normalized_user_id}"
