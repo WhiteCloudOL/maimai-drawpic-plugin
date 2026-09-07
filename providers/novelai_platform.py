@@ -55,7 +55,9 @@ class NovelAIImage:
         steps: int = 28,
         scale: float = 5.0,
         seed: int = -1,
+        positive_prompt: str = "",
         negative_prompt: str = "",
+        mode: str = "anime",
         uc_preset: int = 0,
         quality_toggle: bool = True,
         sm: bool = False,
@@ -83,7 +85,9 @@ class NovelAIImage:
         self.steps = int(steps)
         self.scale = float(scale)
         self.seed = int(seed)
+        self.positive_prompt = positive_prompt.strip()
         self.negative_prompt = negative_prompt.strip()
+        self.mode = mode.strip().lower() or "anime"
         self.uc_preset = int(uc_preset)
         self.quality_toggle = quality_toggle
         self.sm = sm
@@ -143,7 +147,9 @@ class NovelAIImage:
         is_v4_model = self._is_v4_model(normalized_model)
         is_v5_model = self._is_v5_model(normalized_model)
         is_official_model = is_v3_model or is_v4_model or is_v5_model
-        effective_prompt = self._apply_quality_tags(prompt, normalized_model) if is_official_model else prompt
+        merged_prompt = self._merge_prompt_parts(self.positive_prompt, prompt)
+        mode_prompt = self._apply_mode_prompt(merged_prompt, normalized_model)
+        effective_prompt = self._apply_quality_tags(mode_prompt, normalized_model) if is_official_model else mode_prompt
         parameters: dict[str, Any] = {
             "width": width,
             "height": height,
@@ -209,6 +215,38 @@ class NovelAIImage:
             "action": action,
             "parameters": parameters,
         }
+
+    def _apply_mode_prompt(self, prompt: str, model: str) -> str:
+        """按 NovelAI 官方数据集模式在提示词开头添加标签。"""
+
+        if self.mode == "anime":
+            return prompt
+        if self._is_v3_model(model):
+            if self.mode == "furry":
+                return prompt
+            raise ValueError("NovelAI background 模式仅支持 V4.5 或 V5 模型")
+        if self.mode == "furry":
+            return self._prepend_dataset_tag(prompt, "fur dataset")
+        if self.mode == "background":
+            if self._is_v4_model(model) and not model.startswith("nai-diffusion-4-5"):
+                raise ValueError("NovelAI background 模式仅支持 V4.5 或 V5 模型")
+            return self._prepend_dataset_tag(prompt, "background dataset")
+        raise ValueError(f"不支持的 NovelAI 模式：{self.mode}")
+
+    @staticmethod
+    def _merge_prompt_parts(*parts: str) -> str:
+        """合并 NovelAI 默认正向词与本次请求提示词。"""
+
+        return ", ".join(part.strip(" \t\r\n,") for part in parts if part.strip(" \t\r\n,"))
+
+    @staticmethod
+    def _prepend_dataset_tag(prompt: str, dataset_tag: str) -> str:
+        """确保数据集标签位于基础提示词最前方且不会重复。"""
+
+        normalized_prompt = prompt.strip(" \t\r\n,")
+        if normalized_prompt.casefold().startswith(dataset_tag.casefold()):
+            return normalized_prompt
+        return f"{dataset_tag}, {normalized_prompt}" if normalized_prompt else dataset_tag
 
     def _apply_quality_tags(self, prompt: str, model: str) -> str:
         """按模型追加 NovelAI 官方质量标签。"""

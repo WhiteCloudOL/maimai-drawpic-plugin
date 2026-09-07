@@ -2,6 +2,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
+import re
+
 from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF, Command, HookHandler, MaiBotPlugin, ON_BOT_CONFIG_RELOAD, ON_MODEL_CONFIG_RELOAD, Tool
 from maibot_sdk.types import HookMode
 
@@ -18,14 +20,17 @@ from .core.moderation import DrawpicModerationService
 from .core.platform_identity import is_qq_identifier, is_qq_platform
 from .core.provider_router import ProviderRouter
 from .core.session_preferences import SessionPreferenceStore
+from .core.style_prompts import StylePromptResolver
 from .core.stream_service import ChatStreamService
 from .core.task_store import DrawTaskStore
 from .core.texts import (
     build_command_usage_text,
     build_compatible_mode_text,
     build_model_text,
+    build_novelai_text,
     build_quota_adjust_text,
     build_session_status_text,
+    build_style_text,
 )
 from .core.usage_store import QuotaPeriod, UserQuotaStore
 
@@ -82,6 +87,41 @@ DRAW_STATUS_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "required": [],
 }
 
+STYLED_DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "description": "用户正向提示词；图生图时可以留空，由风格模板和源图片共同决定画面",
+        },
+        "style": {
+            "type": "string",
+            "description": "可选的插件全平台风格模板名称；不填时按普通 draw/edit_image 行为执行",
+        },
+        "negative_prompt": {
+            "type": "string",
+            "description": "可选的用户反向提示词，会与风格反向模板及平台默认反向词合并",
+        },
+        "source_message_id": {
+            "type": "string",
+            "description": "可选，指定图生图源图片消息 ID",
+        },
+        "source_image_base64": {
+            "type": "string",
+            "description": "可选，直接提供真实源图片 Base64 或 data URL",
+        },
+    },
+    "required": [],
+}
+
+DRAW_STYLES_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {},
+    "required": [],
+}
+
 
 class DrawpicPlugin(MaiBotPlugin):
     """麦麦绘图插件。"""
@@ -99,6 +139,7 @@ class DrawpicPlugin(MaiBotPlugin):
         self._usage_store_path = self._data_dir / "user_quotas.json"
         self._router: ProviderRouter | None = None
         self._session_store: SessionPreferenceStore | None = None
+        self._style_prompt_resolver: StylePromptResolver | None = None
         self._stream_service: ChatStreamService | None = None
         self._moderation_service: DrawpicModerationService | None = None
         self._task_store = DrawTaskStore(path=self._task_store_path)
@@ -202,6 +243,7 @@ class DrawpicPlugin(MaiBotPlugin):
         )
         self._session_store.preferences = existing_preferences
         self._session_store.normalize_all()
+        self._style_prompt_resolver = StylePromptResolver(self.config.style)
         self._stream_service = ChatStreamService(self.ctx)
         self._moderation_service = DrawpicModerationService(self.config, self.ctx)
         self._image_reply_renderer = PinkImageReplyRenderer()
@@ -226,6 +268,13 @@ class DrawpicPlugin(MaiBotPlugin):
         if self._session_store is None:
             raise RuntimeError("插件服务尚未初始化，请等待插件完成加载")
         return self._session_store
+
+    def _require_style_prompt_resolver(self) -> StylePromptResolver:
+        """返回全平台风格提示词解析器。"""
+
+        if self._style_prompt_resolver is None:
+            raise RuntimeError("插件服务尚未初始化，请等待插件完成加载")
+        return self._style_prompt_resolver
 
     def _require_stream_service(self) -> ChatStreamService:
         """返回聊天流服务。"""
@@ -268,6 +317,7 @@ class DrawpicPlugin(MaiBotPlugin):
         *,
         model: str | None = None,
         openai_compatibility_mode: str | None = None,
+        novelai_mode: str | None = None,
     ) -> dict[str, str]:
         """更新当前会话的模型配置。"""
 
@@ -278,6 +328,7 @@ class DrawpicPlugin(MaiBotPlugin):
             platform,
             model=model,
             openai_compatibility_mode=openai_compatibility_mode,
+            novelai_mode=novelai_mode,
         )
 
     def _is_admin(self, user_id: str) -> bool:
@@ -903,6 +954,83 @@ class DrawpicPlugin(MaiBotPlugin):
             platform=platform,
         )
 
+    @staticmethod
+    def _summarize_failure_reason(reason: str) -> str:
+        """生成适合直接发送的简短、脱敏错误原因。"""
+
+        normalized_reason = re.sub(r"\s+", " ", str(reason or "未知错误")).strip()
+        normalized_reason = re.sub(
+            r"(?i)\b(bearer\s+|api[_ -]?key[=:]\s*|token[=:]\s*)[^\s,;]+",
+            r"\1***",
+            normalized_reason,
+        )
+        normalized_reason = re.sub(r"\b(?:sk|sess|gh[opusr])-[A-Za-z0-9_-]{8,}\b", "***", normalized_reason)
+        max_length = 300
+        if len(normalized_reason) <= max_length:
+            return normalized_reason
+        return normalized_reason[: max_length - 1].rstrip() + "…"
+
+    async def _send_draw_failure_notice(
+        self,
+        *,
+        reason: str,
+        stream_id: str,
+        user_id: str = "",
+        group_id: str = "",
+        platform: str = "qq",
+        task_id: str = "",
+        status: str = "failed",
+    ) -> bool:
+        """不经 LLM，直接向原聊天流发送绘图失败状态。"""
+
+        title = "绘图未通过审核" if status == "rejected" else "绘图失败"
+        lines = [title]
+        if task_id.strip():
+            lines.append(f"任务 ID：{task_id.strip()}")
+        if self.config.general.failure_reason_enabled:
+            lines.append(f"原因：{self._summarize_failure_reason(reason)}")
+        try:
+            return await self._require_stream_service().send_text_with_fallback(
+                text="\n".join(lines),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+        except Exception as exc:
+            self.ctx.logger.error(
+                "发送绘图失败通知异常: task_id=%s stream_id=%s status=%s error=%s",
+                task_id,
+                stream_id,
+                status,
+                exc,
+                exc_info=True,
+            )
+            return False
+
+    async def _send_invocation_failure_notice(
+        self,
+        *,
+        reason: str,
+        kwargs: dict[str, Any],
+        user_id: str = "",
+    ) -> None:
+        """尽力从工具运行上下文解析原聊天流并直发失败信息。"""
+
+        try:
+            context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
+            if not context["stream_id"]:
+                return
+            await self._send_draw_failure_notice(
+                reason=reason,
+                stream_id=context["stream_id"],
+                user_id=context["user_id"],
+                group_id=context["group_id"],
+                platform=context["platform"],
+            )
+        except Exception as exc:
+            self.ctx.logger.warning("无法从工具上下文发送绘图失败通知: error=%s", exc)
+
     async def on_load(self) -> None:
         """插件加载时初始化平台。"""
 
@@ -991,6 +1119,8 @@ class DrawpicPlugin(MaiBotPlugin):
         stream_id: str,
         requested_model: str = "",
         requested_openai_compatibility_mode: str = "",
+        request_negative_prompt: str = "",
+        requested_novelai_mode: str = "",
         source_image_bytes_list: list[bytes] | None = None,
         matched_message_id: str = "",
         user_id: str = "",
@@ -1034,6 +1164,9 @@ class DrawpicPlugin(MaiBotPlugin):
             requested_openai_compatibility_mode or session_preference["openai_compatibility_mode"],
             resolved_model,
         )
+        resolved_novelai_mode = self._require_router().resolve_novelai_mode(
+            requested_novelai_mode or session_preference.get("novelai_mode", "")
+        )
         provider_name = self._require_router().get_model_provider(resolved_model)
         if not provider_name:
             raise ValueError(f"指定模型不可用：{resolved_model}")
@@ -1058,8 +1191,7 @@ class DrawpicPlugin(MaiBotPlugin):
             raise PermissionError(quota_message)
         _, reserved_quota_period, reserved_default_quota = self._resolve_quota_config(resolved_group_id)
 
-        async def _refund_quota_on_task_unsuccessful(task_id: str, status: str, reason: str) -> None:
-            del status, reason
+        async def _handle_task_unsuccessful(task_id: str, status: str, reason: str) -> None:
             self._refund_draw_quota(
                 quota_key,
                 resolved_group_id,
@@ -1067,6 +1199,15 @@ class DrawpicPlugin(MaiBotPlugin):
                 task_id,
                 quota_period=reserved_quota_period,
                 default_quota=reserved_default_quota,
+            )
+            await self._send_draw_failure_notice(
+                reason=reason,
+                stream_id=resolved_stream_id,
+                user_id=resolved_user_id,
+                group_id=resolved_group_id,
+                platform=resolved_platform,
+                task_id=task_id,
+                status=status,
             )
 
         try:
@@ -1076,13 +1217,15 @@ class DrawpicPlugin(MaiBotPlugin):
                 resolved_model=resolved_model,
                 resolved_openai_mode=resolved_openai_mode,
                 provider_name=provider_name,
+                novelai_mode=resolved_novelai_mode,
+                request_negative_prompt=request_negative_prompt.strip(),
                 user_id=resolved_user_id,
                 group_id=resolved_group_id,
                 platform_name=resolved_platform,
                 source_image_bytes_list=normalized_source_images,
                 matched_message_id=matched_message_id,
                 notify_start=notify_start,
-                on_task_unsuccessful=_refund_quota_on_task_unsuccessful if quota_key else None,
+                on_task_unsuccessful=_handle_task_unsuccessful,
             )
         except Exception:
             self._refund_draw_quota(
@@ -1109,6 +1252,11 @@ class DrawpicPlugin(MaiBotPlugin):
         """创建图片。"""
 
         if not prompt.strip():
+            await self._send_invocation_failure_notice(
+                reason="提示词不能为空",
+                kwargs=kwargs,
+                user_id=user_id,
+            )
             return {"success": False, "message": "提示词不能为空"}
 
         try:
@@ -1122,12 +1270,14 @@ class DrawpicPlugin(MaiBotPlugin):
                 platform_name=context["platform"],
             )
         except PermissionError as exc:
+            await self._send_invocation_failure_notice(reason=str(exc), kwargs=kwargs, user_id=user_id)
             return {
                 "success": False,
                 "message": str(exc),
             }
         except Exception as exc:
             self.ctx.logger.error("启动后台创建图片失败: %s", exc, exc_info=True)
+            await self._send_invocation_failure_notice(reason=str(exc), kwargs=kwargs, user_id=user_id)
             return {"success": False, "message": f"启动后台创建图片失败：{exc}"}
 
     @Tool(
@@ -1135,7 +1285,7 @@ class DrawpicPlugin(MaiBotPlugin):
         description=(
             "基于当前聊天中的真实图片执行图生图编辑；仅当用户明确要求修改、编辑、重绘已有图片时调用。"
             "如果用户回复/引用了一张图片，直接调用本工具，插件会从引用消息中提取真实图片。"
-            "找不到真实图片或模型平台不支持图片编辑时，返回原因并由 AI 告知用户无法调用图片编辑"
+            "找不到真实图片或模型平台不支持图片编辑时，插件会直接向聊天流发送失败状态并返回原因"
         ),
         parameters=EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA,
     )
@@ -1151,6 +1301,11 @@ class DrawpicPlugin(MaiBotPlugin):
         """编辑图片。"""
 
         if not prompt.strip():
+            await self._send_invocation_failure_notice(
+                reason="提示词不能为空",
+                kwargs=kwargs,
+                user_id=user_id,
+            )
             return {"success": False, "message": "提示词不能为空"}
 
         try:
@@ -1185,6 +1340,13 @@ class DrawpicPlugin(MaiBotPlugin):
             router = self._require_router()
             provider_name = router.get_model_provider(resolved_model)
             if not provider_name:
+                await self._send_draw_failure_notice(
+                    reason=f"指定模型不可用：{resolved_model}",
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=platform_name,
+                )
                 return {"success": False, "message": f"指定模型不可用：{resolved_model}"}
             # 火山引擎文生图/图生图模型分离，提前检查时需用自动切换后的模型判断图生图能力
             check_model = resolved_model
@@ -1195,6 +1357,13 @@ class DrawpicPlugin(MaiBotPlugin):
                     check_model = resolved_model
             image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(check_model)
             if image_edit_unsupported_reason:
+                await self._send_draw_failure_notice(
+                    reason=image_edit_unsupported_reason,
+                    stream_id=normalized_stream_id,
+                    user_id=normalized_user_id,
+                    group_id=normalized_group_id,
+                    platform=platform_name,
+                )
                 return {
                     "success": False,
                     "message": (
@@ -1242,11 +1411,13 @@ class DrawpicPlugin(MaiBotPlugin):
                 notify_start=True,
             )
         except PermissionError as exc:
+            await self._send_invocation_failure_notice(reason=str(exc), kwargs=kwargs, user_id=user_id)
             return {
                 "success": False,
                 "message": str(exc),
             }
         except ValueError as exc:
+            await self._send_invocation_failure_notice(reason=str(exc), kwargs=kwargs, user_id=user_id)
             return {
                 "success": False,
                 "message": (
@@ -1256,7 +1427,127 @@ class DrawpicPlugin(MaiBotPlugin):
             }
         except Exception as exc:
             self.ctx.logger.error("启动后台编辑图片失败: %s", exc, exc_info=True)
+            await self._send_invocation_failure_notice(reason=str(exc), kwargs=kwargs, user_id=user_id)
             return {"success": False, "message": f"启动后台编辑图片失败：{exc}"}
+
+    @Tool(
+        "draw_styles",
+        description=(
+            "列出插件配置中当前可用的全平台绘图风格。用户要求指定风格、询问风格列表或准备调用 styled_draw 时，"
+            "必须先调用本工具，并从返回的 styles 中选择精确名称。"
+        ),
+        parameters=DRAW_STYLES_TOOL_PARAMETERS_SCHEMA,
+    )
+    async def handle_draw_styles(self, **kwargs: Any) -> dict[str, Any]:
+        """向模型提供配置热重载后的最新风格名称。"""
+
+        del kwargs
+        resolver = self._require_style_prompt_resolver()
+        styles = resolver.get_style_names()
+        return {
+            "success": True,
+            "message": (
+                "可用绘图风格：" + ("、".join(styles) if styles else "未配置；请改用普通 draw/edit_image")
+            ),
+            "styles": styles,
+            "default_style": resolver.config.default_style.strip(),
+        }
+
+    @Tool(
+        "styled_draw",
+        description=(
+            "使用插件配置的全平台风格提示词模板执行文生图或图生图。"
+            "有风格需求时必须先调用 draw_styles 获取最新可用名称，再把精确名称填入 style。"
+            "有真实源图片时自动图生图；没有源图片时文生图。style 不填时保持普通 draw/edit_image 行为。"
+        ),
+        parameters=STYLED_DRAW_TOOL_PARAMETERS_SCHEMA,
+    )
+    async def handle_styled_draw(
+        self,
+        prompt: str = "",
+        style: str = "",
+        negative_prompt: str = "",
+        source_message_id: str = "",
+        source_image_base64: str = "",
+        user_id: str = "",
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """使用全平台风格模板创建或编辑图片。"""
+
+        runtime_context: dict[str, str] = {}
+        try:
+            context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
+            live_context = await self._require_stream_service().resolve_live_stream_context(
+                stream_id=context["stream_id"],
+                user_id=context["user_id"],
+                group_id=context["group_id"],
+                platform=context["platform"],
+            )
+            runtime_context = self._merge_resolved_runtime_context(
+                live_context,
+                user_id=context["user_id"],
+                group_id=context["group_id"],
+                platform=context["platform"],
+            )
+            if not runtime_context["stream_id"]:
+                raise ValueError("当前聊天流不可用，无法回传图片")
+
+            resolved_prompt = self._require_style_prompt_resolver().resolve(
+                style_name=style,
+                user_prompt=prompt,
+                user_negative_prompt=negative_prompt,
+            )
+            current_message = kwargs.get("message")
+            lookup_stream_ids = self._build_image_lookup_stream_ids(
+                runtime_context["stream_id"],
+                message=current_message,
+            )
+            image_base64_list: list[str] = []
+            matched_message_id = ""
+            if source_image_base64.strip() or source_message_id.strip():
+                image_base64_list, matched_message_id = await find_source_images(
+                    self.ctx,
+                    lookup_stream_ids,
+                    source_message_id=source_message_id,
+                    source_image_base64=source_image_base64,
+                    current_message=current_message if isinstance(current_message, dict) else None,
+                )
+            elif isinstance(current_message, dict):
+                image_base64_list = await collect_command_source_images(
+                    self.ctx,
+                    lookup_stream_ids,
+                    current_message,
+                )
+                if image_base64_list:
+                    matched_message_id = str(current_message.get("message_id") or "").strip()
+
+            if not resolved_prompt.positive_prompt and not image_base64_list:
+                raise ValueError("文生图提示词不能为空")
+            source_image_bytes_list = [
+                decode_image_base64(image_base64) for image_base64 in image_base64_list
+            ]
+            return await self._start_background_image_request(
+                prompt=resolved_prompt.positive_prompt,
+                request_negative_prompt=resolved_prompt.negative_prompt,
+                stream_id=runtime_context["stream_id"],
+                source_image_bytes_list=source_image_bytes_list,
+                matched_message_id=matched_message_id,
+                user_id=runtime_context["user_id"],
+                group_id=runtime_context["group_id"],
+                platform_name=runtime_context["platform"],
+                notify_start=True,
+            )
+        except Exception as exc:
+            self.ctx.logger.error("启动风格化绘图失败: %s", exc, exc_info=True)
+            if runtime_context.get("stream_id"):
+                await self._send_draw_failure_notice(
+                    reason=str(exc),
+                    stream_id=runtime_context["stream_id"],
+                    user_id=runtime_context["user_id"],
+                    group_id=runtime_context["group_id"],
+                    platform=runtime_context["platform"],
+                )
+            return {"success": False, "message": f"启动风格化绘图失败：{exc}"}
 
     @Tool(
         "draw_status",
@@ -1324,6 +1615,10 @@ class DrawpicPlugin(MaiBotPlugin):
             # 图生图：强制走基于源图片的编辑流程
             "图生图": "draw_image",
             "edit": "draw_image",
+            "风格": "style",
+            "style": "style",
+            "nai": "novelai",
+            "novelai": "novelai",
             "次数": "times",
             "times": "times",
             "添加": "add",
@@ -1666,6 +1961,308 @@ class DrawpicPlugin(MaiBotPlugin):
         matched_message_id = str(command_message.get("message_id") or "").strip()
         return image_base64_list, lookup_stream_ids, matched_message_id
 
+    @staticmethod
+    def _split_negative_prompt(prompt: str) -> tuple[str, str]:
+        """拆分指令中的正向提示词与可选反向提示词。"""
+
+        match = re.search(r"\s+--(?:反向|negative)\s+", prompt, flags=re.IGNORECASE)
+        if match is None:
+            return prompt.strip(), ""
+        return prompt[: match.start()].strip(), prompt[match.end() :].strip()
+
+    async def _collect_optional_command_source_images(
+        self,
+        *,
+        message: Any,
+        stream_id: str,
+        user_id: str,
+        group_id: str,
+        platform: str,
+    ) -> tuple[list[bytes], str]:
+        """仅收集当前指令直接携带或明确引用的图片，不扫描无关历史图片。"""
+
+        image_base64_list, _, matched_message_id = await self._collect_forced_command_source_images(
+            message=message,
+            stream_id=stream_id,
+            user_id=user_id,
+            group_id=group_id,
+            platform=platform,
+        )
+        return [decode_image_base64(image) for image in image_base64_list], matched_message_id
+
+    async def _handle_style_command(
+        self,
+        *,
+        rest_payload: str,
+        message: Any,
+        stream_id: str,
+        user_id: str,
+        group_id: str,
+        platform: str,
+    ) -> tuple[bool, str, int]:
+        """处理全平台风格提示词模板指令。"""
+
+        style_name, prompt_payload = self._split_command_payload(rest_payload)
+        if not style_name:
+            await self._send_command_reply(
+                title="绘图风格",
+                body=build_style_text(self._require_style_prompt_resolver()),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return True, "已显示绘图风格列表", 2
+
+        positive_prompt, negative_prompt = self._split_negative_prompt(prompt_payload)
+        try:
+            resolved_prompt = self._require_style_prompt_resolver().resolve(
+                style_name=style_name,
+                user_prompt=positive_prompt,
+                user_negative_prompt=negative_prompt,
+            )
+            source_images, matched_message_id = await self._collect_optional_command_source_images(
+                message=message,
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            if not resolved_prompt.positive_prompt and not source_images:
+                raise ValueError("请提供正向提示词，或在同一条消息中附带/引用图片")
+            result = await self._start_background_image_request(
+                prompt=resolved_prompt.positive_prompt,
+                request_negative_prompt=resolved_prompt.negative_prompt,
+                stream_id=stream_id,
+                source_image_bytes_list=source_images,
+                matched_message_id=matched_message_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform_name=platform,
+                notify_start=True,
+            )
+        except Exception as exc:
+            self.ctx.logger.error("/绘图 风格命令启动失败: %s", exc, exc_info=True)
+            await self._send_draw_failure_notice(
+                reason=str(exc),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "风格化绘图命令执行失败", 1
+
+        return True, f"风格化绘图任务已提交：{result.get('task_id', '')}", 2
+
+    @staticmethod
+    def _normalize_novelai_mode(mode: str) -> str:
+        """归一化 NAI mode 的中英文名称。"""
+
+        aliases = {
+            "anime": "anime",
+            "动漫": "anime",
+            "动画": "anime",
+            "furry": "furry",
+            "兽人": "furry",
+            "福瑞": "furry",
+            "background": "background",
+            "背景": "background",
+        }
+        return aliases.get(mode.strip().casefold(), "")
+
+    async def _handle_novelai_command(
+        self,
+        *,
+        rest_payload: str,
+        message: Any,
+        session_preference: dict[str, str],
+        stream_id: str,
+        user_id: str,
+        group_id: str,
+        platform: str,
+    ) -> tuple[bool, str, int]:
+        """处理 NAI 专属模型、mode、参数、文生图和图生图指令。"""
+
+        router = self._require_router()
+        first_word, remaining = self._split_command_payload(rest_payload)
+        normalized_action = first_word.strip().casefold()
+        if not first_word or normalized_action in {"帮助", "help", "状态", "status", "参数", "params"}:
+            await self._send_command_reply(
+                title="NovelAI 绘图",
+                body=build_novelai_text(router, session_preference),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return True, "已显示 NovelAI 绘图状态", 2
+
+        if normalized_action in {"模式", "mode", "风格", "style"}:
+            mode_value = remaining.strip()
+            if not mode_value:
+                await self._send_command_reply(
+                    title="NovelAI mode",
+                    body=build_novelai_text(router, session_preference),
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return True, "已显示 NovelAI mode", 2
+            if not self._can_manage_session(user_id):
+                await self._send_command_reply(
+                    title="权限不足",
+                    body="当前已启用权限管理，只有插件管理员可以切换会话级 NovelAI mode。",
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return False, "权限不足", 1
+            clear_aliases = {"默认", "跟随", "清空", "default", "unset", "clear"}
+            novelai_mode = "" if mode_value.casefold() in clear_aliases else self._normalize_novelai_mode(mode_value)
+            if not novelai_mode and mode_value.casefold() not in clear_aliases:
+                await self._send_command_reply(
+                    title="NovelAI mode 无效",
+                    body=build_novelai_text(router, session_preference),
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return False, "NovelAI mode 无效", 1
+            next_preference = self._set_session_preference(
+                stream_id,
+                user_id,
+                group_id,
+                platform,
+                novelai_mode=novelai_mode,
+            )
+            effective_mode = next_preference["novelai_mode"] or self.config.novelai.default_mode
+            await self._send_command_reply(
+                title="NovelAI mode 已切换",
+                body=f"当前会话 NAI mode：{effective_mode}",
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return True, "已切换 NovelAI mode", 2
+
+        if normalized_action in {"模型", "model"}:
+            model_name = remaining.strip()
+            if not model_name:
+                await self._send_command_reply(
+                    title="NovelAI 模型",
+                    body=build_novelai_text(router, session_preference),
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return True, "已显示 NovelAI 模型", 2
+            if not self._can_manage_session(user_id):
+                await self._send_command_reply(
+                    title="权限不足",
+                    body="当前已启用权限管理，只有插件管理员可以设置会话级 NovelAI 模型。",
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return False, "权限不足", 1
+            if router.get_model_provider(model_name) != "novelai":
+                await self._send_command_reply(
+                    title="NovelAI 模型不存在",
+                    body=build_novelai_text(router, session_preference),
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+                return False, "NovelAI 模型不存在", 1
+            implied_mode: str | None = None
+            if model_name == "nai-diffusion-furry-3":
+                implied_mode = "furry"
+            elif model_name == "nai-diffusion-3":
+                implied_mode = "anime"
+            self._set_session_preference(
+                stream_id,
+                user_id,
+                group_id,
+                platform,
+                model=model_name,
+                novelai_mode=implied_mode,
+            )
+            await self._send_command_reply(
+                title="NovelAI 模型已设置",
+                body=f"当前会话首选绘图模型：novelai：{model_name}",
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return True, "已设置 NovelAI 模型", 2
+
+        forced_task_type = "auto"
+        requested_mode = session_preference.get("novelai_mode", "")
+        prompt_payload = rest_payload
+        if normalized_action in {"文生图", "绘制", "draw"}:
+            forced_task_type = "draw"
+            prompt_payload = remaining
+        elif normalized_action in {"图生图", "编辑", "edit"}:
+            forced_task_type = "edit_image"
+            prompt_payload = remaining
+        else:
+            one_shot_mode = self._normalize_novelai_mode(first_word)
+            if one_shot_mode and remaining:
+                requested_mode = one_shot_mode
+                prompt_payload = remaining
+
+        positive_prompt, negative_prompt = self._split_negative_prompt(prompt_payload)
+        selected_model = session_preference["model"]
+        model = selected_model if router.get_model_provider(selected_model) == "novelai" else router.get_default_novelai_model()
+        try:
+            source_images: list[bytes] = []
+            matched_message_id = ""
+            if forced_task_type != "draw":
+                source_images, matched_message_id = await self._collect_optional_command_source_images(
+                    message=message,
+                    stream_id=stream_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    platform=platform,
+                )
+            if forced_task_type == "edit_image" and not source_images:
+                raise ValueError("NAI 图生图需要在同一条消息中附带或引用图片")
+            if not positive_prompt and not source_images:
+                raise ValueError("NAI 文生图提示词不能为空")
+            result = await self._start_background_image_request(
+                prompt=positive_prompt,
+                request_negative_prompt=negative_prompt,
+                requested_model=model,
+                requested_novelai_mode=requested_mode,
+                stream_id=stream_id,
+                source_image_bytes_list=source_images,
+                matched_message_id=matched_message_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform_name=platform,
+                notify_start=True,
+            )
+        except Exception as exc:
+            self.ctx.logger.error("/绘图 nai 命令启动失败: %s", exc, exc_info=True)
+            await self._send_draw_failure_notice(
+                reason=str(exc),
+                stream_id=stream_id,
+                user_id=user_id,
+                group_id=group_id,
+                platform=platform,
+            )
+            return False, "NovelAI 绘图命令执行失败", 1
+
+        return True, f"NovelAI 绘图任务已提交：{result.get('task_id', '')}", 2
+
     @Command("draw_command", description="绘图命令", pattern=r"^/(?:绘图|drawpic)(?:\s+(?P<content>[\s\S]+))?$")
     async def handle_draw_command(
         self,
@@ -1861,6 +2458,27 @@ class DrawpicPlugin(MaiBotPlugin):
                 platform=normalized_platform,
             )
             return True, "已切换 OpenAI 兼容模式", 2
+
+        if normalized_command == "style":
+            return await self._handle_style_command(
+                rest_payload=rest_payload,
+                message=kwargs.get("message"),
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform=normalized_platform,
+            )
+
+        if normalized_command == "novelai":
+            return await self._handle_novelai_command(
+                rest_payload=rest_payload,
+                message=kwargs.get("message"),
+                session_preference=session_preference,
+                stream_id=normalized_stream_id,
+                user_id=normalized_user_id,
+                group_id=normalized_group_id,
+                platform=normalized_platform,
+            )
 
         if normalized_command == "draw_text":
             prompt = rest_payload.strip()

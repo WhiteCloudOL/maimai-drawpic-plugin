@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Any, List, Literal
 
 from maibot_sdk import Field, PluginConfigBase
 
@@ -19,6 +19,7 @@ QuotaPeriodMode = Literal["daily", "weekly", "monthly", "once"]
 ProxyScheme = Literal["http", "https"]
 CommandReplyMode = Literal["图片", "文本"]
 ComfyUIPromptMode = Literal["single_prompt", "positive_negative"]
+NovelAIMode = Literal["anime", "furry", "background"]
 
 
 class PluginSectionConfig(PluginConfigBase):
@@ -36,7 +37,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.20.0",
+        default="2.21.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -87,12 +88,21 @@ class GeneralConfig(PluginConfigBase):
             "order": 3,
         },
     )
+    failure_reason_enabled: bool = Field(
+        default=True,
+        description="绘图失败通知是否附带简要错误原因。失败状态始终由插件直接发送，不经过 LLM",
+        json_schema_extra={
+            "label": "失败通知附带原因",
+            "hint": "开启后，工具和指令的绘图失败通知会附带截断、脱敏后的简要原因；关闭后仅发送失败状态与任务 ID",
+            "order": 3.5,
+        },
+    )
     permission_enabled: bool = Field(
         default=True,
-        description="是否启用权限管理。启用后，仅插件管理员可设置首选模型、切换兼容模式和修改用户次数",
+        description="是否启用权限管理。启用后，仅插件管理员可设置首选模型、切换兼容模式或 NAI mode，以及修改用户次数",
         json_schema_extra={
             "label": "启用权限管理",
-            "hint": "启用后，首选模型设置、兼容模式切换和次数管理命令仅允许插件管理员使用",
+            "hint": "启用后，首选模型设置、兼容模式或 NAI mode 切换和次数管理命令仅允许插件管理员使用",
             "order": 4,
         },
     )
@@ -233,11 +243,83 @@ class GeneralConfig(PluginConfigBase):
     )
 
 
+class StylePresetConfig(PluginConfigBase):
+    """单个全平台绘图风格的提示词模板。"""
+
+    enabled: bool = Field(
+        default=True,
+        description="是否启用该绘图风格",
+        json_schema_extra={
+            "label": "启用",
+            "order": 0,
+        },
+    )
+    name: str = Field(
+        default="自定义风格",
+        description="风格名称，用于工具参数和 /绘图 风格 指令",
+        json_schema_extra={
+            "label": "风格名称",
+            "placeholder": "例如：水彩、赛博朋克",
+            "order": 1,
+        },
+    )
+    positive_prompt_template: str = Field(
+        default="{prompt}",
+        description="正向提示词模板。{prompt} 会替换为用户正向提示词；没有占位符时会自动追加用户提示词",
+        json_schema_extra={
+            "label": "正向提示词模板",
+            "hint": "支持 {prompt}；NovelAI 的 {{tag}} 权重花括号可直接保留",
+            "input_type": "textarea",
+            "x-widget": "textarea",
+            "rows": 4,
+            "order": 2,
+        },
+    )
+    negative_prompt_template: str = Field(
+        default="{negative_prompt}",
+        description="反向提示词模板。{negative_prompt} 会替换为用户反向提示词；没有占位符时会自动追加",
+        json_schema_extra={
+            "label": "反向提示词模板",
+            "hint": "支持 {negative_prompt}；平台支持独立反向提示词时单独传递，否则合并到一个提示词中",
+            "input_type": "textarea",
+            "x-widget": "textarea",
+            "rows": 4,
+            "order": 3,
+        },
+    )
+
+
+class StyleConfig(PluginConfigBase):
+    """全平台通用的风格化提示词模板配置。"""
+
+    __ui_label__ = "绘图风格配置"
+    __ui_order__ = 2
+
+    default_style: str = Field(
+        default="",
+        description="使用“默认”风格名时解析到的风格。留空表示保持普通绘图行为",
+        json_schema_extra={
+            "label": "默认风格",
+            "hint": "必须与下方某个已启用风格名称完全一致；留空时 /绘图 风格 默认 不套用模板",
+            "order": 0,
+        },
+    )
+    presets: List[StylePresetConfig] = Field(
+        default=[],
+        description="适用于所有图片平台的正向、反向提示词模板列表",
+        json_schema_extra={
+            "label": "风格模板",
+            "hint": "风格只负责提示词模板，不会修改 NovelAI Anime/Furry mode 或当前会话模型",
+            "order": 1,
+        },
+    )
+
+
 class ProxyConfig(PluginConfigBase):
     """图片提供商的全局代理配置。"""
 
     __ui_label__ = "网络代理"
-    __ui_order__ = 2
+    __ui_order__ = 3
 
     enabled: bool = Field(
         default=False,
@@ -490,7 +572,7 @@ class OpenAIModelConfig(PluginConfigBase):
     """OpenAI 模型配置。"""
 
     __ui_label__ = "OpenAI 配置"
-    __ui_order__ = 3
+    __ui_order__ = 4
 
     enabled: bool = Field(
         default=True,
@@ -643,7 +725,7 @@ class GoogleModelConfig(PluginConfigBase):
     """Google 模型配置。"""
 
     __ui_label__ = "Google 配置"
-    __ui_order__ = 4
+    __ui_order__ = 5
 
     enabled: bool = Field(
         default=True,
@@ -779,7 +861,7 @@ class ZhipuModelConfig(PluginConfigBase):
     """智谱模型配置。"""
 
     __ui_label__ = "智谱配置"
-    __ui_order__ = 5
+    __ui_order__ = 6
 
     enabled: bool = Field(
         default=True,
@@ -860,7 +942,7 @@ class AliyunModelConfig(PluginConfigBase):
     """阿里百炼模型配置。"""
 
     __ui_label__ = "阿里百炼配置"
-    __ui_order__ = 6
+    __ui_order__ = 7
 
     enabled: bool = Field(
         default=True,
@@ -983,7 +1065,7 @@ class VolcengineModelConfig(PluginConfigBase):
     """火山引擎方舟模型配置。"""
 
     __ui_label__ = "火山引擎配置"
-    __ui_order__ = 7
+    __ui_order__ = 8
 
     enabled: bool = Field(
         default=True,
@@ -1136,7 +1218,7 @@ class SiliconFlowModelConfig(PluginConfigBase):
     """硅基流动模型配置。"""
 
     __ui_label__ = "硅基流动配置"
-    __ui_order__ = 8
+    __ui_order__ = 9
 
     enabled: bool = Field(
         default=True,
@@ -1266,7 +1348,7 @@ class NovelAIModelConfig(PluginConfigBase):
     """NovelAI / NovelAPI 模型配置。"""
 
     __ui_label__ = "NovelAI / NovelAPI 配置"
-    __ui_order__ = 9
+    __ui_order__ = 10
 
     enabled: bool = Field(
         default=True,
@@ -1321,6 +1403,16 @@ class NovelAIModelConfig(PluginConfigBase):
             "label": "自定义模型列表",
             "hint": "用于 NovelAPI 网关或其他兼容服务的扩展模型；每行填写一个模型 ID，会与上方官方模型列表合并",
             "order": 3,
+        },
+    )
+    default_mode: NovelAIMode = Field(
+        default="anime",
+        description="NovelAI 默认数据集模式。Anime 为普通模式，Furry/Background 会按官方规则在提示词开头加入数据集标签",
+        json_schema_extra={
+            "label": "默认 NAI 模式",
+            "hint": "anime=普通；furry=V4+ 添加 fur dataset，V3 切换到 Furry V3；background=V4.5+ 添加 background dataset",
+            "options": ["anime", "furry", "background"],
+            "order": 3.5,
         },
     )
     width: int = Field(
@@ -1384,6 +1476,18 @@ class NovelAIModelConfig(PluginConfigBase):
             "label": "随机种子",
             "hint": "负数会在本地生成随机种子；非负整数固定 seed",
             "order": 10,
+        },
+    )
+    positive_prompt: str = Field(
+        default="",
+        description="NovelAI 默认正向提示词，会与每次请求的用户正向提示词合并",
+        json_schema_extra={
+            "label": "默认正向提示词",
+            "hint": "建议填写英文标签；留空表示不额外添加。此项是 NAI 平台默认词，不属于全平台风格模板",
+            "input_type": "textarea",
+            "x-widget": "textarea",
+            "rows": 4,
+            "order": 10.5,
         },
     )
     negative_prompt: str = Field(
@@ -1452,10 +1556,10 @@ class NovelAIModelConfig(PluginConfigBase):
     )
     img2img_strength: float = Field(
         default=0.6,
-        description="NovelAI 图生图参考图强度",
+        description="NovelAI 图生图重绘强度",
         json_schema_extra={
             "label": "图生图强度",
-            "hint": "仅 edit_image 使用，值越高越接近原图；常见值 0.4 到 0.8",
+            "hint": "仅图生图使用；值越高允许模型对原图改动越大，值越低越接近原图；常见值 0.4 到 0.8",
             "order": 18,
         },
     )
@@ -1501,7 +1605,7 @@ class ComfyUIModelConfig(PluginConfigBase):
     """ComfyUI 本地工作流配置。"""
 
     __ui_label__ = "ComfyUI 配置"
-    __ui_order__ = 10
+    __ui_order__ = 11
 
     enabled: bool = Field(
         default=False,
@@ -1724,7 +1828,7 @@ class PromptModerationConfig(PluginConfigBase):
     """提示词审核配置。"""
 
     __ui_label__ = "提示词审核"
-    __ui_order__ = 11
+    __ui_order__ = 12
 
     enabled: bool = Field(
         default=False,
@@ -1762,7 +1866,7 @@ class ImageModerationConfig(PluginConfigBase):
     """生成图片审核配置。"""
 
     __ui_label__ = "生成图片审核"
-    __ui_order__ = 12
+    __ui_order__ = 13
 
     enabled: bool = Field(
         default=False,
@@ -1802,6 +1906,7 @@ class DrawpicConfig(PluginConfigBase):
 
     plugin: PluginSectionConfig = Field(default_factory=PluginSectionConfig)
     general: GeneralConfig = Field(default_factory=GeneralConfig)
+    style: StyleConfig = Field(default_factory=StyleConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     prompt_review: PromptModerationConfig = Field(default_factory=PromptModerationConfig)
     image_review: ImageModerationConfig = Field(default_factory=ImageModerationConfig)

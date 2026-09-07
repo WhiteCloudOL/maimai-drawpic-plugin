@@ -7,6 +7,7 @@ from .provider_router import ProviderRouter
 from .storage_utils import write_json_atomically
 
 OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
+NOVELAI_MODES = {"anime", "furry", "background"}
 
 
 class SessionPreferenceStore:
@@ -65,6 +66,7 @@ class SessionPreferenceStore:
             normalized_preferences[session_key] = {
                 "model": str(session_value.get("model") or "").strip(),
                 "openai_compatibility_mode": str(session_value.get("openai_compatibility_mode") or "").strip(),
+                "novelai_mode": str(session_value.get("novelai_mode") or "").strip(),
             }
         self.preferences = normalized_preferences
         self.normalize_all()
@@ -82,11 +84,13 @@ class SessionPreferenceStore:
         for session_key, session_value in self.preferences.items():
             model = str(session_value.get("model") or "").strip()
             openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
+            novelai_mode = str(session_value.get("novelai_mode") or "").strip()
             normalized_preferences[session_key] = {
                 "model": model if model and self.router.get_model_provider(model) else "",
                 "openai_compatibility_mode": (
                     openai_compatibility_mode if openai_compatibility_mode in OPENAI_COMPATIBILITY_MODES else ""
                 ),
+                "novelai_mode": novelai_mode if novelai_mode in NOVELAI_MODES else "",
             }
         self.preferences = normalized_preferences
 
@@ -103,11 +107,13 @@ class SessionPreferenceStore:
         session_value = self.preferences.get(session_key, {})
         model = str(session_value.get("model") or "").strip()
         openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
+        novelai_mode = str(session_value.get("novelai_mode") or "").strip()
         resolved_preference = {
             "model": self.router.resolve_model_name(model, allow_unknown_model=False) if model else "",
             "openai_compatibility_mode": (
                 openai_compatibility_mode if openai_compatibility_mode in OPENAI_COMPATIBILITY_MODES else ""
             ),
+            "novelai_mode": novelai_mode if novelai_mode in NOVELAI_MODES else "",
         }
         return resolved_preference
 
@@ -120,6 +126,7 @@ class SessionPreferenceStore:
         *,
         model: str | None = None,
         openai_compatibility_mode: str | None = None,
+        novelai_mode: str | None = None,
     ) -> dict[str, str]:
         """更新当前会话的模型配置并持久化。"""
 
@@ -128,6 +135,7 @@ class SessionPreferenceStore:
         next_value = {
             "model": current_value["model"],
             "openai_compatibility_mode": current_value["openai_compatibility_mode"],
+            "novelai_mode": current_value["novelai_mode"],
         }
         if model is not None:
             next_value["model"] = self.router.resolve_model_name(model, allow_unknown_model=False)
@@ -135,6 +143,11 @@ class SessionPreferenceStore:
             normalized_mode = openai_compatibility_mode.strip()
             next_value["openai_compatibility_mode"] = (
                 normalized_mode if normalized_mode in OPENAI_COMPATIBILITY_MODES else ""
+            )
+        if novelai_mode is not None:
+            normalized_novelai_mode = novelai_mode.strip()
+            next_value["novelai_mode"] = (
+                normalized_novelai_mode if normalized_novelai_mode in NOVELAI_MODES else ""
             )
         self.preferences[session_key] = next_value
         self.save()

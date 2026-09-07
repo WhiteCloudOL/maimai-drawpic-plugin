@@ -46,7 +46,7 @@ for _sub in ("core", "providers"):
         sys.modules[_full_name] = _ns
 
 from core.image_utils import detect_image_dimensions, detect_image_format, detect_mime_type  # noqa: E402
-from core.config import NovelAIModelConfig  # noqa: E402
+from core.config import NovelAIModelConfig, StyleConfig, StylePresetConfig  # noqa: E402
 from core.http_proxy import read_response_bytes, read_response_json  # noqa: E402
 from core.message_utils import (  # noqa: E402
     _SOURCE_IMAGE_CACHE,
@@ -60,6 +60,7 @@ from core.stream_service import (  # noqa: E402
     ChatStreamService,
     ImageDeliveryUnconfirmedError,
 )
+from core.style_prompts import StylePromptResolver  # noqa: E402
 from core.task_store import DrawTaskStore  # noqa: E402
 from core.usage_store import UserQuotaStore  # noqa: E402
 from maimai_drawpic_pkg.providers.novelai_platform import NovelAIImage  # noqa: E402
@@ -357,6 +358,133 @@ def test_novelai_defaults_include_v5_models() -> None:
     assert "nai-diffusion-5-full" in configured_models
     assert "nai-diffusion-5-curated" in configured_models
     print("[OK] NovelAI 配置：默认模型列表包含 V5")
+
+
+def test_novelai_mode_and_prompt_merging() -> None:
+    """NAI mode、默认正向词和独立反向词按官方请求结构组合。"""
+
+    provider = NovelAIImage(
+        api_key="test-key",
+        positive_prompt="default positive",
+        negative_prompt="default negative, user negative",
+        mode="furry",
+        quality_toggle=False,
+    )
+    payload = provider._build_payload(
+        prompt="user positive",
+        model="nai-diffusion-5-full",
+        action="generate",
+        n=1,
+    )
+    assert payload["input"] == "fur dataset, default positive, user positive"
+    assert payload["parameters"]["negative_prompt"] == "default negative, user negative"
+    assert payload["parameters"]["v4_negative_prompt"]["caption"]["base_caption"] == (
+        "default negative, user negative"
+    )
+
+    background_provider = NovelAIImage(
+        api_key="test-key",
+        mode="background",
+        quality_toggle=False,
+    )
+    background_payload = background_provider._build_payload(
+        prompt="city skyline",
+        model="nai-diffusion-4-5-full",
+        action="generate",
+        n=1,
+    )
+    assert background_payload["input"] == "background dataset, city skyline"
+    try:
+        background_provider._build_payload(
+            prompt="city skyline",
+            model="nai-diffusion-3",
+            action="generate",
+            n=1,
+        )
+    except ValueError as exc:
+        assert "V4.5 或 V5" in str(exc)
+    else:
+        raise AssertionError("NovelAI V3 不应接受 background mode")
+    print("[OK] NovelAI mode：Furry 数据集标签与正反向提示词独立合并")
+
+
+def test_style_prompt_templates_are_platform_independent() -> None:
+    """插件风格只渲染通用提示词，不携带任何 NAI mode。"""
+
+    resolver = StylePromptResolver(
+        StyleConfig(
+            default_style="水彩",
+            presets=[
+                StylePresetConfig(
+                    name="水彩",
+                    positive_prompt_template="watercolor, {prompt}",
+                    negative_prompt_template="oil painting, {negative_prompt}",
+                )
+            ],
+        )
+    )
+    resolved = resolver.resolve(
+        style_name="默认",
+        user_prompt="a white cat",
+        user_negative_prompt="blurry",
+    )
+    assert resolved.style_name == "水彩"
+    assert resolved.positive_prompt == "watercolor, a white cat"
+    assert resolved.negative_prompt == "oil painting, blurry"
+
+    plain = resolver.resolve(style_name="", user_prompt="plain prompt")
+    assert plain.style_name == ""
+    assert plain.positive_prompt == "plain prompt"
+    assert plain.negative_prompt == ""
+
+    image_only = resolver.resolve(style_name="水彩", user_prompt="")
+    assert image_only.positive_prompt == "watercolor"
+    print("[OK] style_prompts: 全平台风格模板与 NAI mode 相互独立")
+
+
+def test_novelai_v3_mode_switches_effective_model() -> None:
+    """V3 mode 使用两个官方模型，V4+ mode 不改模型 ID。"""
+
+    from core.config import DrawpicConfig
+    from maimai_drawpic_pkg.core.provider_router import ProviderRouter
+
+    router = ProviderRouter(DrawpicConfig(), logger=_FakeLogger())
+    assert router.resolve_novelai_model_for_mode("nai-diffusion-3", "furry") == (
+        "nai-diffusion-furry-3"
+    )
+    assert router.resolve_novelai_model_for_mode("nai-diffusion-furry-3", "anime") == (
+        "nai-diffusion-3"
+    )
+    assert router.resolve_novelai_model_for_mode("nai-diffusion-5-full", "furry") == (
+        "nai-diffusion-5-full"
+    )
+    print("[OK] NovelAI mode：V3 切换模型，V4+ 保持模型并使用数据集标签")
+
+
+def test_novelai_mode_is_persisted_per_session() -> None:
+    """NAI mode 按平台和聊天目标持久化，不与其他会话混用。"""
+
+    from maimai_drawpic_pkg.core.config import DrawpicConfig
+    from maimai_drawpic_pkg.core.provider_router import ProviderRouter
+    from maimai_drawpic_pkg.core.session_preferences import SessionPreferenceStore
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "preferences.json"
+        router = ProviderRouter(DrawpicConfig(), logger=_FakeLogger())
+        store = SessionPreferenceStore(path=path, router=router, logger=_FakeLogger())
+        stored = store.set_preference(
+            "stream-1",
+            group_id="10000",
+            platform="qq",
+            novelai_mode="furry",
+        )
+        assert stored["novelai_mode"] == "furry"
+
+        reloaded = SessionPreferenceStore(path=path, router=router, logger=_FakeLogger())
+        reloaded.load()
+        assert reloaded.get_preference("stream-1", group_id="10000")["novelai_mode"] == "furry"
+        assert reloaded.get_preference("stream-2", group_id="20000")["novelai_mode"] == ""
+    print("[OK] session_preferences: NovelAI mode 会话级持久化与隔离")
 
 
 def test_task_store_update_missing_task_returns_none() -> None:
@@ -672,6 +800,82 @@ def test_provider_router_fallback_model_resolution() -> None:
     print("[OK] provider_router: 生图备选模型解析与不可用原因")
 
 
+def test_style_negative_prompt_routing() -> None:
+    """支持独立反向词的平台单独传递，其他平台合并到提示词。"""
+
+    from maimai_drawpic_pkg.core.draw_service import DrawService, ImageRequestAttempt
+
+    class _Provider:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
+            del model, n
+            self.prompts.append(prompt)
+            return [_MINIMAL_PNG]
+
+    class _Router:
+        def __init__(self, supports_negative: bool) -> None:
+            self.supports_negative = supports_negative
+            self.provider = _Provider()
+            self.received_negative = ""
+
+        def supports_separate_negative_prompt(self, model: str, task_type: str) -> bool:
+            del model, task_type
+            return self.supports_negative
+
+        @staticmethod
+        def merge_prompt_parts(*parts: str) -> str:
+            return ", ".join(part for part in parts if part)
+
+        @staticmethod
+        def should_rewrite_prompt_to_english(provider_name: str, model: str) -> bool:
+            del provider_name, model
+            return False
+
+        def require_platform_for_model(self, model: str, mode: str, **kwargs):
+            del model, mode
+            self.received_negative = kwargs["request_negative_prompt"]
+            return self.provider, "openai"
+
+        @staticmethod
+        def resolve_request_timeout_seconds() -> int:
+            return 10
+
+    async def _run_case(supports_negative: bool) -> tuple[_Router, str]:
+        router = _Router(supports_negative)
+        service = DrawService(
+            ctx=types.SimpleNamespace(logger=_FakeLogger()),
+            router=router,
+            stream_service=None,
+            moderation_service=None,
+            task_store=None,
+        )
+        await service._run_image_request_attempt(
+            attempt=ImageRequestAttempt(
+                model="model",
+                provider_name="openai",
+                openai_compatibility_mode="auto",
+            ),
+            prompt="positive",
+            task_id="task",
+            task_type="draw",
+            source_image_bytes_list=[],
+            matched_message_id="",
+            request_negative_prompt="blurry",
+        )
+        return router, router.provider.prompts[-1]
+
+    separate_router, separate_prompt = asyncio.run(_run_case(True))
+    assert separate_router.received_negative == "blurry"
+    assert separate_prompt == "positive"
+
+    merged_router, merged_prompt = asyncio.run(_run_case(False))
+    assert merged_router.received_negative == ""
+    assert merged_prompt == "positive, Negative prompt: blurry"
+    print("[OK] draw_service: 风格反向词按平台能力独立传递或合并")
+
+
 def _load_drawpic_plugin_class():
     """使用轻量 SDK 桩导入插件入口，避免测试依赖完整 MaiBot 运行时。"""
 
@@ -729,6 +933,7 @@ def _build_context_test_plugin():
     plugin._test_ctx = types.SimpleNamespace(logger=_FakeLogger())
     plugin._test_config = types.SimpleNamespace(
         general=types.SimpleNamespace(
+            failure_reason_enabled=True,
             group_quota_enabled=False,
             group_quota_period="daily",
             group_default_quota=1,
@@ -753,6 +958,45 @@ def test_tool_runtime_context_prefers_host_user_id() -> None:
     assert context["user_id"] == "12345", context
     assert context["group_id"] == "10000", context
     print("[OK] plugin: 工具上下文优先使用主程序注入 user_id")
+
+
+def test_failure_notice_is_direct_brief_and_configurable() -> None:
+    """失败通知直接发往聊天流，原因可配置且会脱敏截断。"""
+
+    class _DirectStream:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        async def send_text_with_fallback(self, *, text: str, **kwargs) -> bool:
+            del kwargs
+            self.messages.append(text)
+            return True
+
+    plugin = _build_context_test_plugin()
+    stream_service = _DirectStream()
+    plugin._stream_service = stream_service
+    asyncio.run(
+        plugin._send_draw_failure_notice(
+            reason="上游失败 Authorization: Bearer secret-token",
+            stream_id="stream-1",
+            task_id="task-1",
+        )
+    )
+    assert stream_service.messages
+    assert "绘图失败" in stream_service.messages[-1]
+    assert "task-1" in stream_service.messages[-1]
+    assert "原因：" in stream_service.messages[-1]
+    assert "secret-token" not in stream_service.messages[-1]
+
+    plugin._test_config.general.failure_reason_enabled = False
+    asyncio.run(
+        plugin._send_draw_failure_notice(
+            reason="不应显示的错误",
+            stream_id="stream-1",
+        )
+    )
+    assert "原因：" not in stream_service.messages[-1]
+    print("[OK] plugin: 失败通知直接发送，错误原因可配置并脱敏")
 
 
 def test_tool_runtime_context_reads_generic_message_info() -> None:
@@ -950,6 +1194,10 @@ def main() -> None:
     test_novelai_sampler_compatibility_is_model_specific()
     test_novelai_custom_gateway_keeps_legacy_parameters()
     test_novelai_defaults_include_v5_models()
+    test_novelai_mode_and_prompt_merging()
+    test_style_prompt_templates_are_platform_independent()
+    test_novelai_v3_mode_switches_effective_model()
+    test_novelai_mode_is_persisted_per_session()
     test_task_store_update_missing_task_returns_none()
     test_task_store_normal_flow_still_works()
     test_moderation_parse_review_response_robust()
@@ -959,7 +1207,9 @@ def main() -> None:
     test_unconfirmed_image_delivery_is_not_retried()
     test_provider_router_openai_routes_cache()
     test_provider_router_fallback_model_resolution()
+    test_style_negative_prompt_routing()
     test_tool_runtime_context_prefers_host_user_id()
+    test_failure_notice_is_direct_brief_and_configurable()
     test_tool_runtime_context_reads_generic_message_info()
     test_tool_runtime_context_accepts_qq_official_openids()
     test_tool_runtime_context_uses_llm_user_id_only_as_compat_fallback()

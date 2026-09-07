@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .provider_router import ProviderRouter
+from .style_prompts import StylePromptResolver
 from .task_store import DrawTaskRecord
 
 
@@ -24,6 +25,12 @@ def build_command_usage_text() -> str:
             "",
             "/绘图 图生图 <prompt>",
             "强制发起图生图，需在同一条消息中附带或引用至少一张图片，支持多张。",
+            "",
+            "/绘图 风格 <风格名称> <正向提示词> [--反向 <反向提示词>]",
+            "使用全平台风格提示词模板；附带或引用图片时自动图生图，否则文生图。",
+            "",
+            "/绘图 nai",
+            "查看 NAI 模型、Anime/Furry/Background mode、参数与绘图用法。",
             "",
             "/绘图 添加/减少/设置 群聊/用户 群ID/用户ID 数量",
             "管理员调整群聊或用户当前周期剩余绘图次数。",
@@ -77,6 +84,7 @@ def build_session_status_text(
     provider_name = router.get_model_provider(model_name) or "unknown"
     lock_status = "已锁定" if session_preference["model"] else "未锁定，跟随默认首选模型"
     openai_mode_text = session_preference["openai_compatibility_mode"] or "未锁定，跟随模型配置"
+    novelai_mode_text = session_preference.get("novelai_mode") or router.config.novelai.default_mode
     task_text = _format_task(latest_task)
     fallback_model = router.resolve_fallback_model(model_name)
     fallback_model_text = fallback_model or "未启用"
@@ -89,9 +97,56 @@ def build_session_status_text(
             f"会话首选模型状态：{lock_status}",
             f"生图备选模型：{fallback_model_text}",
             f"OpenAI 兼容模式：{openai_mode_text}（仅对 OpenAI 提供商生效）",
+            f"NovelAI 模式：{novelai_mode_text}（仅对 NAI 提供商生效）",
             f"默认首选模型：{router.resolve_default_model()}",
             f"当前绘图任务：{task_text}",
             f"用户次数：{quota_text}",
+        ]
+    )
+
+
+def build_style_text(resolver: StylePromptResolver) -> str:
+    """构建全平台风格模板说明。"""
+
+    style_names = resolver.get_style_names()
+    return "\n".join(
+        [
+            f"默认风格：{resolver.config.default_style.strip() or '未配置（保持普通绘图）'}",
+            f"可用风格：{'、'.join(style_names) if style_names else '未配置'}",
+            "",
+            "用法：/绘图 风格 <风格名称> <正向提示词> [--反向 <反向提示词>]",
+            "同一条消息附带或引用图片时自动执行图生图，否则执行文生图。",
+            "插件风格适用于所有平台，只处理提示词模板，不会修改 NovelAI mode。",
+        ]
+    )
+
+
+def build_novelai_text(router: ProviderRouter, session_preference: dict[str, str]) -> str:
+    """构建 NovelAI 子命令状态与用法。"""
+
+    selected_model = session_preference["model"]
+    model = (
+        selected_model
+        if router.get_model_provider(selected_model) == "novelai"
+        else (router.get_novelai_models()[0] if router.get_novelai_models() else "未配置")
+    )
+    mode = session_preference.get("novelai_mode") or router.config.novelai.default_mode
+    config = router.config.novelai
+    return "\n".join(
+        [
+            f"当前 NAI 模型：{model}",
+            f"当前 NAI mode：{mode}",
+            f"采样参数：sampler={config.sampler}，steps={config.steps}，scale={config.scale}，seed={config.seed}",
+            f"图生图参数：strength={config.img2img_strength}，noise={config.img2img_noise}",
+            f"可用 NAI 模型：{'、'.join(router.get_novelai_models()) or '未配置'}",
+            "",
+            "/绘图 nai 模式 [anime|furry|background|跟随]",
+            "/绘图 nai 模型 [NAI模型名]",
+            "/绘图 nai 参数",
+            "/绘图 nai 文生图 <正向提示词> [--反向 <反向提示词>]",
+            "/绘图 nai 图生图 <正向提示词> [--反向 <反向提示词>]",
+            "/绘图 nai <正向提示词> [--反向 <反向提示词>]（有源图时自动图生图）",
+            "/绘图 nai furry <提示词>（仅本次使用指定 mode；anime/background 同理）",
         ]
     )
 

@@ -57,6 +57,12 @@ class GoogleImage:
         normalized_model = model.strip().lower()
         return "image-preview" in normalized_model or "flash-image" in normalized_model
 
+    @classmethod
+    def supports_negative_prompt(cls, model: str) -> bool:
+        """判断模型是否支持独立 negative_prompt 字段。"""
+
+        return not cls._uses_generate_content_api(model)
+
     @staticmethod
     def _detect_mime_type(image_bytes: bytes) -> str:
         """尽量根据图片内容推断 MIME 类型。"""

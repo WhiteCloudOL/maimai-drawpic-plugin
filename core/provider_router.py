@@ -419,6 +419,56 @@ class ProviderRouter:
             return normalized_model
         return self.resolve_default_model()
 
+    @staticmethod
+    def merge_prompt_parts(*parts: str) -> str:
+        """按顺序合并非空提示词片段。"""
+
+        return ", ".join(part.strip(" \t\r\n,") for part in parts if part.strip(" \t\r\n,"))
+
+    def resolve_novelai_mode(self, mode: str = "") -> str:
+        """解析会话级 NovelAI mode；空值跟随插件配置。"""
+
+        normalized_mode = mode.strip().lower() or self.config.novelai.default_mode
+        if normalized_mode not in {"anime", "furry", "background"}:
+            raise ValueError(f"不支持的 NovelAI 模式：{normalized_mode}")
+        return normalized_mode
+
+    def resolve_novelai_model_for_mode(self, model: str, mode: str = "") -> str:
+        """按 NAI mode 解析 V3 Anime/Furry 的实际模型。"""
+
+        normalized_model = model.strip()
+        if self.get_model_provider(normalized_model) != "novelai":
+            return normalized_model
+        resolved_mode = self.resolve_novelai_mode(mode)
+        if normalized_model == "nai-diffusion-3" and resolved_mode == "furry":
+            return "nai-diffusion-furry-3"
+        if normalized_model == "nai-diffusion-furry-3" and resolved_mode != "furry":
+            return "nai-diffusion-3"
+        return normalized_model
+
+    def get_default_novelai_model(self) -> str:
+        """返回 NAI 指令使用的默认模型。"""
+
+        models = self.get_novelai_models()
+        if not models:
+            raise ValueError("NovelAI 平台未启用或没有配置可用模型")
+        return models[0]
+
+    def supports_separate_negative_prompt(self, model: str, task_type: str) -> bool:
+        """判断模型当前任务是否支持独立传递反向提示词。"""
+
+        provider_name = self.get_model_provider(model)
+        if provider_name in {"aliyun", "siliconflow", "novelai"}:
+            return True
+        if provider_name == "google":
+            return GoogleImage.supports_negative_prompt(model)
+        if provider_name == "comfyui":
+            config = self.config.comfyui
+            if task_type == "edit_image":
+                return config.i2i_prompt_mode == "positive_negative"
+            return config.t2i_prompt_mode == "positive_negative"
+        return False
+
     def _get_proxy_settings(self, provider_name: ProviderName) -> HttpProxySettings:
         """按提供商解析是否应用插件全局代理。"""
 
@@ -437,7 +487,7 @@ class ProviderRouter:
             password=proxy_config.password,
         )
 
-    def create_aliyun_provider(self) -> AliyunImage:
+    def create_aliyun_provider(self, request_negative_prompt: str = "") -> AliyunImage:
         """创建阿里百炼图片提供商实例。"""
 
         return AliyunImage(
@@ -446,7 +496,10 @@ class ProviderRouter:
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
             default_size=self.config.aliyun.default_size,
             model_size_overrides=parse_model_value_overrides(self.config.aliyun.model_size_overrides),
-            negative_prompt=self.config.aliyun.negative_prompt,
+            negative_prompt=self.merge_prompt_parts(
+                self.config.aliyun.negative_prompt,
+                request_negative_prompt,
+            ),
             prompt_extend=self.config.aliyun.prompt_extend,
             watermark=self.config.aliyun.watermark,
             max_images=self.config.aliyun.max_images,
@@ -497,7 +550,7 @@ class ProviderRouter:
         )
         return RoutedOpenAIImage(provider, route.upstream_model)
 
-    def create_google_provider(self) -> GoogleImage:
+    def create_google_provider(self, request_negative_prompt: str = "") -> GoogleImage:
         """创建 Google 图片提供商实例。"""
 
         return GoogleImage(
@@ -509,7 +562,10 @@ class ProviderRouter:
             aspect_ratio=self.config.google.aspect_ratio,
             output_mime_type=self.config.google.output_mime_type,
             person_generation=self.config.google.person_generation,
-            negative_prompt=self.config.google.negative_prompt,
+            negative_prompt=self.merge_prompt_parts(
+                self.config.google.negative_prompt,
+                request_negative_prompt,
+            ),
             seed=self.config.google.seed,
             guidance_scale=self.config.google.guidance_scale,
             add_watermark=self.config.google.add_watermark,
@@ -550,7 +606,7 @@ class ProviderRouter:
             proxy_settings=self._get_proxy_settings("volcengine"),
         )
 
-    def create_siliconflow_provider(self) -> SiliconFlowImage:
+    def create_siliconflow_provider(self, request_negative_prompt: str = "") -> SiliconFlowImage:
         """创建硅基流动图片提供商实例。"""
 
         return SiliconFlowImage(
@@ -563,13 +619,20 @@ class ProviderRouter:
             seed=self.config.siliconflow.seed,
             num_inference_steps=self.config.siliconflow.num_inference_steps,
             guidance_scale=self.config.siliconflow.guidance_scale,
-            negative_prompt=self.config.siliconflow.negative_prompt,
+            negative_prompt=self.merge_prompt_parts(
+                self.config.siliconflow.negative_prompt,
+                request_negative_prompt,
+            ),
             output_format=self.config.siliconflow.output_format,
             extra_parameters=parse_key_value_options(self.config.siliconflow.extra_parameters),
             proxy_settings=self._get_proxy_settings("siliconflow"),
         )
 
-    def create_novelai_provider(self) -> NovelAIImage:
+    def create_novelai_provider(
+        self,
+        request_negative_prompt: str = "",
+        novelai_mode: str = "",
+    ) -> NovelAIImage:
         """创建 NovelAI / NovelAPI 图片提供商实例。"""
 
         return NovelAIImage(
@@ -584,7 +647,12 @@ class ProviderRouter:
             steps=self.config.novelai.steps,
             scale=self.config.novelai.scale,
             seed=self.config.novelai.seed,
-            negative_prompt=self.config.novelai.negative_prompt,
+            positive_prompt=self.config.novelai.positive_prompt,
+            negative_prompt=self.merge_prompt_parts(
+                self.config.novelai.negative_prompt,
+                request_negative_prompt,
+            ),
+            mode=self.resolve_novelai_mode(novelai_mode),
             uc_preset=self.config.novelai.uc_preset,
             quality_toggle=self.config.novelai.quality_toggle,
             sm=self.config.novelai.sm,
@@ -598,7 +666,7 @@ class ProviderRouter:
             proxy_settings=self._get_proxy_settings("novelai"),
         )
 
-    def create_comfyui_provider(self) -> ComfyUIImage:
+    def create_comfyui_provider(self, request_negative_prompt: str = "") -> ComfyUIImage:
         """创建 ComfyUI 图片提供商实例。"""
 
         config = self.config.comfyui
@@ -618,8 +686,14 @@ class ProviderRouter:
             t2i_negative_prompt_node_id=config.t2i_negative_prompt_node_id,
             i2i_positive_prompt_node_id=config.i2i_positive_prompt_node_id,
             i2i_negative_prompt_node_id=config.i2i_negative_prompt_node_id,
-            t2i_negative_prompt=config.t2i_negative_prompt,
-            i2i_negative_prompt=config.i2i_negative_prompt,
+            t2i_negative_prompt=self.merge_prompt_parts(
+                config.t2i_negative_prompt,
+                request_negative_prompt,
+            ),
+            i2i_negative_prompt=self.merge_prompt_parts(
+                config.i2i_negative_prompt,
+                request_negative_prompt,
+            ),
             i2i_image_node_id=config.i2i_image_node_id,
             prompt_input_name=config.prompt_input_name,
             image_input_name=config.image_input_name,
@@ -720,31 +794,41 @@ class ProviderRouter:
         self,
         model: str,
         openai_compatibility_mode: str = "",
+        *,
+        request_negative_prompt: str = "",
+        novelai_mode: str = "",
     ) -> tuple[ImageProvider, ProviderName]:
         """根据模型解析并创建对应的平台实例，带实例缓存避免重复构造。"""
 
         provider_type = self.get_model_provider(model)
         normalized_model = model.strip()
+        normalized_negative_prompt = request_negative_prompt.strip()
+        normalized_novelai_mode = novelai_mode.strip().lower()
         # 非 OpenAI 平台的 provider 不依赖 compatibility_mode，缓存键用空串占位
         cache_key = (provider_type, normalized_model, openai_compatibility_mode.strip() if provider_type == "openai" else "")
-        cached_provider = self._provider_cache.get(cache_key)
-        if cached_provider is not None:
-            return cached_provider, provider_type
+        use_cache = not normalized_negative_prompt and not normalized_novelai_mode
+        if use_cache:
+            cached_provider = self._provider_cache.get(cache_key)
+            if cached_provider is not None:
+                return cached_provider, provider_type
 
         if provider_type == "aliyun":
-            provider = self.create_aliyun_provider()
+            provider = self.create_aliyun_provider(normalized_negative_prompt)
         elif provider_type == "google":
-            provider = self.create_google_provider()
+            provider = self.create_google_provider(normalized_negative_prompt)
         elif provider_type == "zhipu":
             provider = self.create_zhipu_provider()
         elif provider_type == "volcengine":
             provider = self.create_volcengine_provider()
         elif provider_type == "siliconflow":
-            provider = self.create_siliconflow_provider()
+            provider = self.create_siliconflow_provider(normalized_negative_prompt)
         elif provider_type == "novelai":
-            provider = self.create_novelai_provider()
+            provider = self.create_novelai_provider(
+                normalized_negative_prompt,
+                normalized_novelai_mode,
+            )
         elif provider_type == "comfyui":
-            provider = self.create_comfyui_provider()
+            provider = self.create_comfyui_provider(normalized_negative_prompt)
         elif provider_type == "openai":
             provider = self.create_openai_provider(
                 self.resolve_openai_compatibility_mode(openai_compatibility_mode, model),
@@ -752,5 +836,6 @@ class ProviderRouter:
             )
         else:
             raise RuntimeError(f"模型未归属于任何已配置提供商：{model}")
-        self._provider_cache[cache_key] = provider
+        if use_cache:
+            self._provider_cache[cache_key] = provider
         return provider, provider_type

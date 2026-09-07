@@ -23,6 +23,7 @@ class ImageRequestAttempt:
     model: str
     provider_name: ProviderName
     openai_compatibility_mode: str
+    novelai_mode: str = ""
     is_fallback: bool = False
 
 
@@ -295,6 +296,7 @@ class DrawService:
         model: str,
         task_type: str,
         openai_compatibility_mode: str,
+        novelai_mode: str = "",
         is_fallback: bool = False,
     ) -> ImageRequestAttempt:
         """构建一次图片请求尝试的最终模型与提供商信息。"""
@@ -314,6 +316,22 @@ class DrawService:
                     effective_model,
                     is_fallback,
                 )
+        elif provider_name == "novelai":
+            effective_model = self.router.resolve_novelai_model_for_mode(model, novelai_mode)
+            provider_name = self.router.get_model_provider(effective_model)
+            if provider_name != "novelai":
+                raise ValueError(
+                    f"NovelAI {self.router.resolve_novelai_mode(novelai_mode)} 模式需要模型 "
+                    f"{effective_model}，请先在 novelai.models 中启用该模型"
+                )
+            if effective_model != model:
+                self.ctx.logger.info(
+                    "NovelAI V3 模型按 mode 自动切换: original_model=%s effective_model=%s mode=%s is_fallback=%s",
+                    model,
+                    effective_model,
+                    self.router.resolve_novelai_mode(novelai_mode),
+                    is_fallback,
+                )
 
         image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(effective_model)
         if task_type == "edit_image" and image_edit_unsupported_reason:
@@ -326,6 +344,11 @@ class DrawService:
                 openai_compatibility_mode,
                 effective_model,
             ),
+            novelai_mode=(
+                self.router.resolve_novelai_mode(novelai_mode)
+                if provider_name == "novelai"
+                else ""
+            ),
             is_fallback=is_fallback,
         )
 
@@ -336,6 +359,7 @@ class DrawService:
         primary_effective_model: str,
         task_type: str,
         openai_compatibility_mode: str,
+        novelai_mode: str = "",
     ) -> ImageRequestAttempt | None:
         """在首选模型失败后构建备选模型请求。"""
 
@@ -361,6 +385,7 @@ class DrawService:
                 model=fallback_model,
                 task_type=task_type,
                 openai_compatibility_mode=openai_compatibility_mode,
+                novelai_mode=novelai_mode,
                 is_fallback=True,
             )
         except Exception as exc:
@@ -393,17 +418,39 @@ class DrawService:
         task_type: str,
         source_image_bytes_list: list[bytes],
         matched_message_id: str,
+        request_negative_prompt: str = "",
     ) -> list[bytes]:
         """执行单次图片请求尝试。"""
 
+        provider_name = attempt.provider_name
+        provider_prompt = prompt
+        provider_negative_prompt = request_negative_prompt.strip()
+        supports_negative_prompt = self.router.supports_separate_negative_prompt(
+            attempt.model,
+            task_type,
+        )
+        if provider_negative_prompt and not supports_negative_prompt:
+            provider_prompt = self.router.merge_prompt_parts(
+                provider_prompt,
+                f"Negative prompt: {provider_negative_prompt}",
+            )
+            provider_negative_prompt = ""
+        provider_prompt = await self.rewrite_prompt_to_english_if_needed(
+            provider_prompt,
+            provider_name,
+            attempt.model,
+        )
+        if provider_negative_prompt:
+            provider_negative_prompt = await self.rewrite_prompt_to_english_if_needed(
+                provider_negative_prompt,
+                provider_name,
+                attempt.model,
+            )
         image_platform, provider_name = self.router.require_platform_for_model(
             attempt.model,
             attempt.openai_compatibility_mode,
-        )
-        provider_prompt = await self.rewrite_prompt_to_english_if_needed(
-            prompt,
-            provider_name,
-            attempt.model,
+            request_negative_prompt=provider_negative_prompt,
+            novelai_mode=attempt.novelai_mode,
         )
 
         if task_type == "edit_image":
@@ -580,6 +627,8 @@ class DrawService:
         stream_id: str,
         resolved_model: str,
         openai_compatibility_mode: str = "",
+        novelai_mode: str = "",
+        request_negative_prompt: str = "",
         source_image_bytes_list: list[bytes] | None = None,
         matched_message_id: str = "",
         user_id: str = "",
@@ -644,6 +693,7 @@ class DrawService:
                 model=resolved_model,
                 task_type=task_type,
                 openai_compatibility_mode=openai_compatibility_mode,
+                novelai_mode=novelai_mode,
             )
             self.task_store.update_task(
                 task_id,
@@ -666,6 +716,7 @@ class DrawService:
                     task_type=task_type,
                     source_image_bytes_list=normalized_source_images,
                     matched_message_id=matched_message_id,
+                    request_negative_prompt=request_negative_prompt,
                 )
                 if not image_bytes_list:
                     raise RuntimeError("图片平台没有返回任何图片结果")
@@ -700,6 +751,7 @@ class DrawService:
                     primary_effective_model=primary_attempt.model,
                     task_type=task_type,
                     openai_compatibility_mode=openai_compatibility_mode,
+                    novelai_mode=novelai_mode,
                 )
                 if fallback_attempt is not None:
                     self.ctx.logger.warning(
@@ -727,6 +779,7 @@ class DrawService:
                             task_type=task_type,
                             source_image_bytes_list=normalized_source_images,
                             matched_message_id=matched_message_id,
+                            request_negative_prompt=request_negative_prompt,
                         )
                         if not image_bytes_list:
                             raise RuntimeError("图片平台没有返回任何图片结果")
@@ -906,6 +959,8 @@ class DrawService:
         resolved_model: str,
         resolved_openai_mode: str,
         provider_name: str,
+        novelai_mode: str = "",
+        request_negative_prompt: str = "",
         user_id: str = "",
         group_id: str = "",
         platform_name: str = "qq",
@@ -925,6 +980,7 @@ class DrawService:
             model=resolved_model,
             task_type=task_type,
             openai_compatibility_mode=resolved_openai_mode,
+            novelai_mode=novelai_mode,
         )
         if is_image_edit and self.router.get_image_edit_unsupported_reason(primary_attempt.model):
             self.ctx.logger.info(
@@ -948,6 +1004,7 @@ class DrawService:
                     model=fallback_model,
                     task_type=task_type,
                     openai_compatibility_mode=resolved_openai_mode,
+                    novelai_mode=novelai_mode,
                     is_fallback=True,
                 )
                 if fallback_attempt.model == primary_attempt.model:
@@ -990,6 +1047,8 @@ class DrawService:
                 stream_id=stream_id,
                 resolved_model=primary_attempt.model,
                 openai_compatibility_mode=primary_attempt.openai_compatibility_mode,
+                novelai_mode=primary_attempt.novelai_mode,
+                request_negative_prompt=request_negative_prompt,
                 source_image_bytes_list=normalized_source_images,
                 matched_message_id=matched_message_id,
                 user_id=user_id,
