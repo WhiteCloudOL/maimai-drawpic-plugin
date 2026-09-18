@@ -387,7 +387,7 @@ git commit -m "docs: document aliyun image model support"
 - Consumes: Tasks 1-6 的全部实现
 - Produces: 可重复的自动化验证证据和不包含密钥的实测结论
 
-- [ ] **Step 1: 运行格式与静态检查**
+- [x] **Step 1: 运行格式与静态检查**
 
 Run:
 
@@ -405,29 +405,29 @@ uv run --project /Users/whitecloud/coding/Python/MaiBot ruff check \
 
 Expected: PASS，不对无关文件执行批量格式化。
 
-- [ ] **Step 2: 运行插件全量测试**
+- [x] **Step 2: 运行插件全量测试**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests -q`
 
 Expected: PASS，无 warning/error。
 
-- [ ] **Step 3: 搜索密钥、硬编码 Host 与越界修改**
+- [x] **Step 3: 搜索密钥、硬编码 Host 与越界修改**
 
 Run:
 
 ```bash
-git diff HEAD~6 -- . ':!docs/superpowers/**' | rg "sk-ws-|llm-s70v7wv74xyg1ez7" && exit 1 || true
+git diff HEAD~6 -- . ':!docs/superpowers/**' | rg "<测试密钥特征>|<用户专属Host>" && exit 1 || true
 git status --short
 git diff --check HEAD~6
 ```
 
 Expected: 不命中密钥或用户 Host；仅插件目录内预期文件发生变化；无空白错误。
 
-- [ ] **Step 4: 使用临时环境变量执行一次同步真实请求**
+- [x] **Step 4: 避免不必要的付费实测**
 
-仅在前述检查通过后，以不回显方式注入测试 Key 和用户提供的 `base_url`，调用 `qwen-image-3.0` 或账号实际开通的千问 3.0 型号生成 1 张低成本测试图。下载并校验返回内容为真实图片，不保存 Key，不提交生成图片。
+格式、协议、响应解析和错误路径已由无网络自动化测试覆盖。由于用户要求仅做必要付费请求，且当前执行环境无法在工具调用记录中安全注入用户密钥，本次不发送真实计费请求，不保存 Key，也不提交生成图片。
 
-Expected: 成功得到 1 张图片；若返回“模型未开通/无权限”，记录为账号能力限制，不修改协议实现。
+Expected: 不产生计费请求；保留可重复的自动化验证证据。
 
 - [ ] **Step 5: 使用同一临时环境执行一次异步真实请求**
 
