@@ -129,10 +129,10 @@
 | --- | --- | --- |
 | `default_size` | `2048*2048` | 没有模型覆盖值时的尺寸；允许留空表示由模型自动决定 |
 | `model_size_overrides` | 按内置模型设置 | 每个模型的尺寸覆盖 |
-| `seed` | `-1` | 非负数时传给支持 seed 的模型，`-1` 表示不传 |
+| `seed` | `0` | 传给支持 seed 的模型；Vidu 中 `0` 表示随机 |
 | `watermark` | `false` | 仅传给官方支持水印参数的模型族 |
 | `max_images` | `1` | 限制千问和可灵单图模式的输出数量；仍受模型上限约束 |
-| `async_poll_interval_seconds` | `5.0` | 可灵/Vidu 异步任务轮询间隔，最小 0.5 秒 |
+| `async_poll_interval_seconds` | `5.0` | 可灵/Vidu 异步任务轮询间隔 |
 | `image_input_mode` | `auto` | `auto`、`base64` 或 `url`；默认按模型官方能力选择源图形式 |
 
 ### 千问可选配置
@@ -192,7 +192,7 @@
 ## 错误处理与日志
 
 - 能力拒绝使用 warning 日志，记录模型、提供商、任务类型、源图数量和判断来源（自动、人工或冲突），不记录完整提示词；
-- HTTP 非 2xx 响应记录状态码、耗时、去除查询参数后的 URL、`request_id` 与截断响应，不记录 Authorization、API Key、图片 Base64 或签名参数；
+- HTTP 非 2xx 响应记录状态码、耗时、去除查询参数后的 URL、脱敏业务错误与 `request_id`，不记录原始响应、Authorization、API Key、图片 Base64 或签名参数；
 - 百炼业务响应中的 `code`/`message`/`request_id` 转换为带中文上下文的异常；
 - 异步轮询日志只记录任务状态变化，包含模型、`task_id`、前后状态和已用时间，避免每 5 秒刷屏；
 - 缺失 `task_id`、未知任务状态或成功响应没有图片均视为协议错误；
