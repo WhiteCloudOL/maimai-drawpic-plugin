@@ -43,6 +43,7 @@ modules_to_check = [
     "core.provider_router",
     "core.draw_service",
     "core.config",
+    "providers.aliyun_models",
     "providers.aliyun_platform",
     "providers.google_platform",
     "providers.novelai_platform",

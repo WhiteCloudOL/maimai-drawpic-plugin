@@ -39,7 +39,7 @@
 - Produces: `validate_aliyun_task(model: str, task_type: str, image_count: int, configured_input_mode: str) -> str`
 - Produces: `build_aliyun_parameters(model: str, task_type: str, n: int, options: AliyunRequestOptions) -> dict[str, Any]`
 
-- [ ] **Step 1: 编写模型族、能力、输入模式和参数的失败测试**
+- [x] **Step 1: 编写模型族、能力、输入模式和参数的失败测试**
 
 在 `tests/test_aliyun.py` 建立与现有测试相同的包加载引导，测试至少包含：
 
@@ -80,17 +80,17 @@ def test_family_parameters_do_not_leak_between_models() -> None:
 
 同时覆盖千问纯文生图/纯编辑模型、Z-Image 固定 `n=1`、Vidu 固定 `n=1`、可灵 Omni 组图参数以及无效 `image_input_mode`。
 
-- [ ] **Step 2: 运行测试并确认因新模块缺失而失败**
+- [x] **Step 2: 运行测试并确认因新模块缺失而失败**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_aliyun.py -q`
 
 Expected: FAIL，原因是 `providers.aliyun_models` 不存在，而不是测试引导或依赖错误。
 
-- [ ] **Step 3: 实现最小模型注册表与参数构造器**
+- [x] **Step 3: 实现最小模型注册表与参数构造器**
 
 使用冻结 dataclass 和 `Literal` 类型，不执行网络操作。内置稳定及日期模型 ID，未知自定义模型返回 `legacy` profile 以兼容现有同步多模态行为。实现必须让族专用 `extra_parameters` 最后合并到对应族参数中，旧 `extra_parameters` 只供 `legacy` 使用。
 
-- [ ] **Step 4: 运行阿里云模型测试并确认通过**
+- [x] **Step 4: 运行阿里云模型测试并确认通过**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_aliyun.py -q`
 
