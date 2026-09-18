@@ -13,5 +13,7 @@
 - 日志要能定位任务链路：提交、开始执行、能力拒绝、审核失败、平台失败、发送成功至少包含 `task_id`、`task_type`、`provider`、`model`、`source_image_count` 等关键字段。
 - 日志严禁输出 API Key、Authorization、完整 Base64、带查询参数的签名 URL；上游错误应保留 HTTP 状态、业务错误码、脱敏 URL、request_id 与耗时。
 - 源图处理必须校验真实图片 Base64，同时保留适配器给出的原始 HTTP(S) URL；不要把图片描述文本当作源图传入。
+- 阿里云支持范围为 Qwen Image、Z-Image、可灵图像和 Vidu 图像；当前明确不接入万象、创意工具、图像翻译与视频生成。变更范围时应同步更新模型注册表、能力测试和 README。
+- 阿里云 `base_url` 必须来自配置且以 `/api/v1` 结尾；不要硬编码用户工作空间地址。可灵/Vidu 图生图必须使用适配器原图 URL，Qwen 默认保持 Base64。
 - 文档与 README 要同步用户可见行为，尤其是命令语义、配置项、版本号和不支持图生图时的处理方式。
 - 提交前至少运行 AST/compileall 与 `git diff --check`；本插件通常可用 `PYTHONPYCACHEPREFIX=/private/tmp/maimai_drawpic_pycache python3 -m compileall -q plugins/maimai-drawpic-plugin` 避免写入用户缓存目录。

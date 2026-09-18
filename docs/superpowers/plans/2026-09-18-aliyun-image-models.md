@@ -336,7 +336,7 @@ git commit -m "feat(aliyun): pass adapter image URLs to providers"
 - Documents: 阿里云必填/可选字段、模型清单、同步/异步行为、URL/Base64 模式、限制与示例
 - Changes: 插件版本 `1.11.2` -> `1.12.0`
 
-- [ ] **Step 1: 编写文档完整性失败检查**
+- [x] **Step 1: 编写文档完整性失败检查**
 
 Run:
 
@@ -346,7 +346,7 @@ rg -n "qwen-image-3\.0|z-image-turbo|kling/kling-v3|vidu/viduq3|base_url|image_i
 
 Expected: 至少部分关键项缺失，证明 README 尚未覆盖新增能力。
 
-- [ ] **Step 2: 更新 README 与 manifest**
+- [x] **Step 2: 更新 README、AGENTS 与 manifest**
 
 README 明确：
 
@@ -356,11 +356,11 @@ README 明确：
 - 工作空间专属地址示例使用占位符，不写用户实际 Host；
 - `auto` 默认使千问使用 Base64、可灵/Vidu 使用适配器 URL；
 - URL 缺失或过期时的明确错误及处理方式；
-- 万象、创意工具、视频模型不在本版本范围。
+- 万象、创意工具、图像翻译、视频模型不在本版本范围。
 
 将 `_manifest.json` 版本改为 `1.12.0`，不改依赖。
 
-- [ ] **Step 3: 检查 JSON 与文档关键项**
+- [x] **Step 3: 检查 JSON 与文档关键项**
 
 Run:
 

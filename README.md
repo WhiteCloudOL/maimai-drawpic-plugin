@@ -4,7 +4,7 @@
 
 # 🎨 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-1.11.2-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.12.0-informational.svg)
 ![MaiBot](https://img.shields.io/badge/MaiBot-1.x-blue.svg)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
@@ -49,7 +49,7 @@
 | OpenAI 及兼容接口 | ✅ | ✅ | 支持 Images API、Chat Completions 和多实例模型映射 |
 | Google Gemini / Imagen | ✅ | ✅ | 支持 Gemini 图片模型与 Imagen 图片模型 |
 | 智谱 | ✅ | ❌ | 适合中文提示词的图片生成 |
-| 阿里百炼 | ✅ | ✅ | 支持通义万相及 Qwen Image 系列 |
+| 阿里百炼 | ✅ | ✅ | 支持 Qwen Image 3.0/2.0、早期 Qwen Image、Z-Image、可灵图像与 Vidu 图像模型 |
 | 火山引擎 | ✅ | ✅ | 支持统一模型以及文生图、图生图模型分组 |
 | 硅基流动 | ✅ | ✅ | 支持平台开放的图片模型 |
 | NovelAI / NovelAPI | ✅ | ✅ | 支持 V3、V4、V4.5、V5 与兼容网关 |
@@ -131,6 +131,7 @@ models = "relay-image=gpt-image-2"
 | `permission_enabled` | 模型、OpenAI 兼容模式、NAI mode、NAI 画师标签和额度管理命令的权限开关 |
 | `admin_user_ids` | 插件管理员用户 ID 列表 |
 | `image_edit_unsupported_models` | 仅支持文生图的模型名单 |
+| `text_to_image_unsupported_models` | 仅支持图生图的模型名单 |
 | `prompt_review_enabled` | 提示词审核开关 |
 | `image_review_enabled` | 生成图片审核开关 |
 
@@ -169,7 +170,7 @@ negative_prompt_template = "3d render, oil painting, {negative_prompt}"
 | `openai.instances` | `name`、`base_url`、`api_key`、`models` |
 | `google` | `base_url`、`api_key`、`models`、`aspect_ratio` |
 | `zhipu` | `api_key`、`models`、`size` |
-| `aliyun` | `api_key`、`models`、`default_size` |
+| `aliyun` | `base_url`、`api_key`、`models`、`image_input_mode`、各模型族参数 |
 | `volcengine` | `api_key`、`unified_models`、`t2i_models`、`i2i_models`、`default_size` |
 | `siliconflow` | `api_key`、`models`、`image_size` |
 | `novelai` | `base_url`、`api_key`、`models`、`custom_models`、`default_mode`、`default_artist_tags`、`positive_prompt`、`negative_prompt`、`width`、`height` |
@@ -209,6 +210,70 @@ img2img_noise = 0.1
 - 图生图 `strength` 越高允许模型改动原图越多，越低则越接近原图；`noise` 可增加细节，但过高可能产生伪影。
 
 额外参数使用 `key=value` 格式，每行填写一项。值支持布尔值、数字和 JSON。
+
+### 阿里百炼
+
+1.12.0 起，阿里百炼支持 Qwen Image 3.0/2.0 与早期图像模型、Z-Image、可灵图像和 Vidu 图像模型。本插件不接入万象、创意工具、图像翻译或视频生成模型。
+
+必填配置：
+
+| 配置项 | 说明 |
+| --- | --- |
+| `base_url` | DashScope API 基础地址，必须以 `/api/v1` 结尾。可填写公网地址或百炼工作空间地址，不要填写 OpenAI 兼容地址 |
+| `api_key` | 与 Base URL 所属地域、工作空间匹配的 DashScope API Key |
+| `models` | 启用并参与路由的阿里云图片模型 ID 列表 |
+
+常用可选配置：
+
+| 配置项 | 说明 |
+| --- | --- |
+| `default_size` | 未按模型覆盖时使用的默认尺寸 |
+| `model_size_overrides` | 每行一个 `模型名=宽*高`，用于覆盖单个模型尺寸 |
+| `negative_prompt` | 支持该参数的模型所使用的默认反向提示词 |
+| `prompt_extend` | Qwen Image 提示词改写开关 |
+| `qwen_prompt_extend_mode` | Qwen Image 3.0 的 `direct` / `agent` 改写模式；图生图不支持 `agent` |
+| `qwen_enable_thinking` | Qwen Image 3.0 思考模式 |
+| `zimage_prompt_extend` | Z-Image 提示词改写；可能产生额外费用，默认关闭 |
+| `seed`、`watermark`、`max_images` | 随机种子、水印和单次输出数量上限 |
+| `image_input_mode` | `auto`、`base64` 或 `url`；不兼容模型的强制模式会在请求前报错 |
+| `async_poll_interval_seconds` | 可灵/Vidu 异步任务轮询间隔，默认 5 秒 |
+| `kling_aspect_ratio`、`kling_resolution` | 可灵宽高比和分辨率档位 |
+| `kling_result_type`、`kling_series_amount` | 可灵 Omni 单图/组图模式及组图数量 |
+| `qwen_extra_parameters`、`zimage_extra_parameters`、`kling_extra_parameters`、`vidu_extra_parameters` | 仅合并到对应模型族的扩展参数 |
+| `extra_parameters` | 仅用于未知旧兼容模型，不会串入已识别模型族 |
+
+配置示例：
+
+```toml
+[aliyun]
+enabled = true
+base_url = "https://dashscope.aliyuncs.com/api/v1"
+api_key = "your-aliyun-api-key"
+models = [
+  "qwen-image-3.0",
+  "z-image-turbo",
+  "kling/kling-v3-image-generation",
+  "vidu/viduq3-fast_reference2image",
+]
+default_size = "2048*2048"
+image_input_mode = "auto"
+async_poll_interval_seconds = 5.0
+kling_aspect_ratio = "1:1"
+kling_resolution = "1k"
+```
+
+已内置识别的模型：
+
+- Qwen Image 3.0：`qwen-image-3.0-pro`、`qwen-image-3.0`。
+- Qwen Image 2.0：`qwen-image-2.0-pro`、其日期快照、`qwen-image-2.0` 及其日期快照。
+- 早期 Qwen Image：`qwen-image-max`、`qwen-image-plus`、`qwen-image`、`qwen-image-edit-max`、`qwen-image-edit-plus`、`qwen-image-edit` 及已列入默认配置的日期快照。
+- Z-Image：`z-image-turbo`。
+- 可灵：`kling/kling-v3-image-generation`、`kling/kling-v3-omni-image-generation`。
+- Vidu：`vidu/vidu-image_reference2image`、`vidu/vidu-image-pro_reference2image`、`vidu/vidu-image-lite_reference2image`、`vidu/viduq3-fast_reference2image`、`vidu/viduq2-pro_reference2image`、`vidu/viduq2-fast_reference2image`。
+
+插件会自动识别模型的文生图/图生图能力，并在审核、扣额度、创建后台任务和调用付费接口之前拒绝不支持的任务。自定义或未来模型可通过 `general.image_edit_unsupported_models`（仅文生图）和 `general.text_to_image_unsupported_models`（仅图生图）人工覆盖；同一模型不能同时出现在两张名单中。
+
+Qwen Image 与 Z-Image 使用同步接口。可灵和 Vidu 使用异步提交与轮询接口。`image_input_mode = "auto"` 时，Qwen Image 使用 Base64 源图；可灵和 Vidu 使用消息适配器提供的原始 HTTP(S) 图片 URL。若适配器没有提供原图 URL，可灵/Vidu 图生图会明确失败，不会上传临时文件或静默回退到 Base64；文生图不需要源图 URL。
 
 ### OpenAI 兼容模式
 
