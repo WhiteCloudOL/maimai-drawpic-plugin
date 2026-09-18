@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from typing import Literal, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
 
 
+ReplyTextStyle = Literal["body", "muted"]
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyTextSpan:
+    """图片回复中具有独立视觉样式的一段文字。"""
+
+    text: str
+    style: ReplyTextStyle = "body"
+
+
 class PinkImageReplyRenderer:
     """把任意多行文本渲染为超级可爱的马卡龙少女心手帐风图片回复。"""
+
+    TITLE_FONT_SIZE = 32
+    BODY_FONT_SIZE = 26
+    MUTED_FONT_SIZE = 21
+    BODY_TEXT_COLOR = "#665359"
+    MUTED_TEXT_COLOR = "#9B8F93"
 
     def __init__(self) -> None:
         self.font_path = self._find_font_path()
@@ -15,23 +34,65 @@ class PinkImageReplyRenderer:
     def render(self, title: str, body: str, *, max_width: int = 1100) -> bytes:
         """渲染标题与正文，返回 PNG 字节。"""
 
-        normalized_title = title.strip()
         normalized_body = body.strip() or "无内容"
+        body_lines = [
+            [ReplyTextSpan(raw_line)]
+            for raw_line in normalized_body.splitlines()
+        ]
+        return self.render_rich(title, body_lines, max_width=max_width)
+
+    def render_rich(
+        self,
+        title: str,
+        body_lines: Sequence[Sequence[ReplyTextSpan]],
+        *,
+        max_width: int = 1100,
+    ) -> bytes:
+        """渲染可混合正文与弱化说明样式的多行图片回复。"""
+
+        normalized_title = title.strip()
+        normalized_lines = [list(line) for line in body_lines]
+        if not normalized_lines:
+            normalized_lines = [[ReplyTextSpan("无内容")]]
+
         # 考虑到顶部有徽章，标题字号可以稍微调整，拉开层次
-        title_font, body_font = self._load_fonts(title_size=32, body_size=26)
-        
+        title_font, body_font = self._load_fonts(
+            title_size=self.TITLE_FONT_SIZE,
+            body_size=self.BODY_FONT_SIZE,
+        )
+        muted_font = self._load_font(self.MUTED_FONT_SIZE)
+        body_fonts = {
+            "body": body_font,
+            "muted": muted_font,
+        }
+
         # 两侧留出足够宽裕的呼吸空间
         content_width = max_width - 220
-        
-        body_lines = self._wrap_text(normalized_body, body_font, content_width)
-        title_lines = self._wrap_text(normalized_title, title_font, content_width) if normalized_title else []
+
+        wrapped_body_lines = self._wrap_rich_lines(
+            normalized_lines,
+            body_fonts,
+            content_width,
+        )
+        title_lines = (
+            self._wrap_text(normalized_title, title_font, content_width)
+            if normalized_title
+            else []
+        )
 
         line_gap = 16
         title_gap = 26 if title_lines else 0
-        body_line_height = self._line_height(body_font) + line_gap
         title_line_height = self._line_height(title_font) + 12
-        text_height = len(title_lines) * title_line_height + title_gap + len(body_lines) * body_line_height
-        
+        body_line_heights = [
+            self._rich_line_height(line, body_fonts) + line_gap
+            for line in wrapped_body_lines
+        ]
+        text_height = (
+            len(title_lines) * title_line_height
+            + title_gap
+            + sum(body_line_heights)
+        )
+
         margin = 48
         image_width = max_width
         image_height = max(340, text_height + 230)
@@ -60,15 +121,104 @@ class PinkImageReplyRenderer:
                 draw.text((x, y), line, fill="#D64571", font=title_font)
                 y += title_line_height
             y += title_gap
-            
-        # 绘制正文
-        for line in body_lines:
-            draw.text((x, y), line, fill="#665359", font=body_font)
-            y += body_line_height
+
+        # 绘制正文；弱化说明使用更小的灰色字号，并与正文按基线居中。
+        for line, line_height in zip(
+            wrapped_body_lines,
+            body_line_heights,
+            strict=True,
+        ):
+            cursor_x = x
+            content_height = line_height - line_gap
+            for span in line:
+                font = body_fonts[span.style]
+                color = (
+                    self.MUTED_TEXT_COLOR
+                    if span.style == "muted"
+                    else self.BODY_TEXT_COLOR
+                )
+                span_height = self._line_height(font)
+                span_y = y + max((content_height - span_height) // 2, 0)
+                draw.text((cursor_x, span_y), span.text, fill=color, font=font)
+                cursor_x += self._text_width(span.text, font)
+            y += line_height
 
         buffer = BytesIO()
         image.save(buffer, format="PNG", optimize=True)
         return buffer.getvalue()
+
+    def _load_font(
+        self,
+        size: int,
+    ) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+        if self.font_path:
+            return ImageFont.truetype(self.font_path, size)
+        return ImageFont.load_default()
+
+    @classmethod
+    def _wrap_rich_lines(
+        cls,
+        lines: Sequence[Sequence[ReplyTextSpan]],
+        fonts: dict[ReplyTextStyle, ImageFont.FreeTypeFont | ImageFont.ImageFont],
+        max_width: int,
+    ) -> list[list[ReplyTextSpan]]:
+        """按每段文字自身字体换行，同时保留段落样式。"""
+
+        wrapped_lines: list[list[ReplyTextSpan]] = []
+        for logical_line in lines:
+            if not logical_line or not any(span.text for span in logical_line):
+                wrapped_lines.append([ReplyTextSpan("")])
+                continue
+
+            current_line: list[ReplyTextSpan] = []
+            current_width = 0
+            for span in logical_line:
+                font = fonts[span.style]
+                for segment in cls._split_segments(span.text):
+                    segment_width = cls._text_width(segment, font)
+                    if current_line and current_width + segment_width > max_width:
+                        wrapped_lines.append(current_line)
+                        current_line = []
+                        current_width = 0
+                        segment = segment.lstrip()
+                        segment_width = cls._text_width(segment, font)
+                    if segment_width > max_width:
+                        for part in cls._break_long_segment(segment, font, max_width):
+                            part_width = cls._text_width(part, font)
+                            if current_line and current_width + part_width > max_width:
+                                wrapped_lines.append(current_line)
+                                current_line = []
+                                current_width = 0
+                            cls._append_rich_span(current_line, part, span.style)
+                            current_width += part_width
+                        continue
+                    cls._append_rich_span(current_line, segment, span.style)
+                    current_width += segment_width
+            wrapped_lines.append(current_line or [ReplyTextSpan("")])
+        return wrapped_lines
+
+    @staticmethod
+    def _append_rich_span(
+        line: list[ReplyTextSpan],
+        text: str,
+        style: ReplyTextStyle,
+    ) -> None:
+        if not text:
+            return
+        if line and line[-1].style == style:
+            previous = line[-1]
+            line[-1] = ReplyTextSpan(previous.text + text, style)
+            return
+        line.append(ReplyTextSpan(text, style))
+
+    @classmethod
+    def _rich_line_height(
+        cls,
+        line: Sequence[ReplyTextSpan],
+        fonts: dict[ReplyTextStyle, ImageFont.FreeTypeFont | ImageFont.ImageFont],
+    ) -> int:
+        styles = {span.style for span in line} or {"body"}
+        return max(cls._line_height(fonts[style]) for style in styles)
 
     @classmethod
     def _find_font_path(cls) -> str:

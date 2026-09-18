@@ -9,7 +9,7 @@ from maibot_sdk.types import HookMode
 
 from .core.config import DrawpicConfig, migrate_legacy_review_config
 from .core.draw_service import DrawService
-from .core.image_reply import PinkImageReplyRenderer
+from .core.image_reply import PinkImageReplyRenderer, ReplyTextSpan
 from .core.message_utils import (
     SourceImageInput,
     cache_source_image_from_message,
@@ -31,6 +31,7 @@ from .core.texts import (
     build_novelai_text,
     build_quota_adjust_text,
     build_session_status_text,
+    build_style_reply_lines,
     build_style_text,
 )
 from .core.usage_store import QuotaPeriod, UserQuotaStore
@@ -944,6 +945,7 @@ class DrawpicPlugin(MaiBotPlugin):
         user_id: str,
         group_id: str,
         platform: str,
+        body_lines: list[list[ReplyTextSpan]] | None = None,
     ) -> bool:
         """按配置发送命令回复。"""
 
@@ -956,7 +958,11 @@ class DrawpicPlugin(MaiBotPlugin):
                 group_id=group_id,
                 platform=platform,
             )
-        image_bytes = self._image_reply_renderer.render(title, body)
+        image_bytes = (
+            self._image_reply_renderer.render_rich(title, body_lines)
+            if body_lines is not None
+            else self._image_reply_renderer.render(title, body)
+        )
         return await self._require_stream_service().send_image_bytes_with_fallback(
             image_bytes=image_bytes,
             stream_id=stream_id,
@@ -1509,22 +1515,31 @@ class DrawpicPlugin(MaiBotPlugin):
         "draw_styles",
         description=(
             "列出插件配置中当前可用的全平台绘图风格。用户要求指定风格、询问风格列表或准备调用 styled_draw 时，"
-            "必须先调用本工具，并从返回的 styles 中选择精确名称。"
+            "必须先调用本工具，依据 style_details 中的 description 与用户需求做语义匹配，"
+            "再从 styles 中选择精确名称。"
         ),
         parameters=DRAW_STYLES_TOOL_PARAMETERS_SCHEMA,
     )
     async def handle_draw_styles(self, **kwargs: Any) -> dict[str, Any]:
-        """向模型提供配置热重载后的最新风格名称。"""
+        """向模型提供配置热重载后的最新风格名称与描述。"""
 
         del kwargs
         resolver = self._require_style_prompt_resolver()
-        styles = resolver.get_style_names()
+        style_details = resolver.get_style_details()
+        styles = [detail.name for detail in style_details]
         return {
             "success": True,
             "message": (
                 "可用绘图风格：" + ("、".join(styles) if styles else "未配置；请改用普通 draw/edit_image")
             ),
             "styles": styles,
+            "style_details": [
+                {
+                    "name": detail.name,
+                    "description": detail.description,
+                }
+                for detail in style_details
+            ],
             "default_style": resolver.config.default_style.strip(),
         }
 
@@ -1532,7 +1547,8 @@ class DrawpicPlugin(MaiBotPlugin):
         "styled_draw",
         description=(
             "使用插件配置的全平台风格提示词模板执行文生图或图生图。"
-            "有风格需求时必须先调用 draw_styles 获取最新可用名称，再把精确名称填入 style。"
+            "有风格需求时必须先调用 draw_styles，依据 style_details.description 与用户需求做语义匹配，"
+            "再把精确名称填入 style。"
             "有真实源图片时自动图生图；没有源图片时文生图。style 不填时保持普通 draw/edit_image 行为。"
         ),
         parameters=STYLED_DRAW_TOOL_PARAMETERS_SCHEMA,
@@ -2106,13 +2122,15 @@ class DrawpicPlugin(MaiBotPlugin):
 
         style_name, prompt_payload = self._split_command_payload(rest_payload)
         if not style_name:
+            resolver = self._require_style_prompt_resolver()
             await self._send_command_reply(
                 title="绘图风格",
-                body=build_style_text(self._require_style_prompt_resolver()),
+                body=build_style_text(resolver),
                 stream_id=stream_id,
                 user_id=user_id,
                 group_id=group_id,
                 platform=platform,
+                body_lines=build_style_reply_lines(resolver),
             )
             return True, "已显示绘图风格列表", 2
 

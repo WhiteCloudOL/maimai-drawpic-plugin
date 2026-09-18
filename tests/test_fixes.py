@@ -47,6 +47,7 @@ for _sub in ("core", "providers"):
         sys.modules[_full_name] = _ns
 
 from maimai_drawpic_pkg.core.config import (  # noqa: E402
+    DrawpicConfig,
     NovelAIModelConfig,
     StyleConfig,
     StylePresetConfig,
@@ -81,6 +82,7 @@ from maimai_drawpic_pkg.core.stream_service import (  # noqa: E402
 )
 from maimai_drawpic_pkg.core.style_prompts import StylePromptResolver  # noqa: E402
 from maimai_drawpic_pkg.core.task_store import DrawTaskStore  # noqa: E402
+from maimai_drawpic_pkg.core.texts import build_style_text  # noqa: E402
 from maimai_drawpic_pkg.core.usage_store import UserQuotaStore  # noqa: E402
 from maimai_drawpic_pkg.providers.novelai_platform import NovelAIImage  # noqa: E402
 
@@ -462,6 +464,124 @@ def test_style_prompt_templates_are_platform_independent() -> None:
     image_only = resolver.resolve(style_name="水彩", user_prompt="")
     assert image_only.positive_prompt == "watercolor"
     print("[OK] style_prompts: 全平台风格模板与 NAI mode 相互独立")
+
+
+def test_style_descriptions_are_structured_and_backward_compatible() -> None:
+    """风格描述应保留名称兼容接口，并沿用启用与重名过滤规则。"""
+
+    legacy_preset = StylePresetConfig(name="旧风格")
+    assert legacy_preset.description == ""
+    assert DrawpicConfig().plugin.config_version == "2.25.0"
+
+    resolver = StylePromptResolver(
+        StyleConfig(
+            default_style="水彩",
+            presets=[
+                StylePresetConfig(
+                    name="水彩",
+                    description="柔和晕染的透明水彩质感，适合风景和插画",
+                ),
+                StylePresetConfig(name="赛博朋克"),
+                StylePresetConfig(
+                    name="  水彩  ",
+                    description="重复名称不应覆盖首项",
+                ),
+                StylePresetConfig(
+                    enabled=False,
+                    name="已禁用",
+                    description="不应出现",
+                ),
+            ],
+        )
+    )
+
+    assert resolver.get_style_names() == ["水彩", "赛博朋克"]
+    assert [
+        {"name": detail.name, "description": detail.description}
+        for detail in resolver.get_style_details()
+    ] == [
+        {
+            "name": "水彩",
+            "description": "柔和晕染的透明水彩质感，适合风景和插画",
+        },
+        {"name": "赛博朋克", "description": ""},
+    ]
+
+    style_text = build_style_text(resolver)
+    assert "默认风格：水彩" in style_text
+    assert "· 水彩 —— 柔和晕染的透明水彩质感，适合风景和插画" in style_text
+    assert "· 赛博朋克\n" in style_text
+    assert "赛博朋克 ——" not in style_text
+
+
+def test_draw_styles_tool_returns_description_details() -> None:
+    """draw_styles 应新增结构化明细，同时保持 styles 字符串列表不变。"""
+
+    plugin = _build_context_test_plugin()
+    plugin._style_prompt_resolver = StylePromptResolver(
+        StyleConfig(
+            default_style="水彩",
+            presets=[
+                StylePresetConfig(
+                    name="水彩",
+                    description="柔和晕染的透明水彩质感",
+                ),
+                StylePresetConfig(name="线稿"),
+            ],
+        )
+    )
+
+    result = asyncio.run(plugin.handle_draw_styles())
+
+    assert result["success"] is True
+    assert result["styles"] == ["水彩", "线稿"]
+    assert result["style_details"] == [
+        {"name": "水彩", "description": "柔和晕染的透明水彩质感"},
+        {"name": "线稿", "description": ""},
+    ]
+    assert result["default_style"] == "水彩"
+
+
+def test_style_description_reply_uses_muted_smaller_text() -> None:
+    """图片回复中的风格描述应使用较小字号与灰色，名称保持正文样式。"""
+
+    resolver = StylePromptResolver(
+        StyleConfig(
+            presets=[
+                StylePresetConfig(
+                    name="水彩",
+                    description="柔和晕染的透明水彩质感",
+                ),
+                StylePresetConfig(name="线稿"),
+            ]
+        )
+    )
+    texts_module = importlib.import_module(f"{_PKG_NAME}.core.texts")
+    renderer_module = importlib.import_module(f"{_PKG_NAME}.core.image_reply")
+
+    rich_lines = texts_module.build_style_reply_lines(resolver)
+    style_line = next(
+        line for line in rich_lines if line and line[0].text == "· 水彩"
+    )
+    plain_line = next(
+        line for line in rich_lines if line and line[0].text == "· 线稿"
+    )
+
+    assert [(span.text, span.style) for span in style_line] == [
+        ("· 水彩", "body"),
+        (" —— 柔和晕染的透明水彩质感", "muted"),
+    ]
+    assert [(span.text, span.style) for span in plain_line] == [
+        ("· 线稿", "body"),
+    ]
+    assert renderer_module.PinkImageReplyRenderer.MUTED_FONT_SIZE < (
+        renderer_module.PinkImageReplyRenderer.BODY_FONT_SIZE
+    )
+    assert renderer_module.PinkImageReplyRenderer.MUTED_TEXT_COLOR == "#9B8F93"
+
+    renderer = renderer_module.PinkImageReplyRenderer()
+    image_bytes = renderer.render_rich("绘图风格", rich_lines)
+    assert image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_novelai_v3_mode_switches_effective_model() -> None:
@@ -1651,6 +1771,9 @@ def main() -> None:
     test_novelai_defaults_include_v5_models()
     test_novelai_mode_and_prompt_merging()
     test_style_prompt_templates_are_platform_independent()
+    test_style_descriptions_are_structured_and_backward_compatible()
+    test_draw_styles_tool_returns_description_details()
+    test_style_description_reply_uses_muted_smaller_text()
     test_novelai_v3_mode_switches_effective_model()
     test_regular_novelai_route_uses_session_settings_and_prompts()
     test_novelai_mode_is_persisted_per_session()

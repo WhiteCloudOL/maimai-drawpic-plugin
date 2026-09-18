@@ -94,6 +94,7 @@ default_style = "水彩"
 [[style.presets]]
 enabled = true
 name = "水彩"
+description = "柔和晕染的透明水彩质感，色彩清淡，适合风景和插画"
 positive_prompt_template = "watercolor (medium), soft colors, {prompt}"
 negative_prompt_template = "oil painting, 3d, {negative_prompt}"
 
@@ -146,21 +147,25 @@ default_style = "赛博朋克"
 [[style.presets]]
 enabled = true
 name = "赛博朋克"
+description = "高对比霓虹光与青紫冷暖撞色，适合未来都市和人像"
 positive_prompt_template = "cyberpunk, neon lights, cinematic lighting, {prompt}"
 negative_prompt_template = "flat lighting, low contrast, {negative_prompt}"
 
 [[style.presets]]
 enabled = true
 name = "水彩"
+description = "柔和晕染的透明水彩质感，适合风景和插画"
 positive_prompt_template = "watercolor (medium), textured paper, {prompt}"
 negative_prompt_template = "3d render, oil painting, {negative_prompt}"
 ```
 
 - 正向模板中的 `{prompt}` 会替换为用户正向提示词；未写占位符时，用户提示词自动追加在模板后。
 - 反向模板中的 `{negative_prompt}` 会替换为用户反向提示词；未写占位符时，用户反向提示词自动追加。
+- `description` 是可选的风格语义描述，用于 `/绘图 风格` 展示并帮助模型匹配用户需求；留空时保持只显示名称的旧行为。
+- 图片形式的风格列表会用较小的灰色文字显示描述，名称仍保持正常正文字号。
 - NovelAI、阿里百炼、Imagen、硅基流动以及正反向节点模式的 ComfyUI 会使用独立反向字段。
 - 不支持独立反向提示词的平台会把反向内容以 `Negative prompt:` 合并到单个提示词中。
-- `draw_styles` 工具会把配置热重载后的风格名提供给模型；模型应先查询列表，再调用 `styled_draw`。
+- `draw_styles` 工具会把配置热重载后的风格名与描述提供给模型；模型应先依据描述匹配用户需求，再调用 `styled_draw`。
 
 ### 平台配置
 
@@ -425,8 +430,8 @@ OneBot v11 可填写数字 QQ 号和群号；QQ 官方适配器可填写用户 O
 | --- | --- |
 | `draw` | 根据文本及可选反向提示词创建后台文生图任务 |
 | `edit_image` | 根据文本、可选反向提示词编辑当前聊天中的真实图片 |
-| `draw_styles` | 返回配置热重载后的可用全平台风格名称；风格化绘图前先调用 |
-| `styled_draw` | 使用风格模板绘图；有真实源图时图生图，否则文生图；不填风格时保持普通绘图行为 |
+| `draw_styles` | 返回配置热重载后的风格名称与 `style_details` 描述；风格化绘图前先调用 |
+| `styled_draw` | 依据风格描述匹配精确名称后使用模板绘图；有真实源图时图生图，否则文生图 |
 | `draw_status` | 查询后台绘图任务状态 |
 
 图片编辑仅查询当前聊天流中的消息。单条消息最多收集 8 张源图，单张图片大小上限为 25 MiB。

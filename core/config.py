@@ -42,7 +42,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.24.0",
+        default="2.25.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -277,6 +277,18 @@ class StylePresetConfig(PluginConfigBase):
             "order": 1,
         },
     )
+    description: str = Field(
+        default="",
+        description="风格的语义描述，供用户查看并帮助模型匹配风格",
+        json_schema_extra={
+            "label": "风格描述（可选）",
+            "hint": "简要说明视觉特点和适用场景；留空时只显示风格名称",
+            "input_type": "textarea",
+            "x-widget": "textarea",
+            "rows": 2,
+            "order": 2,
+        },
+    )
     positive_prompt_template: str = Field(
         default="{prompt}",
         description="正向提示词模板。{prompt} 会替换为用户正向提示词；没有占位符时会自动追加用户提示词",
@@ -286,7 +298,7 @@ class StylePresetConfig(PluginConfigBase):
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 4,
-            "order": 2,
+            "order": 3,
         },
     )
     negative_prompt_template: str = Field(
@@ -298,7 +310,7 @@ class StylePresetConfig(PluginConfigBase):
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 4,
-            "order": 3,
+            "order": 4,
         },
     )
 

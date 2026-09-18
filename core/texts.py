@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .image_reply import ReplyTextSpan
 from .provider_router import ProviderRouter
 from .style_prompts import StylePromptResolver
 from .task_store import DrawTaskRecord
@@ -112,17 +113,57 @@ def build_session_status_text(
 def build_style_text(resolver: StylePromptResolver) -> str:
     """构建全平台风格模板说明。"""
 
-    style_names = resolver.get_style_names()
     return "\n".join(
+        "".join(span.text for span in line)
+        for line in build_style_reply_lines(resolver)
+    )
+
+
+def build_style_reply_lines(
+    resolver: StylePromptResolver,
+) -> list[list[ReplyTextSpan]]:
+    """构建风格列表的富文本行，描述使用弱化样式。"""
+
+    details = resolver.get_style_details()
+    lines: list[list[ReplyTextSpan]] = [
         [
-            f"默认风格：{resolver.config.default_style.strip() or '未配置（保持普通绘图）'}",
-            f"可用风格：{'、'.join(style_names) if style_names else '未配置'}",
-            "",
-            "用法：/绘图 风格 <风格名称> <正向提示词> [--反向 <反向提示词>]",
-            "同一条消息附带或引用图片时自动执行图生图，否则执行文生图。",
-            "插件风格适用于所有平台，只处理提示词模板，不会修改 NovelAI mode。",
+            ReplyTextSpan(
+                "默认风格："
+                f"{resolver.config.default_style.strip() or '未配置（保持普通绘图）'}"
+            )
+        ],
+        [ReplyTextSpan("")],
+        [ReplyTextSpan("可用风格：" if details else "可用风格：未配置")],
+    ]
+    for detail in details:
+        style_line = [ReplyTextSpan(f"· {detail.name}")]
+        if detail.description:
+            style_line.append(
+                ReplyTextSpan(
+                    f" —— {detail.description}",
+                    style="muted",
+                )
+            )
+        lines.append(style_line)
+    lines.extend(
+        [
+            [ReplyTextSpan("")],
+            [
+                ReplyTextSpan(
+                    "用法：/绘图 风格 <风格名称> <正向提示词> "
+                    "[--反向 <反向提示词>]"
+                )
+            ],
+            [ReplyTextSpan("同一条消息附带或引用图片时自动执行图生图，否则执行文生图。")],
+            [
+                ReplyTextSpan(
+                    "插件风格适用于所有平台，只处理提示词模板，"
+                    "不会修改 NovelAI mode。"
+                )
+            ],
         ]
     )
+    return lines
 
 
 def build_novelai_text(router: ProviderRouter, session_preference: dict[str, str]) -> str:

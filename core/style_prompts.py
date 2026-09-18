@@ -15,6 +15,14 @@ class ResolvedStylePrompt:
     negative_prompt: str
 
 
+@dataclass(frozen=True, slots=True)
+class StylePresetDetail:
+    """提供给用户和模型的风格名称与语义描述。"""
+
+    name: str
+    description: str
+
+
 def merge_prompt_parts(parts: Iterable[str]) -> str:
     """按顺序合并非空提示词片段。"""
 
@@ -33,7 +41,12 @@ class StylePromptResolver:
     def get_style_names(self) -> list[str]:
         """返回已启用且名称唯一的风格列表。"""
 
-        names: list[str] = []
+        return [detail.name for detail in self.get_style_details()]
+
+    def get_style_details(self) -> list[StylePresetDetail]:
+        """返回已启用且名称唯一的风格名称与描述。"""
+
+        details: list[StylePresetDetail] = []
         seen: set[str] = set()
         for preset in self.config.presets:
             normalized_name = preset.name.strip()
@@ -41,8 +54,13 @@ class StylePromptResolver:
             if not preset.enabled or not normalized_name or lookup_name in seen:
                 continue
             seen.add(lookup_name)
-            names.append(normalized_name)
-        return names
+            details.append(
+                StylePresetDetail(
+                    name=normalized_name,
+                    description=preset.description.strip(),
+                )
+            )
+        return details
 
     def resolve(
         self,
