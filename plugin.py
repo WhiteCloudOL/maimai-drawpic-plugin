@@ -11,10 +11,11 @@ from .core.config import DrawpicConfig, migrate_legacy_review_config
 from .core.draw_service import DrawService
 from .core.image_reply import PinkImageReplyRenderer
 from .core.message_utils import (
+    SourceImageInput,
     cache_source_image_from_message,
-    collect_command_source_images,
+    collect_command_source_image_inputs,
     decode_image_base64,
-    find_source_images,
+    find_source_image_inputs,
 )
 from .core.moderation import DrawpicModerationService
 from .core.platform_identity import is_qq_identifier, is_qq_platform
@@ -1140,6 +1141,7 @@ class DrawpicPlugin(MaiBotPlugin):
         request_negative_prompt: str = "",
         requested_novelai_mode: str = "",
         source_image_bytes_list: list[bytes] | None = None,
+        source_image_urls: list[str] | None = None,
         matched_message_id: str = "",
         user_id: str = "",
         group_id: str = "",
@@ -1168,6 +1170,11 @@ class DrawpicPlugin(MaiBotPlugin):
         resolved_group_id = runtime_context["group_id"]
         resolved_platform = runtime_context["platform"]
         normalized_source_images = source_image_bytes_list or []
+        normalized_source_urls = source_image_urls or [""] * len(
+            normalized_source_images
+        )
+        if len(normalized_source_urls) != len(normalized_source_images):
+            raise ValueError("源图 URL 数量必须与源图数量一致")
         session_preference = self._get_session_preference(
             resolved_stream_id,
             resolved_user_id,
@@ -1191,16 +1198,37 @@ class DrawpicPlugin(MaiBotPlugin):
         provider_name = self._require_router().get_model_provider(resolved_model)
         if not provider_name:
             raise ValueError(f"指定模型不可用：{resolved_model}")
-        # 火山引擎文生图/图生图模型分离，提前检查时需用自动切换后的模型判断图生图能力
+        task_type = "edit_image" if normalized_source_images else "draw"
+        # 火山引擎文生图/图生图模型分离，提前检查时需用自动切换后的模型判断任务能力。
         check_model = resolved_model
-        if provider_name == "volcengine" and normalized_source_images:
+        if provider_name == "volcengine":
             try:
-                check_model = self._require_router().resolve_volcengine_model_for_task(resolved_model, "edit_image")
+                check_model = self._require_router().resolve_volcengine_model_for_task(
+                    resolved_model,
+                    task_type,
+                )
             except ValueError:
                 check_model = resolved_model
-        image_edit_unsupported_reason = self._require_router().get_image_edit_unsupported_reason(check_model)
-        if normalized_source_images and image_edit_unsupported_reason:
-            raise ValueError(f"{image_edit_unsupported_reason}。请改用 /绘图 文生图 <prompt>，或切换到支持图生图的模型")
+        capability = self._require_router().evaluate_model_task_capability(
+            check_model,
+            task_type,
+        )
+        if not capability.allowed:
+            self.ctx.logger.warning(
+                "拒绝提交模型不支持的绘图任务: model=%s provider=%s task_type=%s "
+                "capability_source=%s source_image_count=%s reason=%s",
+                check_model,
+                provider_name,
+                task_type,
+                capability.source,
+                len(normalized_source_images),
+                capability.reason,
+            )
+            task_hint = "图生图" if task_type == "draw" else "文生图"
+            raise ValueError(
+                f"{capability.reason}。请改用 /绘图 {task_hint} <prompt>，"
+                "或切换到支持当前任务的模型"
+            )
 
         await draw_service.review_prompt_or_raise(prompt)
         quota_allowed, quota_message, quota_key = self._reserve_draw_quota(
@@ -1245,6 +1273,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 group_id=resolved_group_id,
                 platform_name=resolved_platform,
                 source_image_bytes_list=normalized_source_images,
+                source_image_urls=normalized_source_urls,
                 matched_message_id=matched_message_id,
                 notify_start=notify_start,
                 on_task_unsuccessful=_handle_task_unsuccessful,
@@ -1384,10 +1413,21 @@ class DrawpicPlugin(MaiBotPlugin):
                     check_model = router.resolve_volcengine_model_for_task(resolved_model, "edit_image")
                 except ValueError:
                     check_model = resolved_model
-            image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(check_model)
-            if image_edit_unsupported_reason:
+            capability = router.evaluate_model_task_capability(
+                check_model,
+                "edit_image",
+            )
+            if not capability.allowed:
+                self.ctx.logger.warning(
+                    "edit_image 拒绝不支持的模型任务: model=%s provider=%s "
+                    "task_type=edit_image capability_source=%s reason=%s",
+                    check_model,
+                    provider_name,
+                    capability.source,
+                    capability.reason,
+                )
                 await self._send_draw_failure_notice(
-                    reason=image_edit_unsupported_reason,
+                    reason=capability.reason,
                     stream_id=normalized_stream_id,
                     user_id=normalized_user_id,
                     group_id=normalized_group_id,
@@ -1396,7 +1436,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 return {
                     "success": False,
                     "message": (
-                        f"{image_edit_unsupported_reason}，无法调用 edit_image 图生图。"
+                        f"{capability.reason}，无法调用 edit_image 图生图。"
                         "请自然告知用户当前只能文生图，不能基于已有图片修改，或提示切换到支持图生图的模型。"
                     ),
                 }
@@ -1412,14 +1452,18 @@ class DrawpicPlugin(MaiBotPlugin):
                 normalized_stream_id,
                 message=current_message,
             )
-            image_base64_list, matched_message_id = await find_source_images(
+            source_image_inputs, matched_message_id = await find_source_image_inputs(
                 self.ctx,
                 lookup_stream_ids,
                 source_message_id=source_message_id,
                 source_image_base64=source_image_base64,
                 current_message=current_message if isinstance(current_message, dict) else None,
             )
-            source_image_bytes_list = [decode_image_base64(image_base64) for image_base64 in image_base64_list]
+            source_image_bytes_list = [
+                decode_image_base64(image.base64_data)
+                for image in source_image_inputs
+            ]
+            source_image_urls = [image.url for image in source_image_inputs]
             self.ctx.logger.info(
                 "edit_image 已收集源图: stream_id=%s lookup_stream_ids=%s source_image_count=%s matched_message_id=%s",
                 normalized_stream_id,
@@ -1434,6 +1478,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 requested_openai_compatibility_mode=resolved_openai_mode,
                 request_negative_prompt=negative_prompt.strip(),
                 source_image_bytes_list=source_image_bytes_list,
+                source_image_urls=source_image_urls,
                 matched_message_id=matched_message_id,
                 user_id=normalized_user_id,
                 group_id=normalized_group_id,
@@ -1532,10 +1577,10 @@ class DrawpicPlugin(MaiBotPlugin):
                 runtime_context["stream_id"],
                 message=current_message,
             )
-            image_base64_list: list[str] = []
+            source_image_inputs: list[SourceImageInput] = []
             matched_message_id = ""
             if source_image_base64.strip() or source_message_id.strip():
-                image_base64_list, matched_message_id = await find_source_images(
+                source_image_inputs, matched_message_id = await find_source_image_inputs(
                     self.ctx,
                     lookup_stream_ids,
                     source_message_id=source_message_id,
@@ -1543,24 +1588,27 @@ class DrawpicPlugin(MaiBotPlugin):
                     current_message=current_message if isinstance(current_message, dict) else None,
                 )
             elif isinstance(current_message, dict):
-                image_base64_list = await collect_command_source_images(
+                source_image_inputs = await collect_command_source_image_inputs(
                     self.ctx,
                     lookup_stream_ids,
                     current_message,
                 )
-                if image_base64_list:
+                if source_image_inputs:
                     matched_message_id = str(current_message.get("message_id") or "").strip()
 
-            if not resolved_prompt.positive_prompt and not image_base64_list:
+            if not resolved_prompt.positive_prompt and not source_image_inputs:
                 raise ValueError("文生图提示词不能为空")
             source_image_bytes_list = [
-                decode_image_base64(image_base64) for image_base64 in image_base64_list
+                decode_image_base64(image.base64_data)
+                for image in source_image_inputs
             ]
+            source_image_urls = [image.url for image in source_image_inputs]
             return await self._start_background_image_request(
                 prompt=resolved_prompt.positive_prompt,
                 request_negative_prompt=resolved_prompt.negative_prompt,
                 stream_id=runtime_context["stream_id"],
                 source_image_bytes_list=source_image_bytes_list,
+                source_image_urls=source_image_urls,
                 matched_message_id=matched_message_id,
                 user_id=runtime_context["user_id"],
                 group_id=runtime_context["group_id"],
@@ -1847,12 +1895,23 @@ class DrawpicPlugin(MaiBotPlugin):
                 check_model = router.resolve_volcengine_model_for_task(resolved_model, "edit_image")
             except ValueError:
                 check_model = resolved_model
-        image_edit_unsupported_reason = router.get_image_edit_unsupported_reason(check_model)
-        if image_edit_unsupported_reason:
+        capability = router.evaluate_model_task_capability(
+            check_model,
+            "edit_image",
+        )
+        if not capability.allowed:
+            self.ctx.logger.warning(
+                "/绘图 图生图拒绝不支持的模型任务: model=%s provider=%s "
+                "task_type=edit_image capability_source=%s reason=%s",
+                check_model,
+                provider_name,
+                capability.source,
+                capability.reason,
+            )
             await self._send_command_reply(
                 title="当前模型不支持图生图",
                 body=(
-                    f"{image_edit_unsupported_reason}。\n"
+                    f"{capability.reason}。\n"
                     "请先用 /绘图 模型 <模型名> 设置支持图生图的首选模型，或改用 /绘图 文生图 <prompt>。"
                 ),
                 stream_id=stream_id,
@@ -1877,7 +1936,7 @@ class DrawpicPlugin(MaiBotPlugin):
             return False, "图生图配置错误", 1
 
         try:
-            image_base64_list, lookup_stream_ids, matched_message_id = await self._collect_forced_command_source_images(
+            source_image_inputs, lookup_stream_ids, matched_message_id = await self._collect_forced_command_source_images(
                 message=message,
                 stream_id=stream_id,
                 user_id=user_id,
@@ -1896,7 +1955,7 @@ class DrawpicPlugin(MaiBotPlugin):
             )
             return False, "读取源图片失败", 1
 
-        if not image_base64_list:
+        if not source_image_inputs:
             await self._send_command_reply(
                 title="未找到可用图片",
                 body="没有找到可用于图生图的图片。\n请在 /绘图 图生图 <prompt> 同一条消息中附带图片，或回复/引用包含图片的消息。",
@@ -1908,7 +1967,11 @@ class DrawpicPlugin(MaiBotPlugin):
             return False, "未找到可用图片", 1
 
         try:
-            source_image_bytes_list = [decode_image_base64(image_base64) for image_base64 in image_base64_list]
+            source_image_bytes_list = [
+                decode_image_base64(image.base64_data)
+                for image in source_image_inputs
+            ]
+            source_image_urls = [image.url for image in source_image_inputs]
             self.ctx.logger.info(
                 "/绘图 图生图已收集源图: stream_id=%s lookup_stream_ids=%s source_image_count=%s message_id=%s",
                 stream_id,
@@ -1923,6 +1986,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 requested_openai_compatibility_mode=session_preference["openai_compatibility_mode"],
                 request_negative_prompt=negative_prompt,
                 source_image_bytes_list=source_image_bytes_list,
+                source_image_urls=source_image_urls,
                 matched_message_id=matched_message_id,
                 user_id=user_id,
                 group_id=group_id,
@@ -1969,7 +2033,7 @@ class DrawpicPlugin(MaiBotPlugin):
         user_id: str,
         group_id: str,
         platform: str,
-    ) -> tuple[list[str], list[str], str]:
+    ) -> tuple[list[SourceImageInput], list[str], str]:
         """收集强制绘图命令显式携带或引用的源图。"""
 
         lookup_stream_id = await self._require_stream_service().resolve_live_stream_id(
@@ -1984,13 +2048,13 @@ class DrawpicPlugin(MaiBotPlugin):
             stream_id,
             message=command_message,
         )
-        image_base64_list = await collect_command_source_images(
+        source_image_inputs = await collect_command_source_image_inputs(
             self.ctx,
             lookup_stream_ids,
             command_message,
         )
         matched_message_id = str(command_message.get("message_id") or "").strip()
-        return image_base64_list, lookup_stream_ids, matched_message_id
+        return source_image_inputs, lookup_stream_ids, matched_message_id
 
     @staticmethod
     def _split_negative_prompt(prompt: str) -> tuple[str, str]:
@@ -2009,17 +2073,24 @@ class DrawpicPlugin(MaiBotPlugin):
         user_id: str,
         group_id: str,
         platform: str,
-    ) -> tuple[list[bytes], str]:
+    ) -> tuple[list[bytes], list[str], str]:
         """仅收集当前指令直接携带或明确引用的图片，不扫描无关历史图片。"""
 
-        image_base64_list, _, matched_message_id = await self._collect_forced_command_source_images(
+        source_image_inputs, _, matched_message_id = await self._collect_forced_command_source_images(
             message=message,
             stream_id=stream_id,
             user_id=user_id,
             group_id=group_id,
             platform=platform,
         )
-        return [decode_image_base64(image) for image in image_base64_list], matched_message_id
+        return (
+            [
+                decode_image_base64(image.base64_data)
+                for image in source_image_inputs
+            ],
+            [image.url for image in source_image_inputs],
+            matched_message_id,
+        )
 
     async def _handle_style_command(
         self,
@@ -2052,7 +2123,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 user_prompt=positive_prompt,
                 user_negative_prompt=negative_prompt,
             )
-            source_images, matched_message_id = await self._collect_optional_command_source_images(
+            source_images, source_image_urls, matched_message_id = await self._collect_optional_command_source_images(
                 message=message,
                 stream_id=stream_id,
                 user_id=user_id,
@@ -2066,6 +2137,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 request_negative_prompt=resolved_prompt.negative_prompt,
                 stream_id=stream_id,
                 source_image_bytes_list=source_images,
+                source_image_urls=source_image_urls,
                 matched_message_id=matched_message_id,
                 user_id=user_id,
                 group_id=group_id,
@@ -2302,9 +2374,10 @@ class DrawpicPlugin(MaiBotPlugin):
         model = selected_model if router.get_model_provider(selected_model) == "novelai" else router.get_default_novelai_model()
         try:
             source_images: list[bytes] = []
+            source_image_urls: list[str] = []
             matched_message_id = ""
             if forced_task_type != "draw":
-                source_images, matched_message_id = await self._collect_optional_command_source_images(
+                source_images, source_image_urls, matched_message_id = await self._collect_optional_command_source_images(
                     message=message,
                     stream_id=stream_id,
                     user_id=user_id,
@@ -2322,6 +2395,7 @@ class DrawpicPlugin(MaiBotPlugin):
                 requested_novelai_mode=requested_mode,
                 stream_id=stream_id,
                 source_image_bytes_list=source_images,
+                source_image_urls=source_image_urls,
                 matched_message_id=matched_message_id,
                 user_id=user_id,
                 group_id=group_id,
@@ -2588,7 +2662,7 @@ class DrawpicPlugin(MaiBotPlugin):
 
             try:
                 try:
-                    image_base64_list, lookup_stream_ids, matched_message_id = await self._collect_forced_command_source_images(
+                    source_image_inputs, lookup_stream_ids, matched_message_id = await self._collect_forced_command_source_images(
                         message=kwargs.get("message"),
                         stream_id=normalized_stream_id,
                         user_id=normalized_user_id,
@@ -2610,12 +2684,12 @@ class DrawpicPlugin(MaiBotPlugin):
                     )
                     return False, "文生图指令源图检查失败", 1
 
-                if image_base64_list:
+                if source_image_inputs:
                     self.ctx.logger.info(
                         "/绘图 文生图检测到源图，拒绝强制文生图: stream_id=%s lookup_stream_ids=%s source_image_count=%s message_id=%s",
                         normalized_stream_id,
                         lookup_stream_ids,
-                        len(image_base64_list),
+                        len(source_image_inputs),
                         matched_message_id,
                     )
                     await self._send_command_reply(

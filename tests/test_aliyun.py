@@ -687,3 +687,152 @@ def test_manual_task_capability_lists_override_automatic_detection() -> None:
     assert not conflict.allowed
     assert conflict.source == "manual_conflict"
     assert "同时" in conflict.reason and "名单" in conflict.reason
+
+
+def test_draw_service_passes_source_urls_only_to_aliyun_adapter() -> None:
+    """后台链路应向阿里云传 URL，同时保持其他适配器原有签名。"""
+
+    _bootstrap_plugin_package()
+    draw_module = import_module(f"{_PKG_NAME}.core.draw_service")
+    provider_class = _aliyun_provider_class()
+    png_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+"
+        "A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+
+    class _Logger:
+        def info(self, *_args: Any) -> None:
+            return None
+
+        def warning(self, *_args: Any) -> None:
+            return None
+
+    class _Context:
+        logger = _Logger()
+
+    class _AliyunProvider(provider_class):
+        def __init__(self) -> None:
+            super().__init__(
+                api_key="test-key",
+                base_url="https://workspace.example/api/v1",
+            )
+            self.received_urls: list[str] = []
+
+        async def edit_images_with_urls(
+            self,
+            prompt: str,
+            model: str,
+            image_bytes_list: list[bytes],
+            image_urls: list[str],
+            n: int = 1,
+        ) -> list[bytes]:
+            del prompt, model, image_bytes_list, n
+            self.received_urls = image_urls
+            return [png_bytes]
+
+        async def edit_images(self, *args: Any, **kwargs: Any) -> list[bytes]:
+            del args, kwargs
+            raise AssertionError("阿里云不应调用旧 edit_images")
+
+    class _OtherProvider:
+        def __init__(self) -> None:
+            self.called = False
+
+        async def edit_images(
+            self,
+            prompt: str,
+            model: str,
+            image_bytes_list: list[bytes],
+            n: int,
+        ) -> list[bytes]:
+            del prompt, model, image_bytes_list, n
+            self.called = True
+            return [png_bytes]
+
+    class _Router:
+        def __init__(self, provider: Any, provider_name: str) -> None:
+            self.provider = provider
+            self.provider_name = provider_name
+
+        def supports_separate_negative_prompt(self, *_args: Any) -> bool:
+            return False
+
+        def should_rewrite_prompt_to_english(self, *_args: Any) -> bool:
+            return False
+
+        def require_platform_for_model(self, *_args: Any, **_kwargs: Any):
+            return self.provider, self.provider_name
+
+    async def _run() -> None:
+        source_urls = ["https://cdn.example/source.png"]
+        aliyun_provider = _AliyunProvider()
+        aliyun_service = draw_module.DrawService.__new__(draw_module.DrawService)
+        aliyun_service.ctx = _Context()
+        aliyun_service.router = _Router(aliyun_provider, "aliyun")
+        aliyun_service.resolve_request_timeout_seconds = lambda: 10
+        aliyun_attempt = draw_module.ImageRequestAttempt(
+            model="kling/kling-v3-image-generation",
+            provider_name="aliyun",
+            openai_compatibility_mode="auto",
+        )
+        await aliyun_service._run_image_request_attempt(
+            attempt=aliyun_attempt,
+            prompt="保持主体",
+            task_id="task-1",
+            task_type="edit_image",
+            source_image_bytes_list=[png_bytes],
+            source_image_urls=source_urls,
+            matched_message_id="msg-1",
+        )
+        assert aliyun_provider.received_urls == source_urls
+
+        other_provider = _OtherProvider()
+        other_service = draw_module.DrawService.__new__(draw_module.DrawService)
+        other_service.ctx = _Context()
+        other_service.router = _Router(other_provider, "openai")
+        other_service.resolve_request_timeout_seconds = lambda: 10
+        other_attempt = draw_module.ImageRequestAttempt(
+            model="other-image-model",
+            provider_name="openai",
+            openai_compatibility_mode="auto",
+        )
+        await other_service._run_image_request_attempt(
+            attempt=other_attempt,
+            prompt="保持主体",
+            task_id="task-2",
+            task_type="edit_image",
+            source_image_bytes_list=[png_bytes],
+            source_image_urls=source_urls,
+            matched_message_id="msg-1",
+        )
+        assert other_provider.called
+
+    asyncio.run(_run())
+
+
+def test_draw_service_rejects_unsupported_draw_during_attempt_build() -> None:
+    """中央后台层应在任务创建前拒绝模型不支持的文生图能力。"""
+
+    _bootstrap_plugin_package()
+    draw_module = import_module(f"{_PKG_NAME}.core.draw_service")
+    config = _config_module().DrawpicConfig()
+    config.aliyun.models = ["qwen-image-edit"]
+    service = draw_module.DrawService.__new__(draw_module.DrawService)
+    service.router = _provider_router_class()(config)
+    service.ctx = types.SimpleNamespace(
+        logger=types.SimpleNamespace(
+            info=lambda *_args: None,
+            warning=lambda *_args: None,
+        )
+    )
+
+    try:
+        service._build_image_request_attempt(
+            model="qwen-image-edit",
+            task_type="draw",
+            openai_compatibility_mode="auto",
+        )
+    except ValueError as exc:
+        assert "不支持文生图" in str(exc)
+    else:
+        raise AssertionError("纯编辑模型的文生图任务应在构建阶段被拒绝")

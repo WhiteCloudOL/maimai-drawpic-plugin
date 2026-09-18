@@ -651,6 +651,11 @@ def test_background_tasks_are_concurrent_and_user_isolated() -> None:
             return ""
 
         @staticmethod
+        def evaluate_model_task_capability(model: str, task_type: str):
+            del model, task_type
+            return types.SimpleNamespace(allowed=True, reason="", source="test")
+
+        @staticmethod
         def resolve_fallback_model(primary_model: str = "") -> str:
             del primary_model
             return ""
@@ -1220,6 +1225,7 @@ def test_style_negative_prompt_routing() -> None:
             task_id="task",
             task_type="draw",
             source_image_bytes_list=[],
+            source_image_urls=[],
             matched_message_id="",
             request_negative_prompt="blurry",
         )

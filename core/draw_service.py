@@ -9,6 +9,7 @@ import inspect
 import re
 import unicodedata
 
+from ..providers.aliyun_platform import AliyunImage
 from .moderation import DrawpicModerationService
 from .image_utils import validate_image_bytes
 from .provider_router import ProviderName, ProviderRouter
@@ -335,9 +336,25 @@ class DrawService:
                     is_fallback,
                 )
 
-        image_edit_unsupported_reason = self.router.get_image_edit_unsupported_reason(effective_model)
-        if task_type == "edit_image" and image_edit_unsupported_reason:
-            raise ValueError(f"{image_edit_unsupported_reason}。请改用文生图，或切换到支持图生图的模型")
+        capability = self.router.evaluate_model_task_capability(
+            effective_model,
+            task_type,
+        )
+        if not capability.allowed:
+            self.ctx.logger.warning(
+                "拒绝构建不支持的绘图尝试: model=%s provider=%s task_type=%s "
+                "capability_source=%s reason=%s is_fallback=%s",
+                effective_model,
+                provider_name,
+                task_type,
+                capability.source,
+                capability.reason,
+                is_fallback,
+            )
+            task_hint = "图生图" if task_type == "draw" else "文生图"
+            raise ValueError(
+                f"{capability.reason}。请改用{task_hint}，或切换到支持当前任务的模型"
+            )
 
         return ImageRequestAttempt(
             model=effective_model,
@@ -426,6 +443,7 @@ class DrawService:
         task_id: str,
         task_type: str,
         source_image_bytes_list: list[bytes],
+        source_image_urls: list[str],
         matched_message_id: str,
         request_negative_prompt: str = "",
     ) -> list[bytes]:
@@ -476,6 +494,15 @@ class DrawService:
                 matched_message_id,
                 provider_prompt[:120],
             )
+            if isinstance(image_platform, AliyunImage):
+                return await self.run_provider_call(
+                    image_platform.edit_images_with_urls,
+                    provider_prompt,
+                    attempt.model,
+                    source_image_bytes_list,
+                    source_image_urls,
+                    1,
+                )
             return await self.run_provider_call(
                 image_platform.edit_images,
                 provider_prompt,
@@ -641,6 +668,7 @@ class DrawService:
         novelai_artist_tags: str = "",
         request_negative_prompt: str = "",
         source_image_bytes_list: list[bytes] | None = None,
+        source_image_urls: list[str] | None = None,
         matched_message_id: str = "",
         user_id: str = "",
         group_id: str = "",
@@ -685,6 +713,9 @@ class DrawService:
                 )
 
         normalized_source_images = source_image_bytes_list or []
+        normalized_source_urls = source_image_urls or [""] * len(
+            normalized_source_images
+        )
         is_image_edit = bool(normalized_source_images)
         task_type = "edit_image" if is_image_edit else "draw"
         running_message = "图片正在编辑中" if is_image_edit else "图片正在生成中"
@@ -727,6 +758,7 @@ class DrawService:
                     task_id=task_id,
                     task_type=task_type,
                     source_image_bytes_list=normalized_source_images,
+                    source_image_urls=normalized_source_urls,
                     matched_message_id=matched_message_id,
                     request_negative_prompt=request_negative_prompt,
                 )
@@ -791,6 +823,7 @@ class DrawService:
                             task_id=task_id,
                             task_type=task_type,
                             source_image_bytes_list=normalized_source_images,
+                            source_image_urls=normalized_source_urls,
                             matched_message_id=matched_message_id,
                             request_negative_prompt=request_negative_prompt,
                         )
@@ -979,6 +1012,7 @@ class DrawService:
         group_id: str = "",
         platform_name: str = "qq",
         source_image_bytes_list: list[bytes] | None = None,
+        source_image_urls: list[str] | None = None,
         matched_message_id: str = "",
         notify_start: bool = False,
         on_task_unsuccessful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
@@ -987,6 +1021,11 @@ class DrawService:
         """启动后台绘图任务，源图为空时文生图，存在源图时图生图。"""
 
         normalized_source_images = source_image_bytes_list or []
+        normalized_source_urls = source_image_urls or [""] * len(
+            normalized_source_images
+        )
+        if len(normalized_source_urls) != len(normalized_source_images):
+            raise ValueError("源图 URL 数量必须与源图数量一致")
         is_image_edit = bool(normalized_source_images)
         task_type = "edit_image" if is_image_edit else "draw"
 
@@ -1067,6 +1106,7 @@ class DrawService:
                 novelai_artist_tags=primary_attempt.novelai_artist_tags,
                 request_negative_prompt=request_negative_prompt,
                 source_image_bytes_list=normalized_source_images,
+                source_image_urls=normalized_source_urls,
                 matched_message_id=matched_message_id,
                 user_id=user_id,
                 group_id=group_id,
@@ -1148,6 +1188,7 @@ class DrawService:
         resolved_openai_mode: str,
         provider_name: str,
         source_image_bytes_list: list[bytes],
+        source_image_urls: list[str] | None = None,
         matched_message_id: str,
         user_id: str = "",
         group_id: str = "",
@@ -1167,5 +1208,6 @@ class DrawService:
             group_id=group_id,
             platform_name=platform_name,
             source_image_bytes_list=source_image_bytes_list,
+            source_image_urls=source_image_urls,
             matched_message_id=matched_message_id,
         )

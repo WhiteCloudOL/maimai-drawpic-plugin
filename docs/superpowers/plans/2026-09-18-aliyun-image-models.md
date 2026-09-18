@@ -293,7 +293,7 @@ git commit -m "feat(aliyun): expose model family configuration"
 - Changes: `DrawService._run_image_request_attempt(..., source_image_urls: list[str])`
 - Changes: `DrawpicPlugin._start_background_image_request(..., source_image_urls: list[str] | None = None)`
 
-- [ ] **Step 1: 编写端到端链路失败测试**
+- [x] **Step 1: 编写端到端链路失败测试**
 
 构造 `SourceImageInput` 列表，验证插件拆出字节与 URL 后传给 DrawService；DrawService 在 `provider_name == "aliyun"` 时调用 `AliyunImage.edit_images_with_urls`，其他 provider 仍调用原 `edit_images`，不改变其签名。
 
@@ -301,25 +301,25 @@ git commit -m "feat(aliyun): expose model family configuration"
 
 增加能力拒绝测试：中央插件入口在提示词审核、额度预留与任务创建前拒绝；聊天命令收到明确中文提示；工具返回 `{"success": False, "message": "..."}`；日志为 warning 且包含模型、任务类型与判断来源。DrawService 对首选和备选尝试均二次校验。
 
-- [ ] **Step 2: 运行目标测试并确认 URL 在当前链路丢失**
+- [x] **Step 2: 运行目标测试并确认 URL 在当前链路丢失**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_fixes.py plugins/maimai-drawpic-plugin/tests/test_aliyun.py -k "source_url or aliyun" -q`
 
 Expected: FAIL，原因是后台方法没有 URL 参数或调用了旧 `edit_images`。
 
-- [ ] **Step 3: 实现最小 URL 透传**
+- [x] **Step 3: 实现最小 URL 透传**
 
 插件收集源图时改用结构化接口，并分别生成 `source_image_bytes_list` 与等长的 `source_image_urls`。任务记录仍只持久化数量，不持久化临时 URL 或图片内容。DrawService 仅对真实 `AliyunImage` 调用 URL-aware 方法；其他 provider 完全保持现有调用。
 
 在中央插件入口使用通用任务能力检查，确保失败时不扣额度、不创建任务；现有工具/指令异常处理负责分别生成工具失败返回和用户提示。在 `_build_image_request_attempt` 中对首选和备选模型再次使用相同检查，使编辑专用千问模型不能执行文生图，并防止配置热更新绕过校验。
 
-- [ ] **Step 4: 运行绘图链路测试**
+- [x] **Step 4: 运行绘图链路测试**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_fixes.py plugins/maimai-drawpic-plugin/tests/test_aliyun.py -q`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交 URL 透传**
+- [x] **Step 5: 提交 URL 透传**
 
 ```bash
 git add core/draw_service.py plugin.py tests/test_fixes.py tests/test_aliyun.py
