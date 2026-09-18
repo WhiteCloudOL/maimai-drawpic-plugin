@@ -176,7 +176,7 @@ git commit -m "feat(images): preserve adapter source URLs"
 - Produces: `AliyunImage.edit_images_with_urls(prompt: str, model: str, image_bytes_list: list[bytes], image_urls: list[str], n: int = 1) -> list[bytes]`
 - Preserves: `AliyunImage.edit_images(...)`，内部以空 URL 列表调用新方法
 
-- [ ] **Step 1: 编写 Base URL、请求体和同步/异步行为失败测试**
+- [x] **Step 1: 编写 Base URL、请求体和同步/异步行为失败测试**
 
 使用测试子类覆写 `_post_json`、`_get_json`、`_download_image`，禁止真实网络。至少验证：
 
@@ -208,25 +208,25 @@ def test_kling_edit_uses_adapter_url_in_async_payload() -> None:
 
 错误测试还要断言异常包含模型、业务 `code`、`message` 与 `request_id`，日志中的 URL 不含查询参数，且不出现 Authorization、API Key、Base64 或签名值。
 
-- [ ] **Step 2: 运行测试并确认现有 Provider 不支持这些行为**
+- [x] **Step 2: 运行测试并确认现有 Provider 不支持这些行为**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_aliyun.py -q`
 
 Expected: FAIL，原因包括构造参数、URL 构建或异步方法缺失。
 
-- [ ] **Step 3: 实现共享传输层**
+- [x] **Step 3: 实现共享传输层**
 
 保留现有 MIME 检测、图片下载和日志方法。新增 `_build_url`、去除查询参数的日志 URL 格式化、带可选额外请求头的 `_post_json`、`_get_json`、`_submit_async_task`、`_poll_async_task`。轮询仅在状态变化时记录模型、任务 ID、状态迁移和耗时，使用 `asyncio.sleep`，总时限交给外层 DrawService。HTTP 与业务错误统一携带 `request_id`，不得记录鉴权头、Base64 或签名查询参数。
 
 `generate_images` 和 `edit_images_with_urls` 先解析 profile、校验任务、构造族专用请求，再按 `profile.is_async` 选择同步或异步。成功响应统一交给 `_extract_images`。
 
-- [ ] **Step 4: 运行 Provider 测试并确认通过**
+- [x] **Step 4: 运行 Provider 测试并确认通过**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_aliyun.py -q`
 
 Expected: PASS，且没有真实网络请求。
 
-- [ ] **Step 5: 提交 Provider 重构**
+- [x] **Step 5: 提交 Provider 重构**
 
 ```bash
 git add providers/aliyun_platform.py tests/test_aliyun.py

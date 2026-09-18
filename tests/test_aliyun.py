@@ -5,6 +5,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import asyncio
+import base64
 import importlib.util
 import sys
 import types
@@ -75,6 +77,24 @@ def _request_options(**overrides: Any) -> Any:
     }
     values.update(overrides)
     return models.AliyunRequestOptions(**values)
+
+
+def _aliyun_provider_class() -> Any:
+    _bootstrap_plugin_package()
+    return import_module(f"{_PKG_NAME}.providers.aliyun_platform").AliyunImage
+
+
+def _provider(**overrides: Any) -> Any:
+    values: dict[str, Any] = {
+        "api_key": "test-key",
+        "base_url": "https://workspace.example/api/v1",
+        "async_poll_interval_seconds": 0,
+        "default_size": "1024*1024",
+        "seed": 42,
+        "max_images": 6,
+    }
+    values.update(overrides)
+    return _aliyun_provider_class()(**values)
 
 
 def test_builtin_models_have_expected_families_and_capabilities() -> None:
@@ -279,3 +299,252 @@ def test_task_validation_checks_capability_and_image_count() -> None:
         assert "最多接收 1 张" in str(exc)
     else:
         raise AssertionError("普通可灵 V3 多参考图应被拒绝")
+
+
+def test_configured_base_url_builds_all_endpoints() -> None:
+    """工作空间 Base URL 必须统一派生同步、异步和任务查询地址。"""
+
+    provider = _provider(base_url="https://workspace.example/api/v1/")
+
+    assert provider._build_url("services/aigc/multimodal-generation/generation") == (
+        "https://workspace.example/api/v1/services/aigc/"
+        "multimodal-generation/generation"
+    )
+    assert provider._build_url("tasks/task-1") == (
+        "https://workspace.example/api/v1/tasks/task-1"
+    )
+
+
+def test_qwen_edit_uses_base64_in_sync_payload() -> None:
+    """千问图生图默认应走同步接口并维持 Base64 输入。"""
+
+    provider_class = _aliyun_provider_class()
+
+    class _RecordingProvider(provider_class):
+        def __init__(self) -> None:
+            super().__init__(
+                api_key="test-key",
+                base_url="https://workspace.example/api/v1",
+                async_poll_interval_seconds=0,
+            )
+            self.calls: list[tuple[str, dict[str, Any], dict[str, str]]] = []
+
+        async def _post_json(
+            self,
+            url: str,
+            payload: dict[str, Any],
+            extra_headers: dict[str, str] | None = None,
+        ) -> dict[str, Any]:
+            self.calls.append((url, payload, extra_headers or {}))
+            return {
+                "output": {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": [
+                                    {"image": "https://result.example/image.png"}
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+
+        async def _download_image(self, url: str) -> bytes:
+            assert url == "https://result.example/image.png"
+            return b"result"
+
+    provider = _RecordingProvider()
+    png_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+"
+        "A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    result = asyncio.run(
+        provider.edit_images_with_urls(
+            "保持主体",
+            "qwen-image-3.0",
+            [png_bytes],
+            ["https://cdn.example/source.png"],
+        )
+    )
+
+    assert result == [b"result"]
+    url, payload, headers = provider.calls[0]
+    assert url.endswith("services/aigc/multimodal-generation/generation")
+    assert headers == {}
+    image_value = payload["input"]["messages"][0]["content"][0]["image"]
+    assert image_value.startswith("data:image/png;base64,")
+    assert base64.b64decode(image_value.split(",", maxsplit=1)[1]) == png_bytes
+
+
+def test_kling_edit_uses_adapter_url_in_async_payload() -> None:
+    """可灵图生图必须使用适配器 URL，并经异步任务返回图片。"""
+
+    provider_class = _aliyun_provider_class()
+
+    class _RecordingProvider(provider_class):
+        def __init__(self) -> None:
+            super().__init__(
+                api_key="test-key",
+                base_url="https://workspace.example/api/v1",
+                async_poll_interval_seconds=0,
+            )
+            self.submitted_payload: dict[str, Any] = {}
+            self.submitted_headers: dict[str, str] = {}
+            self.poll_count = 0
+
+        async def _post_json(
+            self,
+            url: str,
+            payload: dict[str, Any],
+            extra_headers: dict[str, str] | None = None,
+        ) -> dict[str, Any]:
+            assert url.endswith("services/aigc/image-generation/generation")
+            self.submitted_payload = payload
+            self.submitted_headers = extra_headers or {}
+            return {
+                "output": {"task_id": "task-1", "task_status": "PENDING"},
+                "request_id": "submit-request",
+            }
+
+        async def _get_json(self, url: str) -> dict[str, Any]:
+            assert url.endswith("tasks/task-1")
+            self.poll_count += 1
+            if self.poll_count == 1:
+                return {
+                    "output": {"task_id": "task-1", "task_status": "RUNNING"},
+                    "request_id": "poll-1",
+                }
+            return {
+                "output": {
+                    "task_id": "task-1",
+                    "task_status": "SUCCEEDED",
+                    "choices": [
+                        {
+                            "message": {
+                                "content": [
+                                    {
+                                        "image": (
+                                            "https://result.example/image.png?"
+                                            "signature=private"
+                                        )
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                },
+                "request_id": "poll-2",
+            }
+
+        async def _download_image(self, url: str) -> bytes:
+            assert "signature=private" in url
+            return b"result"
+
+    provider = _RecordingProvider()
+    result = asyncio.run(
+        provider.edit_images_with_urls(
+            "保持主体",
+            "kling/kling-v3-image-generation",
+            [b"unused-base64-source"],
+            ["https://cdn.example/source.png"],
+        )
+    )
+
+    assert result == [b"result"]
+    assert provider.submitted_headers == {"X-DashScope-Async": "enable"}
+    assert provider.submitted_payload["input"]["messages"][0]["content"] == [
+        {"text": "保持主体"},
+        {"image": "https://cdn.example/source.png"},
+    ]
+
+
+def test_url_only_model_without_source_url_fails_before_request() -> None:
+    """URL 必填模型缺少适配器 URL 时必须在网络请求前失败。"""
+
+    provider = _provider()
+
+    try:
+        asyncio.run(
+            provider.edit_images_with_urls(
+                "保持主体",
+                "vidu/viduq3-fast_reference2image",
+                [b"source"],
+                [""],
+            )
+        )
+    except ValueError as exc:
+        assert "URL" in str(exc)
+        assert "vidu/viduq3-fast_reference2image" in str(exc)
+    else:
+        raise AssertionError("Vidu 缺少适配器 URL 应被拒绝")
+
+
+def test_async_terminal_states_include_traceable_error() -> None:
+    """异步失败终态必须带模型、错误码、消息与 request_id。"""
+
+    provider_class = _aliyun_provider_class()
+
+    for status in ("FAILED", "CANCELED", "UNKNOWN"):
+        class _FailedProvider(provider_class):
+            async def _get_json(
+                self,
+                url: str,
+                terminal_status: str = status,
+            ) -> dict[str, Any]:
+                del url
+                return {
+                    "output": {
+                        "task_status": terminal_status,
+                        "task_id": "task-1",
+                    },
+                    "code": "InvalidParameter",
+                    "message": "bad request",
+                    "request_id": "request-1",
+                }
+
+        provider = _FailedProvider(
+            api_key="test-key",
+            base_url="https://workspace.example/api/v1",
+            async_poll_interval_seconds=0,
+        )
+        try:
+            asyncio.run(provider._poll_async_task("task-1", "test-model"))
+        except RuntimeError as exc:
+            error = str(exc)
+            assert status in error
+            assert "test-model" in error
+            assert "InvalidParameter" in error
+            assert "bad request" in error
+            assert "request-1" in error
+        else:
+            raise AssertionError(f"异步终态 {status} 应抛出错误")
+
+
+def test_log_url_removes_query_and_business_error_keeps_request_id() -> None:
+    """日志 URL 不能泄漏签名参数，业务错误仍需保留追踪信息。"""
+
+    provider = _provider()
+    assert provider._sanitize_url(
+        "https://result.example/image.png?signature=private&token=secret"
+    ) == "https://result.example/image.png"
+
+    try:
+        provider._raise_for_business_error(
+            {
+                "code": "InvalidApiKey",
+                "message": "invalid credential",
+                "request_id": "request-2",
+            },
+            model="qwen-image-3.0",
+            operation="同步生成",
+        )
+    except RuntimeError as exc:
+        error = str(exc)
+        assert "qwen-image-3.0" in error
+        assert "InvalidApiKey" in error
+        assert "invalid credential" in error
+        assert "request-2" in error
+        assert "test-key" not in error
+    else:
+        raise AssertionError("业务错误响应应抛出异常")
