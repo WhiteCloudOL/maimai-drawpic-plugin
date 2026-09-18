@@ -26,7 +26,7 @@
 ### Task 1: 建立阿里云模型能力注册表和参数构造器
 
 **Files:**
-- Create: `providers/aliyun_models.py`
+- Create: `models/aliyun_models.py`
 - Create: `tests/test_aliyun.py`
 - Modify: `tests/test_imports.py`
 
@@ -99,7 +99,7 @@ Expected: PASS。
 - [ ] **Step 5: 提交模型能力模块**
 
 ```bash
-git add providers/aliyun_models.py tests/test_aliyun.py tests/test_imports.py
+git add models/aliyun_models.py tests/test_aliyun.py tests/test_imports.py
 git commit -m "feat(aliyun): add image model capability registry"
 ```
 
@@ -393,7 +393,7 @@ Run:
 
 ```bash
 uv run --project /Users/whitecloud/coding/Python/MaiBot ruff check \
-  plugins/maimai-drawpic-plugin/providers/aliyun_models.py \
+  plugins/maimai-drawpic-plugin/models/aliyun_models.py \
   plugins/maimai-drawpic-plugin/providers/aliyun_platform.py \
   plugins/maimai-drawpic-plugin/core/message_utils.py \
   plugins/maimai-drawpic-plugin/core/config.py \

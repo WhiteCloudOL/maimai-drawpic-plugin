@@ -13,7 +13,7 @@ pkg = types.ModuleType(_PKG_NAME)
 pkg.__path__ = [str(_PLUGIN_DIR)]
 sys.modules[_PKG_NAME] = pkg
 
-for sub in ("core", "providers"):
+for sub in ("core", "models", "providers"):
     sub_path = _PLUGIN_DIR / sub
     init_file = sub_path / "__init__.py"
     full = f"{_PKG_NAME}.{sub}"
@@ -43,7 +43,7 @@ modules_to_check = [
     "core.provider_router",
     "core.draw_service",
     "core.config",
-    "providers.aliyun_models",
+    "models.aliyun_models",
     "providers.aliyun_platform",
     "providers.google_platform",
     "providers.novelai_platform",

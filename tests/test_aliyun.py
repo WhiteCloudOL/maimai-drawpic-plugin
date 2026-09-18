@@ -22,7 +22,7 @@ def _bootstrap_plugin_package() -> None:
         package.__path__ = [str(_PLUGIN_DIR)]
         sys.modules[_PKG_NAME] = package
 
-    for subpackage_name in ("core", "providers"):
+    for subpackage_name in ("core", "models", "providers"):
         full_name = f"{_PKG_NAME}.{subpackage_name}"
         if full_name in sys.modules:
             continue
@@ -47,7 +47,7 @@ def _bootstrap_plugin_package() -> None:
 
 def _aliyun_models() -> Any:
     _bootstrap_plugin_package()
-    return import_module(f"{_PKG_NAME}.providers.aliyun_models")
+    return import_module(f"{_PKG_NAME}.models.aliyun_models")
 
 
 def _request_options(**overrides: Any) -> Any:

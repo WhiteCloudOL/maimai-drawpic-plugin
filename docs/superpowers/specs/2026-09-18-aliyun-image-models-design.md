@@ -69,7 +69,7 @@
 
 采用“模型能力注册表 + 共享 HTTP 传输层”的结构。
 
-新增 `providers/aliyun_models.py`，集中维护模型族识别、文生图/图生图能力、输入图片数量、同步/异步协议和每个模型族的参数构造。`providers/aliyun_platform.py` 只负责鉴权、URL 派生、同步请求、异步轮询、错误处理、结果解析和图片下载。
+新增 `models/aliyun_models.py`，集中维护模型族识别、文生图/图生图能力、输入图片数量、同步/异步协议和每个模型族的参数构造。`providers/aliyun_platform.py` 只负责鉴权、URL 派生、同步请求、异步轮询、错误处理、结果解析和图片下载。
 
 这样可避免为四个模型族复制网络代码，也不会继续把千问参数错误地发送给可灵或 Vidu。官方新增同前缀模型时可由族规则识别；配置中无法识别的旧自定义模型继续按原有同步多模态协议调用，以保持兼容性。
 
@@ -201,7 +201,7 @@
 
 ## 文件变更
 
-- 新增 `providers/aliyun_models.py`：模型注册表、能力与参数构造；
+- 新增 `models/aliyun_models.py`：模型注册表、能力与参数构造；
 - 重构 `providers/aliyun_platform.py`：可配置 Base URL、同步/异步调用与轮询；
 - 修改 `core/message_utils.py`：保留适配器图片 URL，并与 Base64/字节数据一一对应缓存和查找；
 - 修改 `core/draw_service.py` 与 `plugin.py`：在现有后台任务链路中携带源图 URL；
