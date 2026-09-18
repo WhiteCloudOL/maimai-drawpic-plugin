@@ -84,6 +84,16 @@ def _aliyun_provider_class() -> Any:
     return import_module(f"{_PKG_NAME}.providers.aliyun_platform").AliyunImage
 
 
+def _config_module() -> Any:
+    _bootstrap_plugin_package()
+    return import_module(f"{_PKG_NAME}.core.config")
+
+
+def _provider_router_class() -> Any:
+    _bootstrap_plugin_package()
+    return import_module(f"{_PKG_NAME}.core.provider_router").ProviderRouter
+
+
 def _provider(**overrides: Any) -> Any:
     values: dict[str, Any] = {
         "api_key": "test-key",
@@ -224,6 +234,7 @@ def test_family_parameters_do_not_leak_between_models() -> None:
         "n": 2,
         "aspect_ratio": "1:1",
         "resolution": "1k",
+        "watermark": False,
     }
     assert zimage_parameters == {
         "size": "1024*1024",
@@ -254,6 +265,7 @@ def test_kling_omni_series_parameters_replace_single_count() -> None:
         "series_amount": 6,
         "aspect_ratio": "1:1",
         "resolution": "4k",
+        "watermark": False,
     }
 
 
@@ -274,6 +286,21 @@ def test_qwen_agent_prompt_extension_is_rejected_for_editing() -> None:
         assert "图生图" in str(exc)
     else:
         raise AssertionError("千问 3.0 图生图 agent 模式应被拒绝")
+
+
+def test_legacy_qwen_edit_omits_unsupported_prompt_extension() -> None:
+    """早期 qwen-image-edit 不应收到其不支持的改写与尺寸参数。"""
+
+    parameters = _aliyun_models().build_aliyun_parameters(
+        "qwen-image-edit",
+        "edit_image",
+        1,
+        _request_options(),
+    )
+
+    assert "prompt_extend" not in parameters
+    assert "prompt_extend_mode" not in parameters
+    assert "size" not in parameters
 
 
 def test_task_validation_checks_capability_and_image_count() -> None:
@@ -548,3 +575,115 @@ def test_log_url_removes_query_and_business_error_keeps_request_id() -> None:
         assert "test-key" not in error
     else:
         raise AssertionError("业务错误响应应抛出异常")
+
+
+def test_aliyun_config_defaults_and_labels_cover_new_model_families() -> None:
+    """默认配置应覆盖目标模型，并明确区分必填和可选字段。"""
+
+    config_module = _config_module()
+    config = config_module.AliyunModelConfig()
+    defaults = _aliyun_models().DEFAULT_ALIYUN_MODELS
+    schema = config_module.AliyunModelConfig.model_json_schema()["properties"]
+
+    assert config.base_url == "https://dashscope.aliyuncs.com/api/v1"
+    assert set(defaults).issubset(set(config.models))
+    assert not any(model.startswith("wan") for model in config.models)
+    assert "必填" in schema["base_url"]["label"]
+    assert "必填" in schema["api_key"]["label"]
+    assert "可选" in schema["qwen_extra_parameters"]["label"]
+    assert "可选" in schema["kling_series_amount"]["label"]
+
+
+def test_router_passes_aliyun_family_configuration() -> None:
+    """路由创建适配器时不得漏传 Base URL、输入模式和族专用参数。"""
+
+    config = _config_module().DrawpicConfig()
+    config.aliyun.base_url = "https://workspace.example/api/v1"
+    config.aliyun.image_input_mode = "url"
+    config.aliyun.async_poll_interval_seconds = 0.25
+    config.aliyun.qwen_prompt_extend_mode = "agent"
+    config.aliyun.qwen_extra_parameters = ["custom_qwen=true"]
+    config.aliyun.zimage_extra_parameters = ["custom_z=2"]
+    config.aliyun.kling_extra_parameters = ["custom_kling=yes"]
+    config.aliyun.vidu_extra_parameters = ["custom_vidu=false"]
+
+    provider = _provider_router_class()(config).create_aliyun_provider()
+
+    assert provider.base_url == "https://workspace.example/api/v1"
+    assert provider.image_input_mode == "url"
+    assert provider.async_poll_interval_seconds == 0.25
+    assert provider.request_options.qwen_prompt_extend_mode == "agent"
+    assert provider.request_options.qwen_extra_parameters == {"custom_qwen": True}
+    assert provider.request_options.zimage_extra_parameters == {"custom_z": 2}
+    assert provider.request_options.kling_extra_parameters == {"custom_kling": "yes"}
+    assert provider.request_options.vidu_extra_parameters == {"custom_vidu": False}
+
+
+def test_router_automatically_recognizes_aliyun_task_capabilities() -> None:
+    """阿里云已知模型应在任务提交前自动识别文生图/图生图能力。"""
+
+    config = _config_module().DrawpicConfig()
+    config.aliyun.models = list(_aliyun_models().DEFAULT_ALIYUN_MODELS)
+    router = _provider_router_class()(config)
+
+    assert router.evaluate_model_task_capability(
+        "qwen-image-3.0",
+        "draw",
+    ).allowed
+    assert router.evaluate_model_task_capability(
+        "qwen-image-3.0",
+        "edit_image",
+    ).allowed
+    zimage_edit = router.evaluate_model_task_capability(
+        "z-image-turbo",
+        "edit_image",
+    )
+    qwen_edit_draw = router.evaluate_model_task_capability(
+        "qwen-image-edit",
+        "draw",
+    )
+    assert not zimage_edit.allowed
+    assert "不支持图生图" in zimage_edit.reason
+    assert zimage_edit.source == "aliyun_registry"
+    assert not qwen_edit_draw.allowed
+    assert "不支持文生图" in qwen_edit_draw.reason
+    assert qwen_edit_draw.source == "aliyun_registry"
+
+    for model in (
+        "kling/kling-v3-image-generation",
+        "vidu/viduq3-fast_reference2image",
+    ):
+        assert router.evaluate_model_task_capability(model, "draw").allowed
+        assert router.evaluate_model_task_capability(model, "edit_image").allowed
+
+
+def test_manual_task_capability_lists_override_automatic_detection() -> None:
+    """人工名单优先级最高，冲突配置必须显式失败。"""
+
+    config = _config_module().DrawpicConfig()
+    config.aliyun.models = ["qwen-image-3.0", "custom-image-model"]
+    config.general.image_edit_unsupported_models = ["qwen-image-3.0"]
+    config.general.text_to_image_unsupported_models = ["custom-image-model"]
+    router = _provider_router_class()(config)
+
+    manual_t2i = router.evaluate_model_task_capability(
+        "qwen-image-3.0",
+        "edit_image",
+    )
+    manual_i2i = router.evaluate_model_task_capability(
+        "custom-image-model",
+        "draw",
+    )
+    assert not manual_t2i.allowed and manual_t2i.source == "manual_t2i_only"
+    assert not manual_i2i.allowed and manual_i2i.source == "manual_i2i_only"
+    assert router.evaluate_model_task_capability("qwen-image-3.0", "draw").allowed
+    assert router.evaluate_model_task_capability(
+        "custom-image-model",
+        "edit_image",
+    ).allowed
+
+    config.general.text_to_image_unsupported_models.append("qwen-image-3.0")
+    conflict = router.evaluate_model_task_capability("qwen-image-3.0", "draw")
+    assert not conflict.allowed
+    assert conflict.source == "manual_conflict"
+    assert "同时" in conflict.reason and "名单" in conflict.reason

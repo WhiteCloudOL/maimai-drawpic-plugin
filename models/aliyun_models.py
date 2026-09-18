@@ -213,12 +213,12 @@ def _build_qwen_parameters(
         "n": _validated_count(n, min(options.max_images, profile.max_output_images)),
         "watermark": options.watermark,
         "negative_prompt": options.negative_prompt,
-        "prompt_extend": options.prompt_extend,
     }
-    if model.lower().startswith("qwen-image-3.0"):
-        parameters["prompt_extend_mode"] = options.qwen_prompt_extend_mode
-        parameters["enable_thinking"] = options.qwen_enable_thinking
     if model.lower() != "qwen-image-edit":
+        parameters["prompt_extend"] = options.prompt_extend
+        if model.lower().startswith("qwen-image-3.0"):
+            parameters["prompt_extend_mode"] = options.qwen_prompt_extend_mode
+            parameters["enable_thinking"] = options.qwen_enable_thinking
         parameters["size"] = _resolved_size(model, options)
     parameters["seed"] = options.seed
     parameters.update(options.qwen_extra_parameters)
@@ -259,6 +259,7 @@ def _build_kling_parameters(
         )
     parameters["aspect_ratio"] = options.kling_aspect_ratio
     parameters["resolution"] = options.kling_resolution.lower()
+    parameters["watermark"] = options.watermark
     parameters.update(options.kling_extra_parameters)
     return parameters
 

@@ -4,6 +4,7 @@ from typing import Any, Literal, Protocol
 
 import re
 
+from ..models.aliyun_models import resolve_aliyun_model_profile
 from ..providers.aliyun_platform import AliyunImage
 from ..providers.comfyui_platform import ComfyUIImage
 from ..providers.google_platform import GoogleImage
@@ -19,6 +20,15 @@ from .provider_options import parse_key_value_options, parse_model_value_overrid
 ProviderName = Literal["aliyun", "openai", "google", "zhipu", "volcengine", "siliconflow", "novelai", "comfyui"]
 OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
 _DOMESTIC_PROXY_BYPASS_PROVIDERS = {"aliyun", "volcengine", "siliconflow"}
+
+
+@dataclass(frozen=True, slots=True)
+class ModelTaskCapability:
+    """模型对指定绘图任务的判断结果。"""
+
+    allowed: bool
+    reason: str
+    source: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,6 +507,7 @@ class ProviderRouter:
 
         return AliyunImage(
             api_key=self.config.aliyun.api_key,
+            base_url=self.config.aliyun.base_url,
             logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
             default_size=self.config.aliyun.default_size,
@@ -506,8 +517,32 @@ class ProviderRouter:
                 request_negative_prompt,
             ),
             prompt_extend=self.config.aliyun.prompt_extend,
+            qwen_prompt_extend_mode=self.config.aliyun.qwen_prompt_extend_mode,
+            qwen_enable_thinking=self.config.aliyun.qwen_enable_thinking,
+            zimage_prompt_extend=self.config.aliyun.zimage_prompt_extend,
+            seed=self.config.aliyun.seed,
             watermark=self.config.aliyun.watermark,
             max_images=self.config.aliyun.max_images,
+            image_input_mode=self.config.aliyun.image_input_mode,
+            async_poll_interval_seconds=(
+                self.config.aliyun.async_poll_interval_seconds
+            ),
+            kling_aspect_ratio=self.config.aliyun.kling_aspect_ratio,
+            kling_resolution=self.config.aliyun.kling_resolution,
+            kling_result_type=self.config.aliyun.kling_result_type,
+            kling_series_amount=self.config.aliyun.kling_series_amount,
+            qwen_extra_parameters=parse_key_value_options(
+                self.config.aliyun.qwen_extra_parameters
+            ),
+            zimage_extra_parameters=parse_key_value_options(
+                self.config.aliyun.zimage_extra_parameters
+            ),
+            kling_extra_parameters=parse_key_value_options(
+                self.config.aliyun.kling_extra_parameters
+            ),
+            vidu_extra_parameters=parse_key_value_options(
+                self.config.aliyun.vidu_extra_parameters
+            ),
             extra_parameters=parse_key_value_options(self.config.aliyun.extra_parameters),
             proxy_settings=self._get_proxy_settings("aliyun"),
         )
@@ -725,32 +760,129 @@ class ProviderRouter:
     def get_image_edit_unsupported_reason(self, model: str) -> str:
         """返回模型不支持图生图的原因，空字符串表示支持。"""
 
+        return self.get_task_unsupported_reason(model, "edit_image")
+
+    def get_task_unsupported_reason(self, model: str, task_type: str) -> str:
+        """返回模型不支持指定任务的原因，空字符串表示支持。"""
+
+        capability = self.evaluate_model_task_capability(model, task_type)
+        return "" if capability.allowed else capability.reason
+
+    def evaluate_model_task_capability(
+        self,
+        model: str,
+        task_type: str,
+    ) -> ModelTaskCapability:
+        """人工名单优先，并结合平台与模型注册表判断任务能力。"""
+
         normalized_model = model.strip()
         if not normalized_model:
-            return "当前未解析到可用绘图模型，无法提交图生图任务"
+            return ModelTaskCapability(
+                allowed=False,
+                reason="当前未解析到可用绘图模型，无法提交绘图任务",
+                source="invalid_model",
+            )
+        if task_type not in {"draw", "edit_image"}:
+            return ModelTaskCapability(
+                allowed=False,
+                reason=f"不支持的绘图任务类型：{task_type}",
+                source="invalid_task_type",
+            )
 
-        configured_unsupported_models = {
+        text_to_image_only_models = {
             configured_model.strip()
             for configured_model in self.config.general.image_edit_unsupported_models
             if configured_model.strip()
         }
-        if normalized_model in configured_unsupported_models:
-            return f"当前模型 {normalized_model} 已在配置中标记为不支持图生图"
+        image_to_image_only_models = {
+            configured_model.strip()
+            for configured_model in self.config.general.text_to_image_unsupported_models
+            if configured_model.strip()
+        }
+        if (
+            normalized_model in text_to_image_only_models
+            and normalized_model in image_to_image_only_models
+        ):
+            return ModelTaskCapability(
+                allowed=False,
+                reason=(
+                    f"当前模型 {normalized_model} 同时出现在仅支持文生图与仅支持"
+                    "图生图名单中，请修正配置"
+                ),
+                source="manual_conflict",
+            )
+        if task_type == "edit_image" and normalized_model in text_to_image_only_models:
+            return ModelTaskCapability(
+                allowed=False,
+                reason=f"当前模型 {normalized_model} 已在配置中标记为仅支持文生图，不支持图生图",
+                source="manual_t2i_only",
+            )
+        if task_type == "draw" and normalized_model in image_to_image_only_models:
+            return ModelTaskCapability(
+                allowed=False,
+                reason=f"当前模型 {normalized_model} 已在配置中标记为仅支持图生图，不支持文生图",
+                source="manual_i2i_only",
+            )
 
         provider_name = self.get_model_provider(normalized_model)
         if not provider_name:
-            return f"当前模型 {normalized_model} 未归属于任何已配置图片平台，无法判断图生图能力"
-        if provider_name == "zhipu":
-            return f"当前模型 {normalized_model} 属于智谱平台；该平台当前仅支持文生图，不支持图生图编辑"
+            return ModelTaskCapability(
+                allowed=False,
+                reason=f"当前模型 {normalized_model} 未归属于任何已配置图片平台，无法判断任务能力",
+                source="unknown_provider",
+            )
+        if provider_name == "aliyun":
+            profile = resolve_aliyun_model_profile(normalized_model)
+            supported = (
+                profile.supports_draw
+                if task_type == "draw"
+                else profile.supports_edit
+            )
+            if not supported:
+                task_name = "文生图" if task_type == "draw" else "图生图"
+                return ModelTaskCapability(
+                    allowed=False,
+                    reason=f"当前阿里云模型 {normalized_model} 不支持{task_name}",
+                    source="aliyun_registry",
+                )
+        if provider_name == "zhipu" and task_type == "edit_image":
+            return ModelTaskCapability(
+                allowed=False,
+                reason=f"当前模型 {normalized_model} 属于智谱平台；该平台当前仅支持文生图，不支持图生图编辑",
+                source="provider_builtin",
+            )
         if provider_name == "volcengine":
-            i2i_models = self.get_volcengine_i2i_models()
-            if not i2i_models:
-                return "火山引擎未配置图生图模型（i2i_models 为空），无法提交图生图任务"
-            if normalized_model not in i2i_models:
-                return f"当前模型 {normalized_model} 属于火山引擎文生图模型；请切换到 i2i 类模型后再使用图生图"
-        if provider_name == "comfyui" and not self.config.comfyui.i2i_workflow_path.strip():
-            return "ComfyUI 未配置图生图工作流（i2i_workflow_path 为空），无法提交图生图任务"
-        return ""
+            allowed_models = (
+                self.get_volcengine_t2i_models()
+                if task_type == "draw"
+                else self.get_volcengine_i2i_models()
+            )
+            if normalized_model not in allowed_models:
+                task_name = "文生图" if task_type == "draw" else "图生图"
+                current_kind = "图生图模型" if task_type == "draw" else "文生图模型"
+                return ModelTaskCapability(
+                    allowed=False,
+                    reason=(
+                        f"当前火山引擎模型 {normalized_model} 属于{current_kind}，"
+                        f"不支持{task_name}；请切换到对应任务模型"
+                    ),
+                    source="volcengine_model_lists",
+                )
+        if (
+            provider_name == "comfyui"
+            and task_type == "edit_image"
+            and not self.config.comfyui.i2i_workflow_path.strip()
+        ):
+            return ModelTaskCapability(
+                allowed=False,
+                reason="ComfyUI 未配置图生图工作流（i2i_workflow_path 为空），无法提交图生图任务",
+                source="comfyui_workflow",
+            )
+        return ModelTaskCapability(
+            allowed=True,
+            reason="",
+            source=("aliyun_registry" if provider_name == "aliyun" else "provider_default"),
+        )
 
     def resolve_volcengine_model_for_task(
         self,

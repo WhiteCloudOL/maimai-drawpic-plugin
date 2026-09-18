@@ -64,6 +64,7 @@ class _StubGeneralConfig:
     fallback_model = ""
     request_timeout_seconds = 60
     image_edit_unsupported_models: list[str] = []
+    text_to_image_unsupported_models: list[str] = []
 
 
 class _StubConfig:

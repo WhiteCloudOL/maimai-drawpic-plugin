@@ -46,10 +46,21 @@ for _sub in ("core", "providers"):
         _ns.__path__ = [str(_sub_path)]
         sys.modules[_full_name] = _ns
 
-from core.image_utils import detect_image_dimensions, detect_image_format, detect_mime_type  # noqa: E402
-from core.config import NovelAIModelConfig, StyleConfig, StylePresetConfig  # noqa: E402
-from core.http_proxy import read_response_bytes, read_response_json  # noqa: E402
-from core.message_utils import (  # noqa: E402
+from maimai_drawpic_pkg.core.config import (  # noqa: E402
+    NovelAIModelConfig,
+    StyleConfig,
+    StylePresetConfig,
+)
+from maimai_drawpic_pkg.core.http_proxy import (  # noqa: E402
+    read_response_bytes,
+    read_response_json,
+)
+from maimai_drawpic_pkg.core.image_utils import (  # noqa: E402
+    detect_image_dimensions,
+    detect_image_format,
+    detect_mime_type,
+)
+from maimai_drawpic_pkg.core.message_utils import (  # noqa: E402
     _SOURCE_IMAGE_CACHE,
     _SOURCE_IMAGE_CACHE_ORDER,
     _normalize_stream_ids,
@@ -63,14 +74,14 @@ from core.message_utils import (  # noqa: E402
     find_all_cached_source_image_inputs,
     find_source_image_inputs,
 )
-from core.moderation import DrawpicModerationService  # noqa: E402
-from core.stream_service import (  # noqa: E402
+from maimai_drawpic_pkg.core.moderation import DrawpicModerationService  # noqa: E402
+from maimai_drawpic_pkg.core.stream_service import (  # noqa: E402
     ChatStreamService,
     ImageDeliveryUnconfirmedError,
 )
-from core.style_prompts import StylePromptResolver  # noqa: E402
-from core.task_store import DrawTaskStore  # noqa: E402
-from core.usage_store import UserQuotaStore  # noqa: E402
+from maimai_drawpic_pkg.core.style_prompts import StylePromptResolver  # noqa: E402
+from maimai_drawpic_pkg.core.task_store import DrawTaskStore  # noqa: E402
+from maimai_drawpic_pkg.core.usage_store import UserQuotaStore  # noqa: E402
 from maimai_drawpic_pkg.providers.novelai_platform import NovelAIImage  # noqa: E402
 
 # 构造一张最小 PNG 字节用于图片工具测试
@@ -456,7 +467,7 @@ def test_style_prompt_templates_are_platform_independent() -> None:
 def test_novelai_v3_mode_switches_effective_model() -> None:
     """V3 mode 使用两个官方模型，V4+ mode 不改模型 ID。"""
 
-    from core.config import DrawpicConfig
+    from maimai_drawpic_pkg.core.config import DrawpicConfig
     from maimai_drawpic_pkg.core.provider_router import ProviderRouter
 
     router = ProviderRouter(DrawpicConfig(), logger=_FakeLogger())
@@ -788,7 +799,7 @@ def test_source_image_cache_ttl() -> None:
     _SOURCE_IMAGE_CACHE.clear()
     _SOURCE_IMAGE_CACHE_ORDER.clear()
     # 临时把 TTL 调到极小以便测试
-    import core.message_utils as mu
+    import maimai_drawpic_pkg.core.message_utils as mu
 
     original_ttl = mu._SOURCE_IMAGE_CACHE_TTL_SECONDS
     mu._SOURCE_IMAGE_CACHE_TTL_SECONDS = 0.2
@@ -1066,6 +1077,7 @@ def test_provider_router_openai_routes_cache() -> None:
             fallback_model = ""
             request_timeout_seconds = 60
             image_edit_unsupported_models: list[str] = []
+            text_to_image_unsupported_models: list[str] = []
 
     router = ProviderRouter(_StubConfig(), logger=_FakeLogger())
     routes1 = router._iter_openai_routes()
@@ -1131,6 +1143,7 @@ def test_provider_router_fallback_model_resolution() -> None:
             fallback_model = "gpt-image-fallback"
             request_timeout_seconds = 60
             image_edit_unsupported_models: list[str] = []
+            text_to_image_unsupported_models: list[str] = []
 
     router = ProviderRouter(_StubConfig(), logger=_FakeLogger())
     assert router.resolve_fallback_model("gpt-image-2") == "gpt-image-fallback"

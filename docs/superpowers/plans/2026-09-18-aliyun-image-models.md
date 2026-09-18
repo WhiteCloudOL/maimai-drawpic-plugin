@@ -248,31 +248,31 @@ git commit -m "feat(aliyun): support sync and async image APIs"
 - Produces: `ProviderRouter.evaluate_model_task_capability(model: str, task_type: str) -> ModelTaskCapability`
 - Produces: `ProviderRouter.get_task_unsupported_reason(model: str, task_type: str) -> str`
 
-- [ ] **Step 1: 编写配置默认值、Schema 标签、路由传参和能力失败测试**
+- [x] **Step 1: 编写配置默认值、Schema 标签、路由传参和能力失败测试**
 
 验证 `base_url` 默认值为 `https://dashscope.aliyuncs.com/api/v1`，默认模型含规格列出的全部 ID 且不含 `wan`；必填字段标签含“必填”，可选参数提示含“可选”；路由创建的 Provider 获得自定义 Base URL 与四族参数。
 
 验证 `z-image-turbo` 图生图、`qwen-image-edit` 文生图被自动提前拒绝，可灵/Vidu 文生图和图生图允许进入 Provider。再验证人工名单优先于自动识别：`image_edit_unsupported_models` 中的模型只允许文生图，`text_to_image_unsupported_models` 中的模型只允许图生图；同一模型同时出现在两张名单时返回配置冲突。能力结果需要同时返回面向用户的原因和判断来源，供日志使用。
 
-- [ ] **Step 2: 运行测试并确认配置字段缺失**
+- [x] **Step 2: 运行测试并确认配置字段缺失**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_aliyun.py -q`
 
 Expected: FAIL，原因是配置或路由接口缺失。
 
-- [ ] **Step 3: 实现配置与路由接线**
+- [x] **Step 3: 实现配置与路由接线**
 
 将 `PluginSectionConfig.config_version` 提升为 `2.24.0`。`AliyunModelConfig` 使用 `Literal["auto", "base64", "url"]`，数值字段添加 Pydantic 范围约束。保留旧字段名以兼容现有配置；旧通用 `extra_parameters` 仅传给 legacy profile。
 
 路由能力提示调用模型注册表，不用字符串散落判断。已有 `general.image_edit_unsupported_models` 作为“仅支持文生图”人工覆盖，新增 `general.text_to_image_unsupported_models` 作为“仅支持图生图”人工覆盖；人工覆盖优先于自动结果，两张名单冲突时直接报错。
 
-- [ ] **Step 4: 运行阿里云与路由回归测试**
+- [x] **Step 4: 运行阿里云与路由回归测试**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_aliyun.py plugins/maimai-drawpic-plugin/tests/test_volcengine.py -q`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交配置与路由**
+- [x] **Step 5: 提交配置与路由**
 
 ```bash
 git add core/config.py core/provider_router.py tests/test_aliyun.py
