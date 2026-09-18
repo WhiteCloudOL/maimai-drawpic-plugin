@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import importlib.util
 import sys
 import tempfile
@@ -53,7 +54,14 @@ from core.message_utils import (  # noqa: E402
     _SOURCE_IMAGE_CACHE_ORDER,
     _normalize_stream_ids,
     _remember_source_image,
+    SourceImageInput,
+    cache_source_image_from_message,
+    collect_command_source_image_inputs,
+    extract_all_image_base64_from_message,
+    extract_source_images_from_message,
     find_all_cached_source_images,
+    find_all_cached_source_image_inputs,
+    find_source_image_inputs,
 )
 from core.moderation import DrawpicModerationService  # noqa: E402
 from core.stream_service import (  # noqa: E402
@@ -801,6 +809,135 @@ def test_source_image_cache_ttl() -> None:
     print("[OK] message_utils: 源图缓存 TTL 过期生效")
 
 
+def test_extract_source_images_preserves_adapter_url() -> None:
+    """图片段的真实数据与适配器原始 URL 应成对保留。"""
+
+    image_base64 = base64.b64encode(_MINIMAL_PNG).decode("ascii")
+    message = {
+        "message_segments": [
+            {
+                "type": "image",
+                "binary_data_base64": image_base64,
+                "url": "https://cdn.example/source.png?signature=secret",
+            }
+        ]
+    }
+
+    assert extract_source_images_from_message(message) == [
+        SourceImageInput(
+            base64_data=image_base64,
+            url="https://cdn.example/source.png?signature=secret",
+        )
+    ]
+    assert extract_all_image_base64_from_message(message) == [image_base64]
+
+
+def test_extract_source_images_supports_url_shapes_and_deduplicates() -> None:
+    """常见适配器 URL 字段均应识别，重复消息结构不能重复计数。"""
+
+    image_base64 = base64.b64encode(_MINIMAL_PNG).decode("ascii")
+    segments = [
+        {
+            "type": "image",
+            "base64": image_base64,
+            "data": {"url": "https://cdn.example/nested.png"},
+        },
+        {
+            "type": "image",
+            "image_base64": image_base64,
+            "image_url": {"url": "https://cdn.example/object.png"},
+        },
+        {
+            "type": "image",
+            "file_base64": image_base64,
+            "file_url": "file:///tmp/private.png",
+            "download_url": "https://cdn.example/download.png",
+        },
+    ]
+    message = {"message_segments": segments, "raw_message": list(segments)}
+
+    assert extract_source_images_from_message(message) == [
+        SourceImageInput(image_base64, "https://cdn.example/nested.png")
+    ]
+
+
+def test_source_image_cache_preserves_url_and_compatibility_view() -> None:
+    """缓存必须保留 URL，旧接口仍只返回 Base64 列表。"""
+
+    _SOURCE_IMAGE_CACHE.clear()
+    _SOURCE_IMAGE_CACHE_ORDER.clear()
+    image_base64 = base64.b64encode(_MINIMAL_PNG).decode("ascii")
+    message = {
+        "message_id": "msg-with-url",
+        "message_segments": [
+            {
+                "type": "image",
+                "binary_data_base64": image_base64,
+                "image_url": "https://cdn.example/source.png",
+            }
+        ],
+    }
+
+    try:
+        assert cache_source_image_from_message("stream-1", message) == (
+            "msg-with-url",
+            1,
+        )
+        assert find_all_cached_source_image_inputs("stream-1", "msg-with-url") == (
+            [SourceImageInput(image_base64, "https://cdn.example/source.png")],
+            "msg-with-url",
+        )
+        assert find_all_cached_source_images("stream-1", "msg-with-url") == (
+            [image_base64],
+            "msg-with-url",
+        )
+    finally:
+        _SOURCE_IMAGE_CACHE.clear()
+        _SOURCE_IMAGE_CACHE_ORDER.clear()
+
+
+def test_command_source_image_inputs_keep_url() -> None:
+    """命令和通用查找新接口应把 URL 一直传到调用端。"""
+
+    class _NoCapabilityCalls:
+        async def call_capability(self, *_args, **_kwargs):
+            raise AssertionError("直接图片不应触发消息查询")
+
+    image_base64 = base64.b64encode(_MINIMAL_PNG).decode("ascii")
+    message = {
+        "message_segments": [
+            {
+                "type": "image",
+                "binary_data_base64": image_base64,
+                "url": "https://cdn.example/command.png",
+            }
+        ]
+    }
+
+    async def _run() -> None:
+        expected = [
+            SourceImageInput(
+                base64_data=image_base64,
+                url="https://cdn.example/command.png",
+            )
+        ]
+        collected = await collect_command_source_image_inputs(
+            _NoCapabilityCalls(),
+            "stream-1",
+            message,
+        )
+        assert collected == expected
+        found, matched_message_id = await find_source_image_inputs(
+            _NoCapabilityCalls(),
+            "stream-1",
+            current_message=message,
+        )
+        assert found == expected
+        assert matched_message_id == ""
+
+    asyncio.run(_run())
+
+
 def test_image_lookup_candidates_stay_in_current_streams() -> None:
     """消息图片查询仅使用明确提供的聊天流。"""
 
@@ -1503,6 +1640,10 @@ def main() -> None:
     test_background_tasks_are_concurrent_and_user_isolated()
     test_moderation_parse_review_response_robust()
     test_source_image_cache_ttl()
+    test_extract_source_images_preserves_adapter_url()
+    test_extract_source_images_supports_url_shapes_and_deduplicates()
+    test_source_image_cache_preserves_url_and_compatibility_view()
+    test_command_source_image_inputs_keep_url()
     test_image_lookup_candidates_stay_in_current_streams()
     test_image_delivery_retries_only_remaining_images()
     test_unconfirmed_image_delivery_is_not_retried()

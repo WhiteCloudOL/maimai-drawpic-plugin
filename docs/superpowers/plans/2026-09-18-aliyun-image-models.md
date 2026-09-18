@@ -116,7 +116,7 @@ git commit -m "feat(aliyun): add image model capability registry"
 - Produces: `collect_command_source_image_inputs(...) -> list[SourceImageInput]`
 - Preserves: `extract_all_image_base64_from_message`、`find_source_images` 与 `collect_command_source_images` 的现有返回类型，作为兼容包装器
 
-- [ ] **Step 1: 编写 URL 提取、去重、缓存和引用查找失败测试**
+- [x] **Step 1: 编写 URL 提取、去重、缓存和引用查找失败测试**
 
 新增测试消息段同时包含 `binary_data_base64` 和 URL：
 
@@ -142,23 +142,23 @@ def test_extract_source_images_preserves_adapter_url() -> None:
 
 再覆盖 `data.url`、`image_url` 字符串/字典、`file_url`、`download_url`、非 HTTP(S) 地址过滤、`message_segments` 与 `raw_message` 重复数据去重，以及缓存后仍保留 URL。
 
-- [ ] **Step 2: 运行目标测试并确认缺少结构化源图接口**
+- [x] **Step 2: 运行目标测试并确认缺少结构化源图接口**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_fixes.py -k "source_image" -q`
 
 Expected: FAIL，原因是新 dataclass/函数尚不存在。
 
-- [ ] **Step 3: 实现结构化源图和兼容包装器**
+- [x] **Step 3: 实现结构化源图和兼容包装器**
 
 缓存值改为 `list[SourceImageInput]`。验证 Base64 时保留同一消息段中的 URL；只接受 `http://` 和 `https://`。兼容函数从结构化结果映射回 Base64 列表，确保现有调用者不被破坏。
 
-- [ ] **Step 4: 运行消息工具相关测试**
+- [x] **Step 4: 运行消息工具相关测试**
 
 Run: `uv run --project /Users/whitecloud/coding/Python/MaiBot pytest plugins/maimai-drawpic-plugin/tests/test_fixes.py -k "source_image or command_source" -q`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交原始 URL 保留能力**
+- [x] **Step 5: 提交原始 URL 保留能力**
 
 ```bash
 git add core/message_utils.py tests/test_fixes.py
