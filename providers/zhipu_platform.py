@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import aiohttp
 import base64
 import time
+
+import aiohttp
 
 from ..core.http_proxy import HttpProxySettings, read_response_bytes, read_response_json, read_response_text
 
@@ -19,18 +20,20 @@ class ZhipuImage:
         api_key: str,
         logger: Any | None = None,
         request_timeout_seconds: int = 20,
+        quality: str = "",
         size: str = "1280x1280",
-        response_format: str = "url",
-        user: str = "",
+        watermark_enabled: bool = True,
+        user_id: str = "",
         extra_parameters: dict[str, Any] | None = None,
         proxy_settings: HttpProxySettings | None = None,
     ) -> None:
         self.api_key = api_key
         self.logger = logger
         self.request_timeout_seconds = request_timeout_seconds
+        self.quality = quality.strip()
         self.size = size.strip()
-        self.response_format = response_format.strip()
-        self.user = user.strip()
+        self.watermark_enabled = watermark_enabled
+        self.user_id = user_id.strip()
         self.extra_parameters = dict(extra_parameters or {})
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
 
@@ -59,12 +62,13 @@ class ZhipuImage:
             "model": model,
             "prompt": prompt,
         }
+        if self.quality:
+            payload["quality"] = self.quality
         if self.size:
             payload["size"] = self.size
-        if self.response_format:
-            payload["response_format"] = self.response_format
-        if self.user:
-            payload["user"] = self.user
+        payload["watermark_enabled"] = self.watermark_enabled
+        if self.user_id:
+            payload["user_id"] = self.user_id
         payload.update(self.extra_parameters)
         return payload
 

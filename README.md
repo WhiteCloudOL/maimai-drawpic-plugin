@@ -4,8 +4,9 @@
 
 # 🎨 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-1.12.1-informational.svg)
-![MaiBot](https://img.shields.io/badge/MaiBot-1.x-blue.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.12.2-informational.svg)
+![MaiBot](https://img.shields.io/badge/MaiBot-%3E%3D1.2.0-blue.svg)
+![MaiBot Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-%3E%3D2.7.1-blueviolet.svg)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
 为 MaiBot 提供图片生成、图片编辑与多模型管理能力。
@@ -24,6 +25,7 @@
 - 支持群聊、私聊独立额度和管理员权限。
 - 支持 HTTP/HTTPS 代理与系统代理。
 - 支持后台任务和状态查询。
+- WebUI 插件配置支持简体中文、英语、日语和韩语。
 - 所有绘图入口都会创建彼此独立、可并发执行的后台任务；群聊中的最近任务按发起用户隔离。
 - 支持全平台正向/反向提示词风格模板，以及文生图、图生图自动识别。
 - 支持 NovelAI Anime、Furry、Background 会话级 mode、会话画师标签和 NAI 专属指令。
@@ -48,7 +50,7 @@
 | --- | --- | --- | --- |
 | OpenAI 及兼容接口 | ✅ | ✅ | 支持 Images API、Chat Completions 和多实例模型映射 |
 | Google Gemini / Imagen | ✅ | ✅ | 支持 Gemini 图片模型与 Imagen 图片模型 |
-| 智谱 | ✅ | ❌ | 适合中文提示词的图片生成 |
+| 智谱 | ✅ | ❌ | 支持 GLM-Image 与 CogView 图片模型，适合中文提示词 |
 | 阿里百炼 | ✅ | ✅ | 支持 Qwen Image 3.0/2.0、早期 Qwen Image、Z-Image、可灵图像与 Vidu 图像模型 |
 | 火山引擎 | ✅ | ✅ | 支持统一模型以及文生图、图生图模型分组 |
 | 硅基流动 | ✅ | ✅ | 支持平台开放的图片模型 |
@@ -56,6 +58,8 @@
 | ComfyUI | ✅ | ✅ | 使用本地 API 工作流 |
 
 ## 安装
+
+运行要求：MaiBot `>=1.2.0`，MaiBot Plugin SDK `>=2.7.1`。旧版本缺少本插件使用的配置 Schema 与 WebUI 国际化能力，安装前请先升级 MaiBot 和 Plugin SDK。
 
 ### 插件市场
 
@@ -169,12 +173,14 @@ negative_prompt_template = "3d render, oil painting, {negative_prompt}"
 
 ### 平台配置
 
+插件配置页面会跟随 MaiBot WebUI 语言切换配置节标题、说明、字段名称、提示和占位文本。目前支持简体中文、英语、日语和韩语；简体中文同时作为缺少翻译时的默认回退语言。
+
 | 配置节 | 常用配置 |
 | --- | --- |
 | `openai` | `base_url`、`api_key`、`models`、`default_size`、`default_openai_compatibility_mode` |
 | `openai.instances` | `name`、`base_url`、`api_key`、`models` |
 | `google` | `base_url`、`api_key`、`models`、`aspect_ratio` |
-| `zhipu` | `api_key`、`models`、`size` |
+| `zhipu` | `api_key`、`models`、`quality`、`size`、`watermark_enabled`、`user_id` |
 | `aliyun` | `base_url`、`api_key`、`models`、`image_input_mode`、各模型族参数 |
 | `volcengine` | `api_key`、`unified_models`、`t2i_models`、`i2i_models`、`default_size` |
 | `siliconflow` | `api_key`、`models`、`image_size` |
@@ -215,6 +221,46 @@ img2img_noise = 0.1
 - 图生图 `strength` 越高允许模型改动原图越多，越低则越接近原图；`noise` 可增加细节，但过高可能产生伪影。
 
 额外参数使用 `key=value` 格式，每行填写一项。值支持布尔值、数字和 JSON。
+
+### 智谱 GLM-Image
+
+1.12.2 起，智谱图片接口默认启用 `glm-image`，并按当前官方接口传递 `quality`、`size`、`watermark_enabled` 与 `user_id`。智谱平台当前仅接入文生图，不支持图生图编辑。
+
+必填配置：
+
+| 配置项 | 说明 |
+| --- | --- |
+| `api_key` | 智谱开放平台 API Key，对应请求头中的 Bearer 凭据 |
+| `models` | 启用并参与路由的智谱图片模型 ID 列表；默认值为 `glm-image` |
+
+插件会根据当前任务自动填写接口必填的 `model` 与 `prompt`，无需额外配置。
+
+常用可选配置：
+
+| 配置项 | 说明 |
+| --- | --- |
+| `quality` | 生成质量；留空时由上游按模型选择默认值，`glm-image` 使用且仅支持 `hd`，CogView 可按官方说明使用 `hd` 或 `standard` |
+| `size` | 图片尺寸；`glm-image` 默认 `1280x1280`，可使用官方枚举值或满足官方约束的自定义尺寸；留空则由上游决定 |
+| `watermark_enabled` | 是否启用显式水印及隐式数字水印，默认开启；关闭前需在智谱平台签署免责声明 |
+| `user_id` | 终端用户唯一标识，长度须为 6 到 128 个字符；留空则不传 |
+| `extra_parameters` | 每行一个 `key=value`，用于自定义或兼容未来模型参数 |
+| `rewrite_prompt_to_english` | 调用智谱前是否将提示词改写为英文；中文提示词通常无需开启 |
+
+配置示例：
+
+```toml
+[zhipu]
+enabled = true
+api_key = "your-zhipu-api-key"
+models = ["glm-image"]
+quality = ""
+size = "1280x1280"
+watermark_enabled = true
+user_id = ""
+extra_parameters = []
+```
+
+智谱当前图像生成模型列表中没有 `z-image`。本插件的 `z-image-turbo` 属于阿里百炼平台，使用独立接口和参数，不受智谱配置变更影响。
 
 ### 阿里百炼
 

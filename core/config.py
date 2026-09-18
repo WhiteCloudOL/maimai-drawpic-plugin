@@ -3,6 +3,7 @@ from typing import Any, List, Literal
 
 from maibot_sdk import Field, PluginConfigBase
 
+from .config_i18n import apply_config_i18n
 from ..models.aliyun_models import DEFAULT_ALIYUN_MODELS
 
 
@@ -42,7 +43,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.25.0",
+        default="2.26.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -900,9 +901,9 @@ class ZhipuModelConfig(PluginConfigBase):
     )
     api_key: str = Field(
         default="your-zhipu-api-key",
-        description="智谱 API 密钥",
+        description="智谱 API 密钥（必填）",
         json_schema_extra={
-            "label": "智谱 API 密钥",
+            "label": "智谱 API 密钥（必填）",
             "hint": "填入智谱开放平台的 API 密钥",
             "input_type": "password",
             "order": 0,
@@ -910,47 +911,57 @@ class ZhipuModelConfig(PluginConfigBase):
     )
     models: list[str] = Field(
         default=["glm-image"],
-        description="智谱可用图片模型列表（仅支持文生图）",
+        description="智谱可用图片模型列表（必填，仅支持文生图）",
         json_schema_extra={
-            "label": "智谱模型列表",
-            "hint": "这里填写属于智谱图像生成接口的模型；当前仅支持文生图，不支持图生图编辑",
+            "label": "智谱模型列表（必填）",
+            "hint": "默认使用 glm-image；也可填写智谱图像生成接口当前支持的 CogView 模型。仅支持文生图，不支持图生图编辑",
             "order": 1,
+        },
+    )
+    quality: str = Field(
+        default="",
+        description="智谱图像生成质量（可选）",
+        json_schema_extra={
+            "label": "生成质量（可选）",
+            "hint": "留空时由上游按模型选择默认质量；glm-image 仅支持 hd，CogView 可按官方说明选择 hd 或 standard",
+            "options": ["", "hd", "standard"],
+            "order": 2,
         },
     )
     size: str = Field(
         default="1280x1280",
-        description="智谱图像生成分辨率。",
+        description="智谱图像生成分辨率（可选）",
         json_schema_extra={
-            "label": "分辨率",
-            "hint": "常见值：1024x1024、1280x1280、768x1344、1344x768；以官方/模型实际支持为准",
-            "order": 2,
-        },
-    )
-    response_format: str = Field(
-        default="url",
-        description="智谱图片响应格式。",
-        json_schema_extra={
-            "label": "响应格式",
-            "hint": "常见值：url、b64_json；留空则不传",
+            "label": "分辨率（可选）",
+            "hint": "glm-image 默认 1280x1280，支持官方枚举或满足尺寸约束的自定义值；留空则由上游决定",
             "order": 3,
         },
     )
-    user: str = Field(
-        default="",
-        description="智谱终端用户标识",
+    watermark_enabled: bool = Field(
+        default=True,
+        description="是否启用智谱生成图片水印（可选）",
         json_schema_extra={
-            "label": "用户标识",
-            "hint": "可选，用于上游安全审计；留空则不传",
+            "label": "启用水印（可选）",
+            "hint": "默认启用显式水印及隐式数字水印；关闭水印需要先在智谱平台签署免责声明",
             "order": 4,
+        },
+    )
+    user_id: str = Field(
+        default="",
+        description="智谱终端用户唯一标识（可选）",
+        json_schema_extra={
+            "label": "终端用户标识（可选）",
+            "hint": "用于上游安全审计，长度须为 6 到 128 个字符；留空则不传",
+            "order": 5,
         },
     )
     extra_parameters: list[str] = Field(
         default=[],
-        description="智谱图像生成额外 JSON 参数。每项格式为 key=value",
+        description="智谱图像生成额外 JSON 参数（可选）。每项格式为 key=value",
         json_schema_extra={
-            "label": "额外参数",
-            "hint": "每行一个 key=value，值支持 true/false、数字或 JSON；用于兼容新模型参数",
-            "order": 5,
+            "label": "额外参数（可选）",
+            "hint": "每行一个 key=value，值支持 true/false、数字或 JSON；用于自定义或兼容未来模型参数",
+            "order": 6,
         },
     )
     rewrite_prompt_to_english: bool = Field(
@@ -959,7 +970,7 @@ class ZhipuModelConfig(PluginConfigBase):
         json_schema_extra={
             "label": "英文提示词改写",
             "hint": "开启后会调用 MaiBot replyer 模型，将非英文提示词改写为英文单词和 NovelAI 友好的英文标点。使用 NovelAI/StableDiffusion 兼容模型时必须开启，否则可能生图失败",
-            "order": 6,
+            "order": 7,
         },
     )
 
@@ -2089,6 +2100,28 @@ class DrawpicConfig(PluginConfigBase):
     siliconflow: SiliconFlowModelConfig = Field(default_factory=SiliconFlowModelConfig)
     novelai: NovelAIModelConfig = Field(default_factory=NovelAIModelConfig)
     comfyui: ComfyUIModelConfig = Field(default_factory=ComfyUIModelConfig)
+
+
+apply_config_i18n(
+    (
+        PluginSectionConfig,
+        GeneralConfig,
+        StylePresetConfig,
+        StyleConfig,
+        ProxyConfig,
+        OpenAICompatibleInstanceConfig,
+        OpenAIModelConfig,
+        GoogleModelConfig,
+        ZhipuModelConfig,
+        AliyunModelConfig,
+        VolcengineModelConfig,
+        SiliconFlowModelConfig,
+        NovelAIModelConfig,
+        ComfyUIModelConfig,
+        PromptModerationConfig,
+        ImageModerationConfig,
+    )
+)
 
 
 def migrate_legacy_review_config(config_data: Mapping[str, Any]) -> dict[str, Any]:

@@ -620,9 +620,10 @@ class ProviderRouter:
             api_key=self.config.zhipu.api_key,
             logger=self.logger,
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
+            quality=self.config.zhipu.quality,
             size=self.config.zhipu.size,
-            response_format=self.config.zhipu.response_format,
-            user=self.config.zhipu.user,
+            watermark_enabled=self.config.zhipu.watermark_enabled,
+            user_id=self.config.zhipu.user_id,
             extra_parameters=parse_key_value_options(self.config.zhipu.extra_parameters),
             proxy_settings=self._get_proxy_settings("zhipu"),
         )
