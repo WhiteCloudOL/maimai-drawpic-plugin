@@ -4,7 +4,7 @@
 
 # 🎨 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-1.12.0-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.12.1-informational.svg)
 ![MaiBot](https://img.shields.io/badge/MaiBot-1.x-blue.svg)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
@@ -161,7 +161,7 @@ negative_prompt_template = "3d render, oil painting, {negative_prompt}"
 
 - 正向模板中的 `{prompt}` 会替换为用户正向提示词；未写占位符时，用户提示词自动追加在模板后。
 - 反向模板中的 `{negative_prompt}` 会替换为用户反向提示词；未写占位符时，用户反向提示词自动追加。
-- `description` 是可选的风格语义描述，用于 `/绘图 风格` 展示并帮助模型匹配用户需求；留空时保持只显示名称的旧行为。
+- 1.12.1 起，`description` 是可选的风格语义描述，用于 `/绘图 风格` 展示并帮助模型匹配用户需求；留空时保持只显示名称的旧行为。
 - 图片形式的风格列表会用较小的灰色文字显示描述，名称仍保持正常正文字号。
 - NovelAI、阿里百炼、Imagen、硅基流动以及正反向节点模式的 ComfyUI 会使用独立反向字段。
 - 不支持独立反向提示词的平台会把反向内容以 `Negative prompt:` 合并到单个提示词中。
