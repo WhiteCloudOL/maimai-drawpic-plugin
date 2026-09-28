@@ -5,6 +5,12 @@ from typing import Any, Literal, Protocol
 import re
 
 from ..models.aliyun_models import resolve_aliyun_model_profile
+from ..models.rinkoai_models import (
+    OPENAI_COMPATIBILITY_MODES,
+    RINKOAI_EDIT_UNSUPPORTED_REASON,
+    is_rinkoai_nai_model,
+    normalize_openai_mode,
+)
 from ..providers.aliyun_platform import AliyunImage
 from ..providers.comfyui_platform import ComfyUIImage
 from ..providers.google_platform import GoogleImage
@@ -18,7 +24,6 @@ from .http_proxy import HttpProxySettings
 from .provider_options import parse_key_value_options, parse_model_value_overrides
 
 ProviderName = Literal["aliyun", "openai", "google", "zhipu", "volcengine", "siliconflow", "novelai", "comfyui"]
-OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
 _DOMESTIC_PROXY_BYPASS_PROVIDERS = {"aliyun", "volcengine", "siliconflow"}
 
 
@@ -127,7 +132,7 @@ class ProviderRouter:
     def _normalize_openai_compatibility_mode(mode: str) -> OpenAICompatibilityMode:
         """规范化 OpenAI 兼容模式。"""
 
-        normalized_mode = mode.strip()
+        normalized_mode = normalize_openai_mode(mode)
         if normalized_mode in OPENAI_COMPATIBILITY_MODES:
             return normalized_mode  # type: ignore[return-value]
         return "auto"
@@ -372,7 +377,7 @@ class ProviderRouter:
     def resolve_openai_compatibility_mode(self, mode: str = "", model: str = "") -> OpenAICompatibilityMode:
         """解析最终使用的 OpenAI 兼容模式。"""
 
-        normalized_mode = mode.strip()
+        normalized_mode = normalize_openai_mode(mode)
         if normalized_mode in OPENAI_COMPATIBILITY_MODES:
             return normalized_mode  # type: ignore[return-value]
 
@@ -380,9 +385,7 @@ class ProviderRouter:
             route = self.resolve_openai_model_route(model)
             if route is not None:
                 return self._normalize_openai_compatibility_mode(route.compatibility_mode)
-        if self.config.openai.default_openai_compatibility_mode in OPENAI_COMPATIBILITY_MODES:
-            return self.config.openai.default_openai_compatibility_mode
-        return "auto"
+        return self._normalize_openai_compatibility_mode(self.config.openai.default_openai_compatibility_mode)
 
     def resolve_request_timeout_seconds(self) -> int:
         """解析最终使用的请求超时时间。"""
@@ -832,6 +835,14 @@ class ProviderRouter:
                 reason=f"当前模型 {normalized_model} 未归属于任何已配置图片平台，无法判断任务能力",
                 source="unknown_provider",
             )
+        if provider_name == "openai" and task_type == "edit_image":
+            route = self.resolve_openai_model_route(normalized_model)
+            if route is not None and is_rinkoai_nai_model(route.base_url, route.upstream_model):
+                return ModelTaskCapability(
+                    allowed=False,
+                    reason=RINKOAI_EDIT_UNSUPPORTED_REASON,
+                    source="rinkoai_nai_protocol",
+                )
         if provider_name == "aliyun":
             profile = resolve_aliyun_model_profile(normalized_model)
             supported = (

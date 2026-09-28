@@ -5,8 +5,8 @@ import json
 
 from .provider_router import ProviderRouter
 from .storage_utils import write_json_atomically
+from ..models.rinkoai_models import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
 
-OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "chat_completions", "novelai_images_api"}
 NOVELAI_MODES = {"anime", "furry", "background"}
 
 
@@ -84,7 +84,9 @@ class SessionPreferenceStore:
         normalized_preferences: dict[str, dict[str, str]] = {}
         for session_key, session_value in self.preferences.items():
             model = str(session_value.get("model") or "").strip()
-            openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
+            openai_compatibility_mode = normalize_openai_mode(
+                str(session_value.get("openai_compatibility_mode") or "")
+            )
             novelai_mode = str(session_value.get("novelai_mode") or "").strip()
             novelai_artist_tags = str(session_value.get("novelai_artist_tags") or "").strip()
             normalized_preferences[session_key] = {
@@ -109,7 +111,9 @@ class SessionPreferenceStore:
         session_key = self.resolve_session_key(stream_id, user_id, group_id, platform)
         session_value = self.preferences.get(session_key, {})
         model = str(session_value.get("model") or "").strip()
-        openai_compatibility_mode = str(session_value.get("openai_compatibility_mode") or "").strip()
+        openai_compatibility_mode = normalize_openai_mode(
+            str(session_value.get("openai_compatibility_mode") or "")
+        )
         novelai_mode = str(session_value.get("novelai_mode") or "").strip()
         novelai_artist_tags = str(session_value.get("novelai_artist_tags") or "").strip()
         resolved_preference = {
@@ -147,7 +151,7 @@ class SessionPreferenceStore:
         if model is not None:
             next_value["model"] = self.router.resolve_model_name(model, allow_unknown_model=False)
         if openai_compatibility_mode is not None:
-            normalized_mode = openai_compatibility_mode.strip()
+            normalized_mode = normalize_openai_mode(openai_compatibility_mode)
             next_value["openai_compatibility_mode"] = (
                 normalized_mode if normalized_mode in OPENAI_COMPATIBILITY_MODES else ""
             )

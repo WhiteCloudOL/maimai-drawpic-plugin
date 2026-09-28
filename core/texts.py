@@ -4,6 +4,14 @@ from .image_reply import ReplyTextSpan
 from .provider_router import ProviderRouter
 from .style_prompts import StylePromptResolver
 from .task_store import DrawTaskRecord
+from ..models.rinkoai_models import normalize_openai_mode
+
+
+def format_openai_mode(mode: str) -> str:
+    """兼容模式对外统一显示 RinkoAI 名称。"""
+
+    normalized = normalize_openai_mode(mode)
+    return "RinkoAI 兼容（rinkoai）" if normalized == "rinkoai" else normalized
 
 
 def build_command_usage_text() -> str:
@@ -84,7 +92,10 @@ def build_session_status_text(
     model_name = session_preference["model"] or router.resolve_default_model()
     provider_name = router.get_model_provider(model_name) or "unknown"
     lock_status = "已锁定" if session_preference["model"] else "未锁定，跟随默认首选模型"
-    openai_mode_text = session_preference["openai_compatibility_mode"] or "未锁定，跟随模型配置"
+    openai_mode_text = (
+        format_openai_mode(session_preference["openai_compatibility_mode"])
+        or "未锁定，跟随模型配置"
+    )
     novelai_mode_text = session_preference.get("novelai_mode") or router.config.novelai.default_mode
     novelai_artist_tags = router.resolve_novelai_artist_tags(
         session_preference.get("novelai_artist_tags", "")
@@ -203,7 +214,7 @@ def build_novelai_text(router: ProviderRouter, session_preference: dict[str, str
 def build_compatible_mode_text(current_mode: str) -> str:
     """构建兼容模式说明。"""
 
-    mode_text = current_mode.strip() or "未锁定，跟随模型配置"
+    mode_text = format_openai_mode(current_mode) or "未锁定，跟随模型配置"
     return "\n".join(
         [
             f"当前 OpenAI 兼容模式：{mode_text}",
@@ -212,10 +223,11 @@ def build_compatible_mode_text(current_mode: str) -> str:
             "可选模式：",
             "auto：自动选择，推荐默认使用",
             "images_api：OpenAI 标准 Images API",
-            "chat_completions：Chat Completion 返回图片",
+            "rinkoai：RinkoAI 兼容，仅用于 api.rinko.ai 的 NAI 系列文生图",
             "novelai_images_api：旧版 NovelAI 风格 OpenAI 兼容接口",
             "",
             "不设置会话兼容模式时，会跟随当前模型所属实例的默认兼容模式。",
+            "旧 chat_completions 配置值兼容读取为 rinkoai，不再支持通用聊天绘图。",
             "使用 /绘图 兼容模式 跟随 可清空会话设置。",
             "示例：/绘图 兼容模式 images_api",
         ]

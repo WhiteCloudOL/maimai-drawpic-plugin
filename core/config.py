@@ -2,12 +2,13 @@ from collections.abc import Mapping
 from typing import Any, List, Literal
 
 from maibot_sdk import Field, PluginConfigBase
+from pydantic import field_validator
 
 from .config_i18n import apply_config_i18n
 from ..models.aliyun_models import DEFAULT_ALIYUN_MODELS
+from ..models.rinkoai_models import OpenAICompatibilityMode, normalize_openai_mode
 
 
-OpenAICompatibilityMode = Literal["auto", "images_api", "chat_completions", "novelai_images_api"]
 NovelAIModelId = Literal[
     "nai-diffusion-5-full",
     "nai-diffusion-5-curated",
@@ -43,7 +44,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.26.0",
+        default="2.27.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -486,7 +487,7 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         description="该实例默认 OpenAI 兼容模式",
         json_schema_extra={
             "label": "兼容模式",
-            "placeholder": "auto / images_api / chat_completions / novelai_images_api",
+            "placeholder": "auto / images_api / rinkoai / novelai_images_api",
             "order": 5,
         },
     )
@@ -601,6 +602,13 @@ class OpenAIModelConfig(PluginConfigBase):
     __ui_label__ = "OpenAI 配置"
     __ui_order__ = 4
 
+    @field_validator("default_openai_compatibility_mode", mode="before")
+    @classmethod
+    def normalize_compatibility_mode(cls, value: Any) -> Any:
+        """读取旧模式名称，但 Schema 下拉菜单仅公开新的 RinkoAI 名称。"""
+
+        return normalize_openai_mode(value) if isinstance(value, str) else value
+
     enabled: bool = Field(
         default=True,
         description="是否启用本节主 OpenAI 配置。关闭后不影响下方额外 OpenAI 兼容实例",
@@ -643,7 +651,7 @@ class OpenAIModelConfig(PluginConfigBase):
         description="默认 OpenAI 兼容模式。仅在当前会话使用 OpenAI 系模型时生效。",
         json_schema_extra={
             "label": "默认 OpenAI 兼容模式",
-            "hint": "支持 auto、images_api、chat_completions、novelai_images_api；通常建议使用 auto。NovelAI 官方平台请优先使用独立 NovelAI 配置。",
+            "hint": "支持 auto、images_api、rinkoai（RinkoAI 兼容）、novelai_images_api；auto 会自动识别 api.rinko.ai 的 NAI 模型。旧 chat_completions 值仅作为 rinkoai 别名。NovelAI 官方平台请使用独立 NovelAI 配置。",
             "order": 3,
         },
     )

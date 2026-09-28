@@ -44,6 +44,7 @@ modules_to_check = [
     "core.draw_service",
     "core.config",
     "models.aliyun_models",
+    "models.rinkoai_models",
     "providers.aliyun_platform",
     "providers.google_platform",
     "providers.novelai_platform",

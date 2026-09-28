@@ -48,7 +48,7 @@
 
 | 平台 | 文生图 | 图生图 | 说明 |
 | --- | --- | --- | --- |
-| OpenAI 及兼容接口 | ✅ | ✅ | 支持 Images API、Chat Completions 和多实例模型映射 |
+| OpenAI 及兼容接口 | ✅ | ✅ | 支持 Images API、RinkoAI NAI 文生图兼容和多实例模型映射；RinkoAI NAI 暂不支持图生图 |
 | Google Gemini / Imagen | ✅ | ✅ | 支持 Gemini 图片模型与 Imagen 图片模型 |
 | 智谱 | ✅ | ❌ | 支持 GLM-Image 与 CogView 图片模型，适合中文提示词 |
 | 阿里百炼 | ✅ | ✅ | 支持 Qwen Image 3.0/2.0、早期 Qwen Image、Z-Image、可灵图像与 Vidu 图像模型 |
@@ -332,8 +332,27 @@ Qwen Image 与 Z-Image 使用同步接口。可灵和 Vidu 使用异步提交与
 
 - `auto`：根据模型选择接口格式。
 - `images_api`：使用图片生成与编辑接口。
-- `chat_completions`：使用多模态聊天接口。
+- `rinkoai`：RinkoAI 兼容，仅针对 `api.rinko.ai` 的 `nai-diffusion-*` 系列，使用非流式聊天绘图接口。
 - `novelai_images_api`：使用 NovelAI 风格图片响应。
+
+#### RinkoAI 的 NAI 系列
+
+在 OpenAI 平台或额外兼容实例中配置（必填：地址、密钥、模型）：
+
+```toml
+[openai]
+enabled = true
+base_url = "https://api.rinko.ai/v1"
+api_key = "填写你自己的密钥"
+models = ["nai-diffusion-5-full"]
+default_openai_compatibility_mode = "auto"
+```
+
+`auto` 按实例的实际主机和上游模型名识别 RinkoAI NAI 模型（支持 `显示名=上游模型名`）；也可使用 `/绘图 兼容模式 rinkoai` 或 `/绘图 兼容模式 RinkoAI兼容` 手动选择。旧 `chat_completions` 配置与会话偏好继续可读，但只作为 `rinkoai` 别名，不再提供通用 OpenAI Chat Completion 绘图兼容。RinkoAI 的其他绘图模型仍走默认 Images API，不启用 NAI 特殊处理。
+
+已验证 `nai-diffusion-5-full` 文生图，支持解析返回的 Markdown 内嵌 Base64 图片、图片 URL 和结构化图片响应；默认单次一张，响应解析或下载失败时，适配器不会重发同一付费绘图请求（不改变用户另行配置的备选模型机制）。可选 `extra_parameters` 仍可透传上游扩展字段，但不能覆盖 `model`、`messages`、`stream`；没有公开文档或实测依据的参数不保证生效。`default_size`、`quality`、`response_format` 等 Images API 参数不会自动套用到 RinkoAI NAI 聊天接口：实测该接口未应用顶层 `size`。
+
+图生图目前会在审核、扣额度和提交任务前提示不支持：测试带源图的聊天请求仍返回 `job.action = generate`，不能确认使用了源图，因此不会把文生图结果冒充图生图成功。该限制只影响此站点的 NAI 系列，不影响独立 NovelAI 平台或其他 RinkoAI 绘图模型。待上游提供可验证的图生图协议后再启用。
 
 多个兼容接口包含同名模型时，可在 `models` 中使用 `显示名=上游模型名`，例如：
 

@@ -400,6 +400,15 @@ _PLACEHOLDER_TEXTS: Dict[str, Tuple[str, str, str]] = {
     ),
 }
 
+_OPENAI_MODE_HINTS = (
+    "auto / images_api / rinkoai (RinkoAI compatibility) / novelai_images_api. "
+    "auto detects NAI models on api.rinko.ai. Legacy chat_completions means rinkoai only.",
+    "auto / images_api / rinkoai（RinkoAI 互換）/ novelai_images_api。"
+    "auto は api.rinko.ai の NAI モデルを自動認識します。旧 chat_completions は rinkoai の別名です。",
+    "auto / images_api / rinkoai(RinkoAI 호환) / novelai_images_api. "
+    "auto는 api.rinko.ai의 NAI 모델을 감지합니다. 이전 chat_completions는 rinkoai의 별칭입니다.",
+)
+
 
 def _localized_field_entries(
     class_name: str,
@@ -420,7 +429,9 @@ def _localized_field_entries(
         label = labels[index]
         localized: Dict[str, str] = {"label": label}
         if str(json_schema_extra.get("hint") or "").strip():
-            if locale == "en_US":
+            if field_name == "default_openai_compatibility_mode":
+                localized["hint"] = _OPENAI_MODE_HINTS[index]
+            elif locale == "en_US":
                 localized["hint"] = f"Configure {label}."
             elif locale == "ja_JP":
                 localized["hint"] = f"{label}を設定します。"

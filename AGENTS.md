@@ -18,5 +18,6 @@
 - 阿里云支持范围为 Qwen Image、Z-Image、可灵图像和 Vidu 图像；当前明确不接入万象、创意工具、图像翻译与视频生成。变更范围时应同步更新模型注册表、能力测试和 README。
 - 阿里云 `base_url` 必须来自配置且以 `/api/v1` 结尾；不要硬编码用户工作空间地址。可灵/Vidu 图生图必须使用适配器原图 URL，Qwen 默认保持 Base64。
 - 文档与 README 要同步用户可见行为，尤其是命令语义、配置项、版本号和不支持图生图时的处理方式。
+- OpenAI 的 `rinkoai` 模式只针对 `api.rinko.ai` 的 `nai-diffusion-*` 模型；旧 `chat_completions` 值仅作为别名，不再提供通用 Chat Completion 绘图。NAI 聊天绘图不能因解析失败自动重发付费请求。未经验证的源图或参数支持不得宣称生效；目前图生图在路由层提前拒绝，其他 RinkoAI 模型保持 Images API 默认行为。
 - `core/config.py` 新增或重命名配置节、配置字段时，必须同步维护 `core/config_i18n.py` 的英语、日语和韩语 Schema 文案，并运行配置 i18n 覆盖测试；简体中文保留为默认文案和回退语言。
 - 提交前至少运行 AST/compileall 与 `git diff --check`；本插件通常可用 `PYTHONPYCACHEPREFIX=/private/tmp/maimai_drawpic_pycache python3 -m compileall -q plugins/maimai-drawpic-plugin` 避免写入用户缓存目录。

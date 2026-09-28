@@ -33,8 +33,10 @@ from .core.texts import (
     build_session_status_text,
     build_style_reply_lines,
     build_style_text,
+    format_openai_mode,
 )
 from .core.usage_store import QuotaPeriod, UserQuotaStore
+from .models.rinkoai_models import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
 
 
 DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
@@ -2571,7 +2573,7 @@ class DrawpicPlugin(MaiBotPlugin):
             return True, "已设置首选绘图模型", 2
 
         if normalized_command == "compatible-mode":
-            compatibility_mode = rest_payload.strip()
+            compatibility_mode = normalize_openai_mode(rest_payload)
             if not compatibility_mode:
                 await self._send_command_reply(
                     title="OpenAI 兼容模式",
@@ -2597,7 +2599,7 @@ class DrawpicPlugin(MaiBotPlugin):
             clear_mode_aliases = {"默认", "跟随", "清空", "default", "unset", "clear"}
             if compatibility_mode in clear_mode_aliases:
                 compatibility_mode = ""
-            elif compatibility_mode not in {"auto", "images_api", "chat_completions", "novelai_images_api"}:
+            elif compatibility_mode not in OPENAI_COMPATIBILITY_MODES:
                 await self._send_command_reply(
                     title="兼容模式无效",
                     body=build_compatible_mode_text(session_preference["openai_compatibility_mode"]),
@@ -2615,11 +2617,12 @@ class DrawpicPlugin(MaiBotPlugin):
                 normalized_platform,
                 openai_compatibility_mode=compatibility_mode,
             )
+            mode_label = format_openai_mode(next_preference["openai_compatibility_mode"])
             await self._send_command_reply(
                 title="兼容模式已切换",
                 body=(
                     "当前会话 OpenAI 兼容模式："
-                    f"{next_preference['openai_compatibility_mode'] or '跟随模型配置'}\n"
+                    f"{mode_label or '跟随模型配置'}\n"
                     "该设置仅对 OpenAI 提供商生效。"
                 ),
                 stream_id=normalized_stream_id,

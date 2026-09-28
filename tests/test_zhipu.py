@@ -93,7 +93,7 @@ def test_glm_image_defaults_are_selected() -> None:
 
     config = _config_module().DrawpicConfig()
 
-    assert config.plugin.config_version == "2.26.0"
+    assert config.plugin.config_version == "2.27.0"
     assert config.general.default_model == "gpt-image-2"
     assert config.zhipu.models == ["glm-image"]
     assert config.zhipu.quality == ""
