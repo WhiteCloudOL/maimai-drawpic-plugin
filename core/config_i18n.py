@@ -401,12 +401,12 @@ _PLACEHOLDER_TEXTS: Dict[str, Tuple[str, str, str]] = {
 }
 
 _OPENAI_MODE_HINTS = (
-    "auto / images_api / rinkoai (RinkoAI compatibility) / novelai_images_api. "
-    "auto detects NAI models on api.rinko.ai. Legacy chat_completions means rinkoai only.",
-    "auto / images_api / rinkoai（RinkoAI 互換）/ novelai_images_api。"
-    "auto は api.rinko.ai の NAI モデルを自動認識します。旧 chat_completions は rinkoai の別名です。",
-    "auto / images_api / rinkoai(RinkoAI 호환) / novelai_images_api. "
-    "auto는 api.rinko.ai의 NAI 모델을 감지합니다. 이전 chat_completions는 rinkoai의 별칭입니다.",
+    "auto / images_api / chat_completions (New API image chat) / rinkoai (RinkoAI NAI). "
+    "auto uses endpoint metadata and model families. Legacy novelai_images_api means rinkoai.",
+    "auto / images_api / chat_completions（New API 画像チャット）/ rinkoai（RinkoAI NAI）。"
+    "auto は端点情報とモデル系列を使用します。旧 novelai_images_api は rinkoai の別名です。",
+    "auto / images_api / chat_completions(New API 이미지 채팅) / rinkoai(RinkoAI NAI). "
+    "auto는 엔드포인트 정보와 모델 계열을 사용합니다. 이전 novelai_images_api는 rinkoai의 별칭입니다.",
 )
 
 

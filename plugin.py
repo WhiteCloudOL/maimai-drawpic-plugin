@@ -36,7 +36,7 @@ from .core.texts import (
     format_openai_mode,
 )
 from .core.usage_store import QuotaPeriod, UserQuotaStore
-from .models.rinkoai_models import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
+from .models.openai_models import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
 
 
 DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {

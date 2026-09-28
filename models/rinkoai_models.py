@@ -1,26 +1,13 @@
 """RinkoAI NAI 聊天绘图协议与适用范围（不执行网络请求）。"""
 
-from typing import Any, Dict, Literal
+from typing import Any, Dict
 from urllib.parse import urlsplit
 
 
-OpenAICompatibilityMode = Literal[
-    "auto", "images_api", "rinkoai", "novelai_images_api"
-]
-OPENAI_COMPATIBILITY_MODES = {"auto", "images_api", "rinkoai", "novelai_images_api"}
 RINKOAI_EDIT_UNSUPPORTED_REASON = (
     "RinkoAI 的 NAI 聊天绘图接口目前未验证支持图生图："
     "带源图的请求仍返回 generate 任务。请使用文生图或切换到支持图生图的平台。"
 )
-
-
-def normalize_openai_mode(mode: str) -> str:
-    """旧配置值仅作为 RinkoAI 模式别名，不再开启通用聊天绘图。"""
-
-    normalized = mode.strip().lower()
-    if normalized in {"chat_completions", "rinkoai兼容", "rinkoai 兼容"}:
-        return "rinkoai"
-    return normalized
 
 
 def is_rinkoai_nai_model(base_url: str, model: str) -> bool:

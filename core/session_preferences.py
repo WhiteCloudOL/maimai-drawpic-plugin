@@ -5,7 +5,7 @@ import json
 
 from .provider_router import ProviderRouter
 from .storage_utils import write_json_atomically
-from ..models.rinkoai_models import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
+from ..models.openai_models import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
 
 NOVELAI_MODES = {"anime", "furry", "background"}
 

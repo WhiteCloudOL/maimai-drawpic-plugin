@@ -6,7 +6,7 @@ from pydantic import field_validator
 
 from .config_i18n import apply_config_i18n
 from ..models.aliyun_models import DEFAULT_ALIYUN_MODELS
-from ..models.rinkoai_models import OpenAICompatibilityMode, normalize_openai_mode
+from ..models.openai_models import OpenAICompatibilityMode, normalize_openai_mode
 
 
 NovelAIModelId = Literal[
@@ -44,7 +44,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.27.0",
+        default="2.28.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -487,7 +487,7 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
         description="该实例默认 OpenAI 兼容模式",
         json_schema_extra={
             "label": "兼容模式",
-            "placeholder": "auto / images_api / rinkoai / novelai_images_api",
+            "placeholder": "auto / images_api / chat_completions / rinkoai",
             "order": 5,
         },
     )
@@ -605,7 +605,7 @@ class OpenAIModelConfig(PluginConfigBase):
     @field_validator("default_openai_compatibility_mode", mode="before")
     @classmethod
     def normalize_compatibility_mode(cls, value: Any) -> Any:
-        """读取旧模式名称，但 Schema 下拉菜单仅公开新的 RinkoAI 名称。"""
+        """读取已移除的 NovelAI Images 名称，Schema 只公开现行模式。"""
 
         return normalize_openai_mode(value) if isinstance(value, str) else value
 
@@ -651,7 +651,7 @@ class OpenAIModelConfig(PluginConfigBase):
         description="默认 OpenAI 兼容模式。仅在当前会话使用 OpenAI 系模型时生效。",
         json_schema_extra={
             "label": "默认 OpenAI 兼容模式",
-            "hint": "支持 auto、images_api、rinkoai（RinkoAI 兼容）、novelai_images_api；auto 会自动识别 api.rinko.ai 的 NAI 模型。旧 chat_completions 值仅作为 rinkoai 别名。NovelAI 官方平台请使用独立 NovelAI 配置。",
+            "hint": "支持 auto、images_api、chat_completions（New API 聊天绘图）、rinkoai（RinkoAI NAI 兼容）。auto 优先参考 New API 模型端点信息，缺失时按模型系列选择；只有端点不支持才切换格式。旧 novelai_images_api 值作为 rinkoai 别名。",
             "order": 3,
         },
     )

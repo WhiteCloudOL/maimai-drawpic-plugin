@@ -5,11 +5,10 @@ from typing import Any, Literal, Protocol
 import re
 
 from ..models.aliyun_models import resolve_aliyun_model_profile
+from ..models.openai_models import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
 from ..models.rinkoai_models import (
-    OPENAI_COMPATIBILITY_MODES,
     RINKOAI_EDIT_UNSUPPORTED_REASON,
     is_rinkoai_nai_model,
-    normalize_openai_mode,
 )
 from ..providers.aliyun_platform import AliyunImage
 from ..providers.comfyui_platform import ComfyUIImage

@@ -45,6 +45,7 @@ modules_to_check = [
     "core.config",
     "models.aliyun_models",
     "models.rinkoai_models",
+    "models.openai_models",
     "providers.aliyun_platform",
     "providers.google_platform",
     "providers.novelai_platform",
