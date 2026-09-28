@@ -4,7 +4,7 @@
 
 # 🎨 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-1.12.2-informational.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-1.12.3-informational.svg)
 ![MaiBot](https://img.shields.io/badge/MaiBot-%3E%3D1.2.0-blue.svg)
 ![MaiBot Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-%3E%3D2.7.1-blueviolet.svg)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
@@ -75,7 +75,7 @@ maibot plugin install WhiteCloudOL/maimai-drawpic-plugin
 
 ```bash
 cd plugins
-git clone https://github.com/WhiteCloudOL/maimai-drawpic-plugin.git maimai-drawpic
+git clone https://github.com/WhiteCloudOL/maimai-drawpic-plugin.git
 ```
 
 安装完成后重启 MaiBot，在插件配置页面填写需要启用的平台密钥与模型。
