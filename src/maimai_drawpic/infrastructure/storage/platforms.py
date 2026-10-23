@@ -283,6 +283,12 @@ class WorkspaceConfigStore:
         # 加载旧记录时保留首尾空格，交给统一迁移逐个转换为下划线。
         result["name"] = record["name"]
         result["config"] = _validate_fields(self.platform_model(record["kind"]), record["config"])
+        if record["kind"] == "novelai":
+            # 仅在完成原字段类型校验后合并，保留旧顺序、去重且不丢自定义模型。
+            values = result["config"]
+            values["models"] = list(dict.fromkeys(
+                model.strip() for model in values["models"] + values.pop("custom_models", []) if model.strip()
+            ))
         if record["kind"] == "openai":
             result["config"]["instances"] = []
         return result

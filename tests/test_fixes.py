@@ -359,12 +359,11 @@ def test_novelai_custom_gateway_keeps_legacy_parameters() -> None:
 
 
 def test_novelai_defaults_include_v5_models() -> None:
-    """NovelAI 默认模型列表包含 V5 Full 与 Curated。"""
+    """NovelAI 新配置只默认添加 V5 Full 与 Curated。"""
 
     configured_models = NovelAIModelConfig().models
-    assert "nai-diffusion-5-full" in configured_models
-    assert "nai-diffusion-5-curated" in configured_models
-    print("[OK] NovelAI 配置：默认模型列表包含 V5")
+    assert configured_models == ["nai-diffusion-5-full", "nai-diffusion-5-curated"]
+    print("[OK] NovelAI 配置：默认模型列表仅提供 V5")
 
 
 def test_novelai_mode_and_prompt_merging() -> None:
@@ -457,7 +456,7 @@ def test_style_descriptions_are_structured_and_backward_compatible() -> None:
 
     legacy_preset = StylePresetConfig(name="旧风格")
     assert legacy_preset.description == ""
-    assert DrawpicConfig().plugin.config_version == "2.38.0"
+    assert DrawpicConfig().plugin.config_version == "2.39.0"
 
     resolver = StylePromptResolver(
         StyleConfig(
@@ -576,7 +575,9 @@ def test_novelai_v3_mode_switches_effective_model() -> None:
     from maimai_drawpic_pkg.src.maimai_drawpic.domain.configuration.models import DrawpicConfig
     from maimai_drawpic_pkg.src.maimai_drawpic.application.routing import ProviderRouter
 
-    router = ProviderRouter(DrawpicConfig(), logger=_FakeLogger())
+    config = DrawpicConfig()
+    config.novelai.models += ["nai-diffusion-3", "nai-diffusion-furry-3"]
+    router = ProviderRouter(config, logger=_FakeLogger())
     router.config.novelai.default_artist_tags = "artist:default"
     assert router.resolve_novelai_artist_tags() == "artist:default"
     assert router.resolve_novelai_artist_tags("artist:session") == "artist:session"
@@ -600,6 +601,7 @@ def test_regular_novelai_route_uses_session_settings_and_prompts() -> None:
     from maimai_drawpic_pkg.src.maimai_drawpic.application.routing import ProviderRouter
 
     config = DrawpicConfig()
+    config.novelai.models += ["nai-diffusion-3", "nai-diffusion-furry-3"]
     config.novelai.positive_prompt = "default positive"
     config.novelai.negative_prompt = "default negative"
     config.novelai.default_artist_tags = "artist:default"

@@ -235,6 +235,12 @@ NovelAI 或 NovelAPI 兼容服务账号与可用端点。
 
 ### 模型与图生图限制
 
+模型使用与其他平台相同的可增删输入列表，预设和自定义模型统一放在一起。新建平台默认仅提供 **V5 Full / V5 Curated**，已有平台的模型配置保留。点击 **从预设添加模型** 可以搜索并勾选追加其他模型，也可点击 **添加一项** 直接输入 NovelAPI / 兼容服务的模型 ID；保存平台后生效。旧版 `custom_models` 会合并进 `models`，保留原有模型顺序、去除重复，保存时不再写出第二份列表。
+
+截至 **2026-10-23**，预设包括 `nai-diffusion-5-full`、`nai-diffusion-5-curated`、`nai-diffusion-4-5-full`、`nai-diffusion-4-5-curated`、`nai-diffusion-4-full`、`nai-diffusion-4-curated-preview`、`nai-diffusion-3`、`nai-diffusion-furry-3`。V5 Full / Curated 是当前最新一代，实际模型权限以账号为准。[官方模型说明](https://docs.novelai.net/en/image/models/)。
+
+这份目录是预设，不是在线查询结果；官方 [图片 API 文档](https://image.novelai.net/docs/doc.json) 当前未公开绘图模型目录接口，其中 `/oa/v1/models` 是文本模型接口，不能当作图片模型列表。预设不需要填写密钥即可查看，也不会发起生图请求。
+
 支持 V3、V4、V4.5、V5 与兼容网关；图生图仅一张源图。Background 要求 V4.5 或 V5，V3 的 Furry 需启用 `nai-diffusion-furry-3`。
 
 ### 高级配置

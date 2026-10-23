@@ -1,8 +1,10 @@
 """configuration/platforms/novelai.py 的强类型配置定义。"""
 
 from maibot_sdk import Field, PluginConfigBase
+from typing import List
 
-from ..types import NovelAIMode, NovelAIModelId
+from ...models.novelai_catalog import NOVELAI_DEFAULT_MODELS
+from ..types import NovelAIMode
 
 
 class NovelAIModelConfig(PluginConfigBase):
@@ -39,30 +41,22 @@ class NovelAIModelConfig(PluginConfigBase):
             "order": 1,
         },
     )
-    models: list[NovelAIModelId] = Field(
-        default=[
-            "nai-diffusion-5-full",
-            "nai-diffusion-5-curated",
-            "nai-diffusion-4-5-full",
-            "nai-diffusion-4-5-curated",
-            "nai-diffusion-4-full",
-            "nai-diffusion-4-curated-preview",
-            "nai-diffusion-3",
-            "nai-diffusion-furry-3",
-        ],
-        description="可多选的 NovelAI 官方图片模型列表。",
+    models: List[str] = Field(
+        default_factory=lambda: list(NOVELAI_DEFAULT_MODELS),
+        description="NovelAI / NovelAPI 图片模型列表，统一保存预设与自定义模型 ID。",
         json_schema_extra={
             "label": "NovelAI 模型列表",
-            "hint": "提供 NovelAI V5、V4.5、V4 和 V3 官方模型；可多选。NovelAPI 网关的扩展模型请填写下方自定义模型列表",
+            "hint": "可从官方模型预设添加，也可直接填写兼容服务的模型 ID；统一在此列表编辑，保存后生效。",
             "order": 2,
         },
     )
     custom_models: list[str] = Field(
         default=[],
-        description="NovelAI / NovelAPI 自定义图片模型列表。",
+        description="仅供读取旧配置的自定义模型；加载平台时合并到 models。",
         json_schema_extra={
             "label": "自定义模型列表",
-            "hint": "用于 NovelAPI 网关或其他兼容服务的扩展模型；每行填写一个模型 ID，会与上方官方模型列表合并",
+            "hint": "旧自定义模型会自动合并到统一模型列表，不再单独编辑。",
+            "hidden": True,
             "order": 3,
         },
     )

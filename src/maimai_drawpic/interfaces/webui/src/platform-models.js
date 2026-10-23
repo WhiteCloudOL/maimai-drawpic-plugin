@@ -5,6 +5,7 @@
 
   function picker(form, { kind, record, catalog, clearApiKey }) {
     const version = state.modalVersion;
+    const fromPreset = !catalog.model_discovery && catalog.model_presets?.length > 0;
     const dialog = document.createElement("dialog");
     const titleId = `model-picker-${++sequence}`;
     dialog.className = "model-picker";
@@ -14,17 +15,17 @@
       <button type="button" class="icon-button" data-close aria-label="关闭模型选择">${icon("close")}</button>
     </div>
     <div class="model-picker-content">
-      <p class="hint">从接口读取模型，勾选后加入草稿；保存平台后生效。</p>
+      <p class="hint">${fromPreset ? "从官方模型预设选择，勾选后加入同一模型列表；保存平台后生效。" : "从接口读取模型，勾选后加入草稿；保存平台后生效。"}</p>
       <div class="model-picker-filters">
         <input type="search" data-search aria-label="搜索模型" placeholder="搜索模型 ID 或名称…">
-        <label class="inline-choice"><input type="checkbox" data-images-only>仅显示可能的绘图模型</label>
+        <label class="inline-choice"${fromPreset ? " hidden" : ""}><input type="checkbox" data-images-only>仅显示可能的绘图模型</label>
       </div>
       <div class="model-picker-results">
         <div class="model-picker-summary">
           <p class="hint" data-count aria-live="polite"></p>
           <p class="hint" data-status role="status" aria-live="polite">正在获取模型…</p>
         </div>
-        <div class="model-picker-list" data-model-list role="group" aria-label="接口返回的模型" tabindex="0"></div>
+        <div class="model-picker-list" data-model-list role="group" aria-label="${fromPreset ? "预设模型" : "接口返回的模型"}" tabindex="0"></div>
       </div>
       <p class="hint model-picker-selection-hint">全选当前筛选结果；清空取消全部新勾选，已有模型保留。</p>
     </div>
@@ -68,18 +69,20 @@
     async function load() {
       $("[data-retry]", dialog).hidden = true;
       list.setAttribute("aria-busy", "true");
-      status.textContent = "正在获取模型…";
+      status.textContent = fromPreset ? "正在读取预设…" : "正在获取模型…";
       try {
         const config = { api_key: $('[data-input="api_key"]', form)?.value || "" };
         const base = $('[data-input="base_url"]', form);
         if (base) config.base_url = base.value;
-        const result = await call("query", "provider_models", {
+        const result = fromPreset ? {
+          models: catalog.model_presets.map((id) => ({ id, label: id, image_candidate: true })),
+        } : await call("query", "provider_models", {
           provider_json: JSON.stringify({ id: record?.id || "", kind, config, clear_api_key: clearApiKey() }),
         });
         if (!current()) return;
         models = result.models;
         $("[data-images-only]", dialog).checked = models.some((model) => model.image_candidate);
-        status.textContent = models.length
+        status.textContent = fromPreset ? catalog.model_presets_hint : models.length
           ? kind === "aliyun"
             ? "百炼在线目录，仅含插件已接入的图像模型，不代表账号已开通权限。"
             : "目录已在线获取；名称筛选不代表绘图能力或账号权限。"
@@ -173,11 +176,13 @@
     if (field) {
       const toolbar = document.createElement("div");
       toolbar.className = "collection-toolbar";
-      if (catalog.model_discovery) {
+      if (catalog.model_discovery || catalog.model_presets?.length) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "button secondary compact";
-        button.innerHTML = `${icon("refresh")}从接口获取模型`;
+        button.innerHTML = catalog.model_discovery
+          ? `${icon("refresh")}从接口获取模型`
+          : `${icon("plus")}从预设添加模型`;
         button.onclick = () => picker(form, { kind, record, catalog, clearApiKey });
         toolbar.append(button);
       } else {

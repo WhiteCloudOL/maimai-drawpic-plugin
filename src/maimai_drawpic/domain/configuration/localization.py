@@ -435,6 +435,16 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "NovelAIModelConfig.models": (
+        "Add official presets or enter compatible-service model IDs in this single list. Save the platform to apply changes.",
+        "公式プリセットの追加と互換サービスのモデル ID の入力を同じ一覧で行います。プラットフォームを保存すると反映されます。",
+        "공식 프리셋 추가와 호환 서비스 모델 ID 입력을 하나의 목록에서 관리합니다. 플랫폼을 저장하면 적용됩니다.",
+    ),
+    "NovelAIModelConfig.custom_models": (
+        "Legacy custom models are merged into the unified model list and are no longer edited separately.",
+        "旧カスタムモデルは統一モデル一覧へ統合され、個別には編集しません。",
+        "기존 사용자 지정 모델은 통합 모델 목록에 병합되며 별도로 편집하지 않습니다.",
+    ),
     "AgnesModelConfig.base_url": (
         "Use the API base URL, not the console or documentation URL.",
         "コンソールやドキュメントではなく API のベース URL を入力します。",
