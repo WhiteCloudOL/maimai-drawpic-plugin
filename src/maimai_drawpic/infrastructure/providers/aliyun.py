@@ -63,6 +63,7 @@ class AliyunImage:
         vidu_extra_parameters: dict[str, Any] | None = None,
         extra_parameters: dict[str, Any] | None = None,
         proxy_settings: HttpProxySettings | None = None,
+        skip_image_url_ip_check: bool = False,
     ) -> None:
         self.api_key = api_key.strip()
         self.base_url = self._normalize_base_url(base_url)
@@ -99,6 +100,7 @@ class AliyunImage:
             legacy_extra_parameters=dict(extra_parameters or {}),
         )
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
+        self.skip_image_url_ip_check = skip_image_url_ip_check
 
     @staticmethod
     def _normalize_base_url(base_url: str) -> str:
@@ -590,6 +592,7 @@ class AliyunImage:
             url,
             base_url=self.base_url,
             proxy_settings=self.proxy_settings,
+            skip_ip_check=self.skip_image_url_ip_check,
             timeout_seconds=self.request_timeout_seconds,
         )
 

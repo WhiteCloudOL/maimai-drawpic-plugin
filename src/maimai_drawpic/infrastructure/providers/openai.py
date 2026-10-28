@@ -78,6 +78,7 @@ class OpenaiImage:
         max_images: int = 1,
         extra_parameters: dict[str, Any] | None = None,
         proxy_settings: HttpProxySettings | None = None,
+        skip_image_url_ip_check: bool = False,
     ) -> None:
         self.api_key = api_key
         self.base_url = self._normalize_base_url(base_url)
@@ -98,6 +99,7 @@ class OpenaiImage:
         self.max_images = max(int(max_images), 1)
         self.extra_parameters = dict(extra_parameters or {})
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
+        self.skip_image_url_ip_check = skip_image_url_ip_check
         self._model_endpoint_types: Dict[str, List[str]] = {}
         self._metadata_expires_at = 0.0
         self._metadata_lock = asyncio.Lock()
@@ -913,6 +915,7 @@ class OpenaiImage:
             url,
             base_url=self.base_url,
             proxy_settings=self.proxy_settings,
+            skip_ip_check=self.skip_image_url_ip_check,
             timeout_seconds=self.request_timeout_seconds,
         )
 

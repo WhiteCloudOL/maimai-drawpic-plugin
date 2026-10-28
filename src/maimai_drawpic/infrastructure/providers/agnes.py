@@ -24,6 +24,7 @@ class AgnesImage(OpenaiImage):
         request_timeout_seconds: int = 150,
         logger: Any = None,
         proxy_settings: Optional[HttpProxySettings] = None,
+        skip_image_url_ip_check: bool = False,
     ) -> None:
         super().__init__(
             api_key=api_key,
@@ -34,6 +35,7 @@ class AgnesImage(OpenaiImage):
             request_timeout_seconds=request_timeout_seconds,
             logger=logger,
             proxy_settings=proxy_settings,
+            skip_image_url_ip_check=skip_image_url_ip_check,
         )
         self.ratio = ratio
         self.agnes_response_format = response_format

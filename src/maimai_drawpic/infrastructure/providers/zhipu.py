@@ -33,6 +33,7 @@ class ZhipuImage:
         user_id: str = "",
         extra_parameters: dict[str, Any] | None = None,
         proxy_settings: HttpProxySettings | None = None,
+        skip_image_url_ip_check: bool = False,
     ) -> None:
         self.api_key = api_key
         self.logger = logger
@@ -43,6 +44,7 @@ class ZhipuImage:
         self.user_id = user_id.strip()
         self.extra_parameters = dict(extra_parameters or {})
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
+        self.skip_image_url_ip_check = skip_image_url_ip_check
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """调用智谱文生图接口。"""
@@ -156,6 +158,7 @@ class ZhipuImage:
             url,
             base_url=self._BASE_URL,
             proxy_settings=self.proxy_settings,
+            skip_ip_check=self.skip_image_url_ip_check,
             timeout_seconds=self.request_timeout_seconds,
         )
 

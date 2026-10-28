@@ -1,4 +1,4 @@
-"""对提供商返回的图片地址逐跳校验，并固定实际连接 IP。"""
+"""逐跳检查结果地址；直连固定 IP，代理保留域名并交由代理解析。"""
 
 from ipaddress import ip_address
 from aiohttp.helpers import get_env_proxy_for_url
@@ -49,21 +49,62 @@ async def _addresses(host: str, port: int) -> List[str]:
         return [str(ip_address(host))]
     except ValueError:
         records = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
-        # 优先 IPv4；把已验证的 IP 直接交给连接器，不让代理或第二次 DNS 解析改变目标。
+        # 优先 IPv4；直连把已验证的 IP 交给连接器，避免第二次 DNS 解析改变目标。
         records.sort(key=lambda record: record[0] != socket.AF_INET)
         return list(dict.fromkeys(record[4][0] for record in records))
 
 
+async def _download_target(current: URL, trusted: URL, *, via_proxy: bool, skip_ip_check: bool) -> URL:
+    """按实际出站方式检查地址，避免把本地 Fake-IP 当作代理的目标 IP。"""
+    if skip_ip_check:
+        return current
+
+    local_origin = current.origin() == trusted.origin()
+    if via_proxy:
+        # 代理在远端解析域名；本地 DNS 可能返回 Fake-IP，甚至无法解析。
+        # 不把域名替换成 IP，否则代理的 DNS、分流和 HTTPS CONNECT 都会失去原始目标。
+        host = current.raw_host.rstrip(".").casefold()
+        try:
+            address = ip_address(host)
+        except ValueError:
+            try:
+                # inet_aton 只解析字面量，不查询 DNS；同时识别十六进制、整数等旧式 IPv4 写法。
+                address = ip_address(socket.inet_aton(host))
+            except OSError:
+                if not local_origin and (host == "localhost" or host.endswith(".localhost")):
+                    raise ProviderResultError("图片结果地址指向非公网网络，且不属于已配置服务的同源地址")
+                return current
+        if not local_origin and not _public_address(str(address)):
+            raise ProviderResultError("图片结果地址指向非公网网络，且不属于已配置服务的同源地址")
+        return current
+
+    addresses = await _addresses(current.raw_host, current.port)
+    if not addresses or (not local_origin and not all(_public_address(value) for value in addresses)):
+        raise ProviderResultError("图片结果地址指向非公网网络，且不属于已配置服务的同源地址")
+    return current.with_host(addresses[0])
+
+
 @bounded_results
-async def download_image(url: str, *, base_url: str, proxy_settings: HttpProxySettings, timeout_seconds: int) -> bytes:
-    """在有限预算内只恢复同一结果地址；每次重新检查 DNS 与重定向。"""
+async def download_image(
+    url: str,
+    *,
+    base_url: str,
+    proxy_settings: HttpProxySettings,
+    timeout_seconds: int,
+    skip_ip_check: bool = False,
+) -> bytes:
+    """在有限预算内只恢复同一结果地址；每次重新选择代理并校验地址与跳转。"""
     current_budget().available()
     try:
         async with asyncio.timeout(timeout_seconds):
             for attempt in range(3):
                 try:
                     raw = await _download_image(
-                        url, base_url=base_url, proxy_settings=proxy_settings, timeout_seconds=timeout_seconds
+                        url,
+                        base_url=base_url,
+                        proxy_settings=proxy_settings,
+                        timeout_seconds=timeout_seconds,
+                        skip_ip_check=skip_ip_check,
                     )
                     return current_budget().accept(raw)
                 except ProviderDownloadError:
@@ -75,8 +116,15 @@ async def download_image(url: str, *, base_url: str, proxy_settings: HttpProxySe
     raise AssertionError("unreachable download retry state")
 
 
-async def _download_image(url: str, *, base_url: str, proxy_settings: HttpProxySettings, timeout_seconds: int) -> bytes:
-    """默认只访问公网；管理员配置的服务同源结果允许本地部署，无需额外开关。"""
+async def _download_image(
+    url: str,
+    *,
+    base_url: str,
+    proxy_settings: HttpProxySettings,
+    timeout_seconds: int,
+    skip_ip_check: bool,
+) -> bytes:
+    """逐跳选择实际代理；直连默认只访问公网或管理员配置的同源服务。"""
     current, trusted = _url(url), _url(base_url)
     timeout = aiohttp.ClientTimeout(total=timeout_seconds)
     try:
@@ -84,11 +132,6 @@ async def _download_image(url: str, *, base_url: str, proxy_settings: HttpProxyS
             # 只读取代理环境，不启用 trust_env 的目标站点 .netrc 自动鉴权。
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 for hop in range(6):
-                    addresses = await _addresses(current.raw_host, current.port)
-                    local_origin = current.origin() == trusted.origin()
-                    if not addresses or (not local_origin and not all(_public_address(value) for value in addresses)):
-                        raise ProviderResultError("图片结果地址指向非公网网络，且不属于已配置服务的同源地址")
-                    target = current.with_host(addresses[0])
                     kwargs = proxy_settings.aiohttp_request_kwargs()
                     if proxy_settings.enabled and proxy_settings.use_system_proxy:
                         try:
@@ -97,9 +140,13 @@ async def _download_image(url: str, *, base_url: str, proxy_settings: HttpProxyS
                             pass  # NO_PROXY 命中或未配置代理时直连。
                         else:
                             kwargs.update(proxy=proxy, proxy_auth=proxy_auth)
+                    # NO_PROXY 或平台绕过代理时仍走直连校验，不能仅按 enabled 跳过 DNS。
+                    target = await _download_target(
+                        current, trusted, via_proxy=bool(kwargs.get("proxy")), skip_ip_check=skip_ip_check
+                    )
                     if current.scheme == "https":
                         kwargs["server_hostname"] = current.raw_host
-                    # 无鉴权头，显式关闭自动跳转，每一跳重新验证地址和 DNS。
+                    # 不附加生成服务的鉴权头，关闭自动跳转，每一跳重新选择出站并校验地址。
                     async with session.get(
                         target, headers={"Host": current.raw_authority}, allow_redirects=False, **kwargs
                     ) as response:

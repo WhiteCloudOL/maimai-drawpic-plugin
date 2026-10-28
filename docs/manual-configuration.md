@@ -120,6 +120,7 @@
       "fallback_models": [],
       "request_retry_count": 1,
       "request_timeout_seconds": 150,
+      "skip_image_url_ip_check": false,
       "admin_user_ids": [],
       "prompt_review_enabled": false,
       "image_review_enabled": false
@@ -146,6 +147,7 @@
 - `fallback_models`：有顺序的模型名称列表，空列表表示不启用备选。
 - `request_retry_count`：每模型额外重试次数，默认 1，可选 0～5；不是遇到任何失败都重新绘图。审核配置在界面中独立成标签页，文件中的字段仍在 `general` 下。
 - `request_timeout_seconds`：单次平台尝试的超时预算，不是任务整体的永久等待时间。
+- `skip_image_url_ip_check`：默认 `false`。仅在可信内网图床或 TUN/Fake-IP 等特殊 DNS 环境需要时设为 `true`；手动/系统代理会自动保留域名交由代理解析，详见[图片下载说明](configuration.md#请求与安全边界)。
 - `admin_user_ids`：字符串列表，例如 `["12345678"]`；不同适配器的用户 ID 形式可能不同。
 - `image_edit_unsupported_models`、`text_to_image_unsupported_models`：人工限制的模型列表；优先使用工作台中的完整模型名称。
 - `presets`：风格模板列表。默认风格名称应对应一个已启用风格；保留 `{prompt}`、`{negative_prompt}` 来代入本次描述和反向词。

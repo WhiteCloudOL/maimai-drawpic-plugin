@@ -7,14 +7,15 @@ body:
   - type: markdown
     attributes:
       value: |
-        感谢反馈。请完整填写以下信息，并在日志、截图和配置中隐藏 API Key、Token、Cookie 等敏感内容。
+        请用标题概括具体问题，并填写可以确认的信息；不确定的项目可写“不确定”，无需反复调用收费接口。
+        日志、截图与配置请隐藏 API Key、Token、Cookie、代理密码、完整 Base64 和图片链接的签名参数。
 
   - type: checkboxes
     id: confirmations
     attributes:
       label: 提交前确认
       options:
-        - label: 我已更新到插件的最新版本，并确认问题仍然存在。
+        - label: 我已核对插件管理页面或 _manifest.json 中的实际插件版本。
           required: true
         - label: 我已搜索现有 Issue，确认没有相同问题。
           required: true
@@ -25,8 +26,8 @@ body:
     id: plugin_version
     attributes:
       label: 插件版本
-      description: 可在插件管理页面或 `_manifest.json` 中查看。
-      placeholder: 例如 1.10.5
+      description: 填写插件管理页面显示的版本，或 _manifest.json 的 version；config.toml 中的 config_version 是配置版本，不是插件版本。
+      placeholder: 例如 2.1.2；使用源码时可补充 commit
     validations:
       required: true
 
@@ -34,7 +35,7 @@ body:
     id: maibot_version
     attributes:
       label: MaiBot 版本
-      placeholder: 例如 1.0.0
+      placeholder: 例如 1.3.15
     validations:
       required: true
 
@@ -57,7 +58,11 @@ body:
       options:
         - 文生图
         - 图生图
+        - 图片结果解析或下载
         - 图片审核
+        - 聊天发送
+        - WebUI 页面或工作台
+        - 插件联动 API
         - 模型或会话设置
         - 额度与权限
         - 插件加载或配置
@@ -69,7 +74,7 @@ body:
     id: platform
     attributes:
       label: 图片平台
-      description: 填写 OpenAI、Gemini、智谱、阿里百炼、火山引擎、硅基流动、NovelAI、ComfyUI 等实际使用的平台。
+      description: 填写 OpenAI 兼容、Gemini、Agnes、智谱、阿里百炼、火山引擎、硅基流动、NovelAI、ComfyUI 等平台类型。与平台无关时填写“不适用”。
       placeholder: 例如 火山引擎
     validations:
       required: true
@@ -78,7 +83,8 @@ body:
     id: model
     attributes:
       label: 模型
-      placeholder: 例如 doubao-seedream-4-0
+      description: 填写工作台或日志中的完整模型标识；与模型无关时填写“不适用”。
+      placeholder: 例如 OpenAI_Compatible/gpt-image-2
     validations:
       required: true
 
@@ -86,13 +92,25 @@ body:
     id: parameters
     attributes:
       label: 相关参数
-      description: 填写尺寸、比例、生成数量、质量、步数、采样器、工作流等与问题有关的参数；没有时填写“无”。
+      description: 填写 OpenAI 兼容模式（auto、images_api 等）、尺寸、生成数量及相关覆盖参数；图生图注明图片来自同条消息、引用消息、网页上传还是联动 API。没有时填写“无”。
       placeholder: |
         尺寸：2048*2048
         生成数量：1
+        OpenAI 兼容模式：auto / 不适用
         其他参数：无
     validations:
       required: true
+
+  - type: textarea
+    id: network
+    attributes:
+      label: 代理与 DNS 环境
+      description: 网络或图片下载问题请填写；其他问题可写“不适用”，不了解时写“不确定”。不要粘贴代理密码或完整代理订阅。
+      placeholder: |
+        插件代理：未启用 / 手动代理 / 系统代理 / 不确定
+        TUN 或透明代理：未使用 / 使用中 / 不确定
+        Fake-IP：未启用 / 已启用 / 不确定
+        其他相关设置：如 NO_PROXY、绕过国内平台、忽略图片地址 IP 校验
 
   - type: textarea
     id: reproduction
@@ -126,7 +144,7 @@ body:
     id: evidence
     attributes:
       label: 日志或截图
-      description: 请粘贴问题发生前后的完整日志，或将截图拖入此处。务必隐藏密钥及个人信息。
+      description: 优先粘贴同一 task_id 从提交到失败的相关日志，保留错误原文、HTTP 状态与 request_id；没有 task_id 时提供操作前后的日志。请先脱敏，也可附截图。
     validations:
       required: true
 
@@ -134,8 +152,7 @@ body:
     id: config
     attributes:
       label: 相关配置
-      description: 可粘贴与问题有关的配置片段。请将 API Key、Token 等值替换为 `***`。
-      render: toml
+      description: 仅粘贴相关的工作台设置、platforms.json / workspace_settings.json 片段或 config.toml 的 plugin/proxy 节，勿上传整份配置。密钥和密码替换为 ***；无需填写与问题无关的项目。
 
   - type: textarea
     id: additional

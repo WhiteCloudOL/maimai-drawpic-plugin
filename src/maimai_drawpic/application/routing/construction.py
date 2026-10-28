@@ -31,6 +31,7 @@ class ProviderConstructionMixin:
             model_size_overrides=parse_model_value_overrides(config.model_size_overrides),
             extra_parameters=parse_key_value_options(config.extra_parameters),
             proxy_settings=self._get_proxy_settings("agnes"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
     def _get_proxy_settings(self, provider_name: ProviderName) -> HttpProxySettings:
@@ -84,6 +85,7 @@ class ProviderConstructionMixin:
             vidu_extra_parameters=parse_key_value_options(self.config.aliyun.vidu_extra_parameters),
             extra_parameters=parse_key_value_options(self.config.aliyun.extra_parameters),
             proxy_settings=self._get_proxy_settings("aliyun"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
     def create_openai_provider(self, compatibility_mode: OpenAICompatibilityMode, model: str = "") -> ImageProvider:
@@ -126,6 +128,7 @@ class ProviderConstructionMixin:
             max_images=route.max_images,
             extra_parameters=route.extra_parameters,
             proxy_settings=self._get_proxy_settings("openai"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
         return RoutedOpenAIImage(provider, route.upstream_model)
 
@@ -161,6 +164,7 @@ class ProviderConstructionMixin:
             user_id=self.config.zhipu.user_id,
             extra_parameters=parse_key_value_options(self.config.zhipu.extra_parameters),
             proxy_settings=self._get_proxy_settings("zhipu"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
     def create_volcengine_provider(self) -> VolcengineImage:
@@ -187,6 +191,7 @@ class ProviderConstructionMixin:
             max_images=self.config.volcengine.max_images,
             extra_parameters=parse_key_value_options(self.config.volcengine.extra_parameters),
             proxy_settings=self._get_proxy_settings("volcengine"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
     def create_siliconflow_provider(self, request_negative_prompt: str = "") -> SiliconFlowImage:
@@ -208,6 +213,7 @@ class ProviderConstructionMixin:
             ),
             extra_parameters=parse_key_value_options(self.config.siliconflow.extra_parameters),
             proxy_settings=self._get_proxy_settings("siliconflow"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
     def create_novelai_provider(
@@ -248,6 +254,7 @@ class ProviderConstructionMixin:
             max_images=self.config.novelai.max_images,
             extra_parameters=parse_key_value_options(self.config.novelai.extra_parameters),
             proxy_settings=self._get_proxy_settings("novelai"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
     def create_comfyui_provider(self, request_negative_prompt: str = "") -> ComfyUIImage:
@@ -289,6 +296,7 @@ class ProviderConstructionMixin:
             t2i_seed_node_id=config.t2i_seed_node_id,
             i2i_seed_node_id=config.i2i_seed_node_id,
             proxy_settings=self._get_proxy_settings("comfyui"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
     def require_platform_for_model(

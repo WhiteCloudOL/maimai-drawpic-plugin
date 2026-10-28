@@ -74,6 +74,7 @@ class NovelAIImage:
         max_images: int = 1,
         extra_parameters: dict[str, Any] | None = None,
         proxy_settings: HttpProxySettings | None = None,
+        skip_image_url_ip_check: bool = False,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -105,6 +106,7 @@ class NovelAIImage:
         self.max_images = max(int(max_images), 1)
         self.extra_parameters = dict(extra_parameters or {})
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
+        self.skip_image_url_ip_check = skip_image_url_ip_check
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """调用 NovelAI / NovelAPI 文生图接口。"""
@@ -571,6 +573,7 @@ class NovelAIImage:
             url,
             base_url=self.base_url,
             proxy_settings=self.proxy_settings,
+            skip_ip_check=self.skip_image_url_ip_check,
             timeout_seconds=self.request_timeout_seconds,
         )
 

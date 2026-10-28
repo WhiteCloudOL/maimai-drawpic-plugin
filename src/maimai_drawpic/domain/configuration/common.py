@@ -21,7 +21,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.39.0",
+        default="2.40.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -113,6 +113,15 @@ class GeneralConfig(PluginConfigBase):
             "label": "图片请求超时",
             "hint": "单次图片请求超时时间（秒），建议设置为 120 到 300",
             "order": 2,
+        },
+    )
+    skip_image_url_ip_check: bool = Field(
+        default=False,
+        description="忽略提供商返回图片地址的 IP 范围与内网同源限制",
+        json_schema_extra={
+            "label": "忽略图片地址 IP 校验",
+            "hint": "默认关闭。开启后允许下载内网或特殊 DNS 图床，仅用于可信服务；仍检查 HTTP(S) 格式和每次跳转。实际走代理的域名始终由代理解析。",
+            "order": 2.5,
         },
     )
     command_reply_mode: CommandReplyMode = Field(

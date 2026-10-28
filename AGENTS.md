@@ -63,7 +63,7 @@
 - 页面品牌使用 assets/icon.png，通过构建脚本内嵌，避免 iframe 相对资源地址与联网权限问题。依赖维护 requirements.txt 与 manifest，不创建 pyproject.toml。
 - 日志查询从文件尾部有界读取，游标一致时返回 unchanged；滚动位置不因自动刷新跳走。轮转和读取共享文件锁。
 - WebUI 旧页面可能带回 plugin/proxy 字段，保存时只提取 general/style，既不修改宿主字段，也不因旧字段阻止绘图设置保存。必须保留此回归验证。
-- 提供商结果图片统一走 infrastructure/media/downloads.py，逐跳验证 HTTP(S)、地址范围及 DNS，并固定实际连接 IP；仅管理员配置的同源服务地址可访问内网。不允许恢复任意 session.get(url) 或自动跟随跳转。
+- 提供商结果图片统一走 infrastructure/media/downloads.py，逐跳验证 HTTP(S) 并选择实际代理。直连默认验证全部 DNS 地址并固定 IP，仅管理员配置的同源服务允许内网；代理保留原始域名并由可信代理解析，NO_PROXY 直连不得跳过校验。仅 general.skip_image_url_ip_check 显式开启时忽略 IP 范围及内网同源限制；默认关闭，仍校验 URL、跳转次数与图片内容，不允许自动跟随跳转。
 - 任意结构的提供商诊断在交给宿主 logger 前脱敏；运行期 SecretRedactor 保留所有实例和已轮换密钥，任务消息在持久化前处理，不能只在公开查询时修补。
 - 上传校验、容量清理和原子接管由 ArtifactRetention.claim_input 在同一个线程锁中执行；所有定时清理复用此锁。迁移冲突检查必须先于任何配置写入、备份清理或移除旧 TOML 节。
 - 活动任务刷新不得替换正在编辑的筛选表单；搜索草稿与已提交筛选分开。hash 历史、未保存确认、原图分块读取取消均保持页面状态一致。

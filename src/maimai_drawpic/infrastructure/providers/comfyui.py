@@ -55,6 +55,7 @@ class ComfyUIImage:
         t2i_seed_node_id: str,
         i2i_seed_node_id: str,
         proxy_settings: HttpProxySettings | None = None,
+        skip_image_url_ip_check: bool = False,
     ) -> None:
         normalized_base_url = base_url.strip().rstrip("/")
         if not normalized_base_url:
@@ -87,6 +88,7 @@ class ComfyUIImage:
         self.t2i_seed_node_id = t2i_seed_node_id
         self.i2i_seed_node_id = i2i_seed_node_id
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
+        self.skip_image_url_ip_check = skip_image_url_ip_check
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """使用配置的文生图工作流生成图片。"""
@@ -441,6 +443,7 @@ class ComfyUIImage:
             url,
             base_url=self.base_url,
             proxy_settings=self.proxy_settings,
+            skip_ip_check=self.skip_image_url_ip_check,
             timeout_seconds=self.request_timeout_seconds,
         )
 

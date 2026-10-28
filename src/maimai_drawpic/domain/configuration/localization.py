@@ -123,6 +123,9 @@ _SECTION_TEXTS: Dict[str, Tuple[Tuple[str, str, str], Tuple[str, str, str]]] = {
 }
 
 _FIELD_LABELS: Dict[str, Tuple[str, str, str]] = {
+    "skip_image_url_ip_check": (
+        "Skip Image URL IP Checks", "画像 URL の IP 検証を省略", "이미지 URL IP 검사 건너뛰기"
+    ),
     "ratio": ("Aspect Ratio", "アスペクト比", "화면 비율"),
     "image_cache_max_mb": ("Image Cache Limit (MB)", "画像キャッシュ上限（MB）", "이미지 캐시 한도(MB)"),
     "log_max_mb": ("Total Log Limit (MB)", "ログ合計上限（MB）", "전체 로그 한도(MB)"),
@@ -435,6 +438,11 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "GeneralConfig.skip_image_url_ip_check": (
+        "Off by default. Enable only for trusted services to allow private or special-DNS image hosts. HTTP(S) URL and redirect checks remain. Proxied hostnames are always resolved by the proxy.",
+        "既定は無効です。信頼できるサービスの内部ネットワークや特殊 DNS の画像ホストにのみ使用してください。HTTP(S) URL と各リダイレクトの検証は継続します。プロキシ経由のドメインは常にプロキシ側で解決します。",
+        "기본적으로 꺼져 있습니다. 신뢰할 수 있는 서비스의 사설망 또는 특수 DNS 이미지 호스트에만 사용하세요. HTTP(S) URL 및 리디렉션 검사는 유지됩니다. 프록시를 사용하는 도메인은 항상 프록시에서 해석합니다.",
+    ),
     "NovelAIModelConfig.models": (
         "Add official presets or enter compatible-service model IDs in this single list. Save the platform to apply changes.",
         "公式プリセットの追加と互換サービスのモデル ID の入力を同じ一覧で行います。プラットフォームを保存すると反映されます。",
