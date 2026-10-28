@@ -27,7 +27,7 @@ body:
     attributes:
       label: 插件版本
       description: 填写插件管理页面显示的版本，或 _manifest.json 的 version；config.toml 中的 config_version 是配置版本，不是插件版本。
-      placeholder: 例如 2.1.2；使用源码时可补充 commit
+      placeholder: 例如 2.1.3；使用源码时可补充 commit
     validations:
       required: true
 
