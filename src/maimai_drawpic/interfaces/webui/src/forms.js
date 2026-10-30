@@ -31,7 +31,7 @@
       return `<select id="${id}" data-input="${e(key)}"><option value="">自动选择可用模型</option>${selected && !models.some((item) => item.name === selected) ? `<option value="${e(selected)}" selected>${e(selected)}（尚未匹配已启用平台）</option>` : ""}${models.map((item) => `<option value="${e(item.name)}" ${item.name === selected ? "selected" : ""}>${e(item.name)}</option>`).join("")}</select>`;
     }
     if (type === "boolean")
-      return `<input id="${id}" type="checkbox" class="toggle" data-input="${e(key)}" ${value ? "checked" : ""}>`;
+      return `<input id="${id}" type="checkbox" role="switch" class="toggle" data-input="${e(key)}" ${value ? "checked" : ""}>`;
     if (type === "select") {
       const selected = meta.multiple ? new Set(value || []) : new Set([value]);
       return `<select id="${id}" data-input="${e(key)}">${!meta.choices?.includes(value) ? `<option value="${e(value)}">${e(value) || "使用默认值"}</option>` : ""}${(meta.choices || []).map((item) => `<option value="${e(item)}" ${selected.has(item) ? "selected" : ""}>${e(U.formOptions.label(item))}</option>`).join("")}</select>`;

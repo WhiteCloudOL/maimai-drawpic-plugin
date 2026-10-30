@@ -35,7 +35,7 @@
   }
   function parameterValue(type, value = "") {
     if (type === "boolean")
-      return `<select data-param-value aria-label="参数开关"><option value="true" ${value !== "false" ? "selected" : ""}>开启 · true</option><option value="false" ${value === "false" ? "selected" : ""}>关闭 · false</option></select>`;
+      return `<input type="checkbox" role="switch" class="toggle" data-param-value aria-label="参数开关" ${value !== "false" ? "checked" : ""}>`;
     if (type === "json")
       return `<textarea data-param-value aria-label="JSON 参数值" rows="3" spellcheck="false" placeholder='例如 {"enabled": true}…'>${e(value)}</textarea>`;
     return `<input data-param-value type="${type === "number" ? "number" : "text"}" ${type === "number" ? 'step="any"' : ""} aria-label="参数值" autocomplete="off" value="${e(value)}" placeholder="填写参数值…">`;
@@ -114,7 +114,8 @@
         );
       const type = $("[data-param-type]", node).value;
       let value = input.value;
-      if (type === "text") value = JSON.stringify(value);
+      if (type === "boolean") value = String(input.checked);
+      else if (type === "text") value = JSON.stringify(value);
       else if (type === "number") {
         if (!value.trim() || !Number.isFinite(Number(value)))
           invalid(input, "数字参数请填写有效数值");

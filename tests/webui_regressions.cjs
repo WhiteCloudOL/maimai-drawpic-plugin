@@ -339,11 +339,11 @@ test('typed values retain zero, false, literal strings and exact JSON integers',
   const input = h.get('[data-param-value]');
   input.setCustomValidity = message => { input.error = message; };
   input.reportValidity = () => false;
-  for (const [type, value, encoded] of [
-    ['number', '0', '0'], ['boolean', 'false', 'false'], ['text', '123', '"123"'],
+  for (const [type, value, encoded, checked = false] of [
+    ['number', '0', '0'], ['boolean', 'on', 'false'], ['boolean', 'on', 'true', true], ['text', '123', '"123"'],
     ['json', '{"id":9007199254740993}', '{"id":9007199254740993}'],
   ]) {
-    h.get('[data-param-type]').value = type; input.value = value;
+    h.get('[data-param-type]').value = type; input.value = value; input.checked = checked;
     assert.equal(h.U.formCollections.readRow('extra_parameters', row), `value=${encoded}`);
   }
   h.get('[data-param-type]').value = 'json'; input.value = '{"value":1e999}';
