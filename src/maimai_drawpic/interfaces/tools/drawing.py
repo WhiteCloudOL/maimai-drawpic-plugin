@@ -41,6 +41,7 @@ class DrawingToolMixin:
         try:
             context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
             return await self._start_background_image_request(
+                defer_prompt_review=True,
                 prompt=prompt.strip(),
                 stream_id=context["stream_id"],
                 requested_model=model.strip(),
@@ -195,6 +196,7 @@ class DrawingToolMixin:
                 matched_message_id,
             )
             return await self._start_background_image_request(
+                defer_prompt_review=True,
                 prompt=prompt.strip(),
                 stream_id=normalized_stream_id,
                 requested_model=resolved_model,

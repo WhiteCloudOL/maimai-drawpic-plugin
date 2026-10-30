@@ -123,6 +123,12 @@ _SECTION_TEXTS: Dict[str, Tuple[Tuple[str, str, str], Tuple[str, str, str]]] = {
 }
 
 _FIELD_LABELS: Dict[str, Tuple[str, str, str]] = {
+    "prompt_review_retry_count": ("Prompt Review Retries", "プロンプト審査の再試行回数", "프롬프트 검토 재시도 횟수"),
+    "image_review_retry_count": ("Image Review Retries", "画像審査の再試行回数", "이미지 검토 재시도 횟수"),
+    "prompt_review_model": ("Prompt Review Model", "プロンプト審査モデル", "프롬프트 검토 모델"),
+    "image_review_model": ("Image Review Model", "画像審査モデル", "이미지 검토 모델"),
+    "prompt_review_timeout_seconds": ("Prompt Review Wait (seconds)", "プロンプト審査の待機時間（秒）", "프롬프트 검토 대기 시간(초)"),
+    "image_review_timeout_seconds": ("Image Review Wait (seconds)", "画像審査の待機時間（秒）", "이미지 검토 대기 시간(초)"),
     "skip_image_url_ip_check": (
         "Skip Image URL IP Checks", "画像 URL の IP 検証を省略", "이미지 URL IP 검사 건너뛰기"
     ),
@@ -438,6 +444,36 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "GeneralConfig.prompt_review_retry_count": (
+        "Default: 2 extra retries, at most 3 calls. Range 0–5; 0 disables retries. Explicit rejection and cancellation never retry.",
+        "既定は追加 2 回、最大 3 回の呼び出しです。範囲は 0～5、0 で無効。明確な拒否とキャンセルは再試行しません。",
+        "기본 추가 2회, 최대 3회 호출합니다. 범위 0~5, 0이면 재시도하지 않습니다. 명시적 거부와 취소는 재시도하지 않습니다.",
+    ),
+    "GeneralConfig.image_review_retry_count": (
+        "Default: 2 extra retries, at most 3 calls. Range 0–5. Retry only review of the same image, never generation; rejection and cancellation do not retry.",
+        "既定は追加 2 回、最大 3 回の呼び出しです。範囲は 0～5。同じ画像の審査だけを再試行し、再生成は行いません。拒否とキャンセルは再試行しません。",
+        "기본 추가 2회, 최대 3회 호출합니다. 범위 0~5. 같은 이미지의 검토만 재시도하고 이미지를 다시 생성하지 않습니다. 거부와 취소는 재시도하지 않습니다.",
+    ),
+    "GeneralConfig.prompt_review_model": (
+        "Default: vlm. Use the models configured for the Host replyer, planner or vlm task group.",
+        "既定は vlm。Host の replyer、planner、vlm タスクグループに設定されたモデルを使用します。",
+        "기본값은 vlm입니다. Host의 replyer, planner 또는 vlm 작업 그룹에 설정된 모델을 사용합니다.",
+    ),
+    "GeneralConfig.image_review_model": (
+        "Default: vlm. replyer and planner are also available, but every model in the selected group must support images or review fails.",
+        "既定は vlm。replyer と planner も選択できますが、選択したグループのモデルが画像入力に対応していない場合は審査に失敗します。",
+        "기본값은 vlm입니다. replyer와 planner도 선택할 수 있지만 선택한 그룹의 모델이 이미지 입력을 지원하지 않으면 검토에 실패합니다.",
+    ),
+    "GeneralConfig.prompt_review_timeout_seconds": (
+        "Default: 60 seconds per attempt, range 5–600; retries have separate budgets. Continue immediately when review finishes, without bypassing failed review.",
+        "1 回の既定は 60 秒、範囲は 5～600 秒。再試行は別の待機枠です。完了後すぐに続行し、失敗した審査は省略しません。",
+        "시도당 기본 60초, 범위 5~600초. 재시도마다 별도의 대기 시간을 사용합니다. 검토 완료 시 즉시 진행하며 실패한 검토를 생략하지 않습니다.",
+    ),
+    "GeneralConfig.image_review_timeout_seconds": (
+        "Default: 60 seconds per image per attempt, range 5–600; retries are separate. Independent of generation and prompt review. Failed review never releases or regenerates images.",
+        "画像 1 枚の 1 回あたり既定 60 秒、範囲 5～600 秒。再試行は別枠で、画像生成・プロンプト審査とは独立しています。失敗した審査で送信や再生成は行いません。",
+        "이미지별 시도당 기본 60초, 범위 5~600초. 재시도는 별도로 계산하며 생성 및 프롬프트 검토와 독립적입니다. 검토 실패 시 전송하거나 다시 생성하지 않습니다.",
+    ),
     "GeneralConfig.skip_image_url_ip_check": (
         "Off by default. Enable only for trusted services to allow private or special-DNS image hosts. HTTP(S) URL and redirect checks remain. Proxied hostnames are always resolved by the proxy.",
         "既定は無効です。信頼できるサービスの内部ネットワークや特殊 DNS の画像ホストにのみ使用してください。HTTP(S) URL と各リダイレクトの検証は継続します。プロキシ経由のドメインは常にプロキシ側で解決します。",

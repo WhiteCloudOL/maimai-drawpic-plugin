@@ -94,7 +94,13 @@ class ImageExecutionMixin:
         timeout_message = "图片编辑超时" if is_image_edit else "图片生成超时"
         try:
             if not prompt_reviewed:
-                await self.review_prompt_or_raise(prompt)
+                review_record = await update_task_owned(
+                    self.task_store, task_id, status="running", message="正在审核提示词",
+                )
+                if review_record is None:
+                    await _notify_task_unsuccessful("failed", "绘图任务已失效")
+                    return
+                await self.review_prompt_or_raise(prompt, task_id=task_id)
             running_record = await update_task_owned(
                 self.task_store,
                 task_id,
@@ -162,7 +168,7 @@ class ImageExecutionMixin:
                 message="图片已生成，正在审核结果",
                 generated_count=len(image_bytes_list),
             )
-            reviewed_images, rejected_reasons = await self.filter_reviewed_images(prompt, image_bytes_list)
+            reviewed_images, rejected_reasons = await self.filter_reviewed_images(prompt, image_bytes_list, task_id=task_id)
             if not reviewed_images:
                 review_reason_text = "；".join(rejected_reasons) if rejected_reasons else "审核未通过"
                 if successful_attempt.is_fallback and attempt_errors:

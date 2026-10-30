@@ -120,6 +120,7 @@ class StyleToolMixin:
             source_image_bytes_list = [decode_image_base64(image.base64_data) for image in source_image_inputs]
             source_image_urls = [image.url for image in source_image_inputs]
             return await self._start_background_image_request(
+                defer_prompt_review=True,
                 prompt=resolved_prompt.positive_prompt,
                 request_negative_prompt=resolved_prompt.negative_prompt,
                 stream_id=runtime_context["stream_id"],

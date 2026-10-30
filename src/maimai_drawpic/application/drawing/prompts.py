@@ -8,21 +8,21 @@ from ...domain.errors import ProviderRequestError
 class PromptReviewMixin:
     """PromptReviewMixin 的独立绘图职责。"""
 
-    async def review_prompt_or_raise(self, prompt: str) -> None:
+    async def review_prompt_or_raise(self, prompt: str, *, task_id: str = "") -> None:
         """在提交绘图请求前审核提示词。"""
 
         if not self.moderation_service.is_prompt_review_enabled():
             return
 
         try:
-            review_result = await self.moderation_service.review_prompt(prompt)
+            review_result = await self.moderation_service.review_prompt(prompt, task_id=task_id)
         except Exception as exc:
-            self.ctx.logger.warning("提示词审核报错: %s", exc)
+            self.ctx.logger.warning("提示词审核终止: task_id=%s error_type=%s", task_id, type(exc).__name__)
             raise
         if review_result.passed:
-            self.ctx.logger.info("提示词审核通过")
+            self.ctx.logger.info("提示词审核通过: task_id=%s", task_id)
         else:
-            self.ctx.logger.info("提示词审核未通过")
+            self.ctx.logger.info("提示词审核未通过: task_id=%s", task_id)
         if not review_result.passed:
             reason_suffix = f"原因：{review_result.reason}" if review_result.reason else "原因：审核模型判定为不通过"
             raise ProviderRequestError(
@@ -117,6 +117,8 @@ class PromptReviewMixin:
         self,
         prompt: str,
         image_bytes_list: list[bytes],
+        *,
+        task_id: str = "",
     ) -> tuple[list[bytes], list[str]]:
         """审核生成图片，并返回通过审核的图片列表。"""
 
@@ -127,17 +129,21 @@ class PromptReviewMixin:
         rejected_reasons: list[str] = []
         for index, image_bytes in enumerate(image_bytes_list, start=1):
             try:
-                review_result = await self.moderation_service.review_image(prompt, image_bytes)
+                review_result = await self.moderation_service.review_image(
+                    prompt, image_bytes, task_id=task_id, image_index=index,
+                )
             except Exception as exc:
-                self.ctx.logger.warning("图片审核报错: index=%s error=%s", index, exc)
+                self.ctx.logger.warning(
+                    "图片审核终止: task_id=%s image_index=%s error_type=%s", task_id, index, type(exc).__name__,
+                )
                 raise
             if review_result.passed:
-                self.ctx.logger.info("图片审核通过")
+                self.ctx.logger.info("图片审核通过: task_id=%s image_index=%s", task_id, index)
                 approved_images.append(image_bytes)
                 continue
 
             rejected_reason = review_result.reason or "审核模型判定为不通过"
-            self.ctx.logger.info("图片审核未通过")
+            self.ctx.logger.info("图片审核未通过: task_id=%s image_index=%s", task_id, index)
             rejected_reasons.append(f"第 {index} 张：{rejected_reason}")
 
         return approved_images, rejected_reasons

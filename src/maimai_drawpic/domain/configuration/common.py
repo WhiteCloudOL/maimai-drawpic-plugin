@@ -3,7 +3,7 @@
 from maibot_sdk import Field, PluginConfigBase
 from typing import List
 
-from .types import CommandReplyMode, ProxyScheme, QuotaPeriodMode
+from .types import CommandReplyMode, ProxyScheme, QuotaPeriodMode, ReviewModelTask
 
 
 class PluginSectionConfig(PluginConfigBase):
@@ -21,7 +21,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.40.0",
+        default="2.41.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -235,11 +235,38 @@ class GeneralConfig(PluginConfigBase):
     )
     prompt_review_enabled: bool = Field(
         default=False,
-        description="是否启用提示词审核。启用后会调用 MaiBot 当前配置的 replyer 模型进行识别",
+        description="是否启用提示词审核。启用后使用所选宿主模型任务审核",
         json_schema_extra={
             "label": "启用提示词审核",
-            "hint": "启用后，文生图和图生图的提示词会先交给 MaiBot 的 replyer 模型审核",
+            "hint": "启用后，文生图和图生图的提示词会先交给所选模型审核，通过后才提交生图",
             "order": 13,
+        },
+    )
+    prompt_review_model: ReviewModelTask = Field(
+        default="vlm",
+        description="提示词审核使用的宿主模型任务",
+        json_schema_extra={
+            "label": "提示词审核模型",
+            "hint": "默认 vlm；沿用 MaiBot 中对应任务组的模型配置，可选 replyer、planner 或 vlm。",
+            "order": 13.1,
+        },
+    )
+    prompt_review_timeout_seconds: int = Field(
+        default=60, ge=5, le=600,
+        description="提示词审核最长等待时间（秒）",
+        json_schema_extra={
+            "label": "提示词审核等待时间（秒）",
+            "hint": "单次默认 60 秒，可设 5～600 秒，重试另计；审核提前完成即继续，失败不会绕过审核。",
+            "order": 13.2,
+        },
+    )
+    prompt_review_retry_count: int = Field(
+        default=2, ge=0, le=5,
+        description="提示词审核失败后额外重试的次数",
+        json_schema_extra={
+            "label": "提示词审核重试次数",
+            "hint": "默认额外重试 2 次，最多调用 3 次；可设 0～5 次，0 表示关闭。明确拒绝和取消不重试。",
+            "order": 13.3,
         },
     )
     prompt_review_prompt: str = Field(
@@ -266,11 +293,38 @@ class GeneralConfig(PluginConfigBase):
     )
     image_review_enabled: bool = Field(
         default=False,
-        description="是否启用生成图片审核。启用后会调用 MaiBot 当前配置的 vlm 模型进行识别",
+        description="是否启用生成图片审核。启用后使用所选宿主模型任务审核",
         json_schema_extra={
             "label": "启用生成图片审核",
-            "hint": "启用后，生成完成的图片会先交给 MaiBot 的 vlm 模型审核，再决定是否发送",
+            "hint": "启用后，生成完成的图片会先交给所选模型审核，通过后才发送",
             "order": 15,
+        },
+    )
+    image_review_model: ReviewModelTask = Field(
+        default="vlm",
+        description="生成图片审核使用的宿主模型任务",
+        json_schema_extra={
+            "label": "图片审核模型",
+            "hint": "默认 vlm；也可选择 replyer 或 planner，但该任务组中的模型必须支持图片输入，否则审核会失败。",
+            "order": 15.1,
+        },
+    )
+    image_review_timeout_seconds: int = Field(
+        default=60, ge=5, le=600,
+        description="每张生成图片审核的最长等待时间（秒）",
+        json_schema_extra={
+            "label": "图片审核等待时间（秒）",
+            "hint": "每张图片单次默认 60 秒，可设 5～600 秒，重试另计；与生图及提示词审核分别设置。失败不发送、不重绘。",
+            "order": 15.2,
+        },
+    )
+    image_review_retry_count: int = Field(
+        default=2, ge=0, le=5,
+        description="每张图片审核失败后额外重试的次数",
+        json_schema_extra={
+            "label": "图片审核重试次数",
+            "hint": "默认额外重试 2 次，最多调用 3 次；可设 0～5 次，0 表示关闭。只重试同一图片的审核，明确拒绝和取消不重试。",
+            "order": 15.3,
         },
     )
     image_review_prompt: str = Field(

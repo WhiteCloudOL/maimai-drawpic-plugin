@@ -217,7 +217,19 @@ class WorkspaceService:
             raise ValueError("配置已更新，请刷新后保存")
         current = self.get_config().model_dump(mode="json")
         updated = await asyncio.to_thread(self.store.save_common, values, current, revision)
-        return await self._refresh_committed(updated)
+        status = await self._refresh_committed(updated)
+        review = self.store.settings.values["general"]
+        self.ctx.logger.info(
+            "审核配置已保存: revision=%s runtime_refresh_pending=%s "
+            "prompt_enabled=%s prompt_model=%s prompt_timeout_seconds=%s prompt_retry_count=%s "
+            "image_enabled=%s image_model=%s image_timeout_seconds=%s image_retry_count=%s",
+            self.store.revision, self.runtime_refresh_pending,
+            review["prompt_review_enabled"], review["prompt_review_model"],
+            review["prompt_review_timeout_seconds"], review["prompt_review_retry_count"],
+            review["image_review_enabled"], review["image_review_model"],
+            review["image_review_timeout_seconds"], review["image_review_retry_count"],
+        )
+        return status
 
     async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
         if operation not in {"list", "get", "save", "delete"} or len(name) > 80:

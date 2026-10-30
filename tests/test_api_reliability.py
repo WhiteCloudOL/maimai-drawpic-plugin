@@ -135,7 +135,8 @@ def test_all_approved_images_delivered_are_sent_even_if_cache_fails(make_plugin,
             async def generate(**kwargs):
                 return [image_bytes(), image_bytes()]
 
-            async def review(prompt, images):
+            async def review(prompt, images, *, task_id):
+                assert task_id
                 return images[:1], ["second image rejected"]
 
             async def deliver(**kwargs):

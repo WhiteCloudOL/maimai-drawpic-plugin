@@ -53,6 +53,7 @@ class StyleCommandMixin:
             if not resolved_prompt.positive_prompt and not source_images:
                 raise ValueError("请提供正向提示词，或在同一条消息中附带/引用图片")
             result = await self._start_background_image_request(
+                defer_prompt_review=True,
                 prompt=resolved_prompt.positive_prompt,
                 request_negative_prompt=resolved_prompt.negative_prompt,
                 stream_id=stream_id,

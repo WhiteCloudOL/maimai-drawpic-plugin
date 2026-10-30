@@ -169,7 +169,8 @@ def test_generated_but_review_rejected_is_distinct_from_prompt_rejection(make_pl
             async def generate(**kwargs):
                 return [image_bytes()]
 
-            async def reject_images(prompt, images):
+            async def reject_images(prompt, images, *, task_id):
+                assert task_id
                 return [], ["fixture image review rejected"]
 
             service = plugin._require_draw_service()

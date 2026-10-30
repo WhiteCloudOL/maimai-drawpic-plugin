@@ -123,7 +123,13 @@
       "skip_image_url_ip_check": false,
       "admin_user_ids": [],
       "prompt_review_enabled": false,
-      "image_review_enabled": false
+      "prompt_review_model": "vlm",
+      "prompt_review_timeout_seconds": 60,
+      "prompt_review_retry_count": 2,
+      "image_review_enabled": false,
+      "image_review_model": "vlm",
+      "image_review_timeout_seconds": 60,
+      "image_review_retry_count": 2
     },
     "style": {
       "default_style": "水彩",
@@ -148,6 +154,9 @@
 - `request_retry_count`：每模型额外重试次数，默认 1，可选 0～5；不是遇到任何失败都重新绘图。审核配置在界面中独立成标签页，文件中的字段仍在 `general` 下。
 - `request_timeout_seconds`：单次平台尝试的超时预算，不是任务整体的永久等待时间。
 - `skip_image_url_ip_check`：默认 `false`。仅在可信内网图床或 TUN/Fake-IP 等特殊 DNS 环境需要时设为 `true`；手动/系统代理会自动保留域名交由代理解析，详见[图片下载说明](configuration.md#请求与安全边界)。
+- `prompt_review_model`、`image_review_model`：分别选择提示词和图片审核使用的宿主任务组，均默认 `vlm`，还可填 `replyer` 或 `planner`；图片审核必须使用支持图片输入的模型。
+- `prompt_review_timeout_seconds`、`image_review_timeout_seconds`：分别控制两类审核单次尝试的最长等待时间，单位秒，均默认 60，范围 5～600；与图片生成超时独立，审核提前完成即继续。
+- `prompt_review_retry_count`、`image_review_retry_count`：分别控制两类审核失败后额外重试的次数，默认 2，范围 0～5；0 表示关闭。明确拒绝或取消不重试，图片审核重试不重新生图。
 - `admin_user_ids`：字符串列表，例如 `["12345678"]`；不同适配器的用户 ID 形式可能不同。
 - `image_edit_unsupported_models`、`text_to_image_unsupported_models`：人工限制的模型列表；优先使用工作台中的完整模型名称。
 - `presets`：风格模板列表。默认风格名称应对应一个已启用风格；保留 `{prompt}`、`{negative_prompt}` 来代入本次描述和反向词。

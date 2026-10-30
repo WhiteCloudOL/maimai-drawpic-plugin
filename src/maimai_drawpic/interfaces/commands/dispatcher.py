@@ -362,6 +362,7 @@ class CommandMixin:
                     return False, "文生图指令检测到源图", 1
 
                 start_result = await self._start_background_image_request(
+                    defer_prompt_review=True,
                     prompt=prompt,
                     request_negative_prompt=negative_prompt,
                     stream_id=normalized_stream_id,

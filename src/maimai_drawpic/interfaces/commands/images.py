@@ -146,6 +146,7 @@ class ImageCommandMixin:
                 matched_message_id,
             )
             start_result = await self._start_background_image_request(
+                defer_prompt_review=True,
                 prompt=prompt,
                 stream_id=stream_id,
                 requested_model=resolved_model,
