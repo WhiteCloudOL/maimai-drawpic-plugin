@@ -311,7 +311,7 @@ class ProviderConstructionMixin:
             positive_prompt=self.config.novelai.positive_prompt,
             negative_prompt=negative_prompt,
             mode=self.resolve_novelai_mode(novelai_mode),
-            uc_preset=self.config.novelai.uc_preset,
+            uc_preset=config.uc_preset if config.negative_prompt_enabled else None,
             quality_toggle=self.config.novelai.quality_toggle,
             sm=self.config.novelai.sm,
             sm_dyn=self.config.novelai.sm_dyn,

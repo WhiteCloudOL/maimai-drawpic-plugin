@@ -11,6 +11,58 @@ from test_routing_review_fixes import add_provider, module, set_settings
 from test_workspace import image_bytes, make_plugin as make_plugin
 
 
+@pytest.mark.parametrize("model", ["gateway-custom-image", "nai-diffusion-3", "nai-diffusion-5-full"])
+@pytest.mark.parametrize("task_type", ["draw", "edit_image"])
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("extra_preset", [None, 0, 1])
+def test_novelai_legacy_uc_preset_obeys_instance_switch(
+    make_plugin, monkeypatch, model, task_type, enabled, extra_preset,
+):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            saved = await add_provider(
+                plugin, "novelai", "NAI", models=[model], negative_prompt_enabled=enabled,
+                negative_prompt="", uc_preset=2,
+                extra_parameters=["custom_flag=false"] + (
+                    [f"ucPreset={extra_preset}"] if extra_preset is not None else []
+                ),
+            )
+            assert saved["saved"], saved
+            payloads = []
+
+            async def generate(provider, prompt, selected_model, *args):
+                payloads.append(provider._build_payload(
+                    prompt=prompt, model=selected_model,
+                    action="img2img" if task_type == "edit_image" else "generate", n=1,
+                ))
+                return [image_bytes()]
+
+            provider_class = module("infrastructure.providers.novelai").NovelAIImage
+            monkeypatch.setattr(provider_class, "generate_images", generate)
+            monkeypatch.setattr(provider_class, "edit_images", generate)
+            service = plugin._require_draw_service()
+            receipt = await plugin.drawpic_submit(
+                "a cat", task_type=task_type,
+                source_images=[base64.b64encode(image_bytes()).decode("ascii")] if task_type == "edit_image" else None,
+            )
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            assert len(payloads) == 1
+            parameters = payloads[0]["parameters"]
+            assert parameters["custom_flag"] is False
+            if enabled and model == "gateway-custom-image":
+                assert parameters["ucPreset"] == (2 if extra_preset is None else extra_preset)
+            else:
+                assert "ucPreset" not in parameters
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("model", ["nai-diffusion-4-full", "nai-diffusion-4-5-full", "nai-diffusion-5-full"])
 @pytest.mark.parametrize("task_type", ["draw", "edit_image"])
 @pytest.mark.parametrize("enabled", [False, True])

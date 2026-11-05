@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any
+from typing import Any, Optional
 import aiohttp
 import asyncio
 import base64
@@ -63,7 +63,7 @@ class NovelAIImage:
         positive_prompt: str = "",
         negative_prompt: str = "",
         mode: str = "anime",
-        uc_preset: int = 0,
+        uc_preset: Optional[int] = 0,
         quality_toggle: bool = True,
         sm: bool = False,
         sm_dyn: bool = False,
@@ -95,7 +95,7 @@ class NovelAIImage:
         self.positive_prompt = positive_prompt.strip()
         self.negative_prompt = negative_prompt.strip()
         self.mode = mode.strip().lower() or "anime"
-        self.uc_preset = int(uc_preset)
+        self.uc_preset = int(uc_preset) if uc_preset is not None else None
         self.quality_toggle = quality_toggle
         self.sm = sm
         self.sm_dyn = sm_dyn
@@ -206,6 +206,9 @@ class NovelAIImage:
         if noise_schedule:
             parameters["noise_schedule"] = noise_schedule
         parameters.update(self.extra_parameters)
+        if self.uc_preset is None:
+            # None 表示实例关闭反向词，扩展参数也不能重新启用旧版 UC 预设。
+            parameters.pop("ucPreset", None)
         if is_official_model:
             self._sanitize_official_parameters(
                 parameters,
