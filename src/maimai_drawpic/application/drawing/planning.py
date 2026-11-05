@@ -3,6 +3,7 @@ import asyncio
 import inspect
 
 from ...infrastructure.media.collection import validate_result_images
+from ...domain.styles import StylePromptResolver, deduplicate_negative_prompt
 from .admission import wait_for_admission
 from .types import ImageRequestAttempt
 
@@ -165,6 +166,7 @@ class RequestPlanningMixin:
         source_image_urls: list[str],
         matched_message_id: str,
         request_negative_prompt: str = "",
+        style_negative_prompt_template: str = "",
     ) -> list[bytes]:
         """执行单次图片请求尝试。"""
 
@@ -172,39 +174,65 @@ class RequestPlanningMixin:
         if task_type == "edit_image":
             self.router.validate_source_image_count(attempt.model, len(source_image_bytes_list))
         provider_prompt = prompt
-        provider_negative_prompt = request_negative_prompt.strip()
+        negative_config = self.router.get_negative_prompt_config(attempt.model)
+        provider_negative_prompt = StylePromptResolver.render_negative_prompt(
+            style_negative_prompt_template,
+            self.router.resolve_negative_prompt(attempt.model, request_negative_prompt, task_type),
+        )
         supports_negative_prompt = self.router.supports_separate_negative_prompt(
             attempt.model,
             task_type,
         )
-        if provider_negative_prompt and not supports_negative_prompt:
-            provider_prompt = self.router.merge_prompt_parts(
-                provider_prompt,
-                f"Negative prompt: {provider_negative_prompt}",
-            )
-            provider_negative_prompt = ""
+        self.ctx.logger.info(
+            "反向提示词处理: task_id=%s task_type=%s provider=%s model=%s enabled=%s "
+            "request_ignored=%s style_present=%s negative_len=%s transport=%s",
+            task_id, task_type, provider_name, attempt.model, negative_config.negative_prompt_enabled,
+            bool(request_negative_prompt.strip()) and not negative_config.negative_prompt_enabled,
+            bool(style_negative_prompt_template.strip(" \t\r\n,").replace("{negative_prompt}", "")),
+            len(provider_negative_prompt),
+            "none" if not provider_negative_prompt else "separate" if supports_negative_prompt else "merged",
+        )
         provider_prompt = await self.rewrite_prompt_to_english_if_needed(
             provider_prompt,
             provider_name,
             attempt.model,
         )
         if provider_negative_prompt:
-            provider_negative_prompt = await self.rewrite_prompt_to_english_if_needed(
-                provider_negative_prompt,
-                provider_name,
-                attempt.model,
+            self.ctx.logger.debug(
+                "准备反向提示词英文改写: task_id=%s provider=%s model=%s rewrite_enabled=%s negative_len=%s",
+                task_id, provider_name, attempt.model,
+                self.router.should_rewrite_prompt_to_english(provider_name, attempt.model),
+                len(provider_negative_prompt),
             )
+            try:
+                provider_negative_prompt = deduplicate_negative_prompt(
+                    await self.rewrite_prompt_to_english_if_needed(
+                        provider_negative_prompt, provider_name, attempt.model,
+                    )
+                )
+            except Exception as exc:
+                self.ctx.logger.error(
+                    "反向提示词英文改写失败: task_id=%s provider=%s model=%s error_type=%s",
+                    task_id, provider_name, attempt.model, type(exc).__name__, exc_info=True,
+                )
+                raise RuntimeError(f"反向提示词英文改写失败：{exc}") from exc
+        if provider_negative_prompt and not supports_negative_prompt:
+            provider_prompt = self.router.merge_prompt_parts(
+                provider_prompt, f"Negative prompt: {provider_negative_prompt}",
+            )
+            provider_negative_prompt = ""
         image_platform, provider_name = self.router.require_platform_for_model(
             attempt.model,
             attempt.openai_compatibility_mode,
             request_negative_prompt=provider_negative_prompt,
+            prepared_negative_prompt=provider_negative_prompt,
             novelai_mode=attempt.novelai_mode,
             novelai_artist_tags=attempt.novelai_artist_tags,
         )
 
         if task_type == "edit_image":
             self.ctx.logger.info(
-                "开始绘图任务尝试: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s source_image_count=%s source_image_bytes_lengths=%s matched_message_id=%s prompt=%s",
+                "开始绘图任务尝试: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s source_image_count=%s source_image_bytes_lengths=%s matched_message_id=%s prompt_len=%s",
                 task_id,
                 task_type,
                 provider_name,
@@ -213,7 +241,7 @@ class RequestPlanningMixin:
                 len(source_image_bytes_list),
                 [len(image_bytes) for image_bytes in source_image_bytes_list],
                 matched_message_id,
-                provider_prompt[:120],
+                len(provider_prompt),
             )
             if provider_name == "aliyun":
                 return await self.run_provider_call(
@@ -233,13 +261,13 @@ class RequestPlanningMixin:
             )
 
         self.ctx.logger.info(
-            "开始绘图任务尝试: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s source_image_count=0 prompt=%s",
+            "开始绘图任务尝试: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s source_image_count=0 prompt_len=%s",
             task_id,
             task_type,
             provider_name,
             attempt.model,
             attempt.is_fallback,
-            provider_prompt[:120],
+            len(provider_prompt),
         )
         return await self.run_provider_call(
             image_platform.generate_images,

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+from ...domain.configuration.platforms.common import NegativePromptConfig
 from ...infrastructure.providers.openai import OpenaiImage
 
 ProviderName = Literal["agnes", "aliyun", "openai", "google", "zhipu", "volcengine", "siliconflow", "novelai", "comfyui"]
@@ -38,6 +39,7 @@ class OpenAIModelRoute:
     max_images: int
     extra_parameters: dict[str, Any]
     rewrite_prompt_to_english: bool
+    negative_prompt_config: NegativePromptConfig
 
 
 class ImageProvider(Protocol):

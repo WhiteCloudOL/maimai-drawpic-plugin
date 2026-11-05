@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, List
+import re
+import unicodedata
 
 from .configuration.models import StyleConfig, StylePresetConfig
 
@@ -13,6 +15,7 @@ class ResolvedStylePrompt:
     style_name: str
     positive_prompt: str
     negative_prompt: str
+    negative_prompt_template: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +30,41 @@ def merge_prompt_parts(parts: Iterable[str]) -> str:
     """按顺序合并非空提示词片段。"""
 
     return ", ".join(part.strip(" \t\r\n,") for part in parts if part.strip(" \t\r\n,"))
+
+
+def deduplicate_negative_prompt(*parts: str) -> str:
+    """按词条去重，保留首次顺序以及括号内的权重、转义和分隔符。"""
+
+    terms: List[str] = []
+    seen = set()
+    closing = {"(": ")", "[": "]", "{": "}", "<": ">"}
+    for part in parts:
+        stack: List[str] = []
+        start = 0
+        escaped = False
+        weighted = False
+        for index, character in enumerate(part + ","):
+            if escaped and index < len(part):
+                escaped = False
+                continue
+            if character == "\\":
+                escaped = True
+                continue
+            # NovelAI 的 1.5::tag, tag:: 也是一个整体，不能跨权重区间去重。
+            if part[index:index + 2] == "::" and (index == 0 or part[index - 1] != ":"):
+                weighted = not weighted
+            if character in closing:
+                stack.append(closing[character])
+            elif stack and character == stack[-1]:
+                stack.pop()
+            if index == len(part) or (character in ",，;；\n" and not stack and not weighted):
+                term = part[start:index].strip()
+                normalized = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", term)).casefold()
+                if normalized and normalized not in seen:
+                    seen.add(normalized)
+                    terms.append(term)
+                start = index + 1
+    return ", ".join(terms)
 
 
 class StylePromptResolver:
@@ -106,6 +144,7 @@ class StylePromptResolver:
             style_name=preset.name.strip(),
             positive_prompt=positive_prompt,
             negative_prompt=negative_prompt,
+            negative_prompt_template=preset.negative_prompt_template,
         )
 
     def _find_preset(self, style_name: str) -> StylePresetConfig | None:
@@ -116,6 +155,14 @@ class StylePromptResolver:
         if len(matches) > 1:
             raise ValueError(f"绘图风格名称重复：{style_name}，请在插件配置中保留一个同名风格")
         return matches[0] if matches else None
+
+    @classmethod
+    def render_negative_prompt(cls, template: str, negative_prompt: str) -> str:
+        """在实例过滤之后渲染风格反向词，保留独立的模板内容并去重。"""
+
+        return deduplicate_negative_prompt(
+            cls._render_template(template, placeholder="{negative_prompt}", user_text=negative_prompt)
+        )
 
     @staticmethod
     def _render_template(template: str, *, placeholder: str, user_text: str) -> str:

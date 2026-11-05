@@ -1,14 +1,26 @@
 """configuration/platforms/novelai.py 的强类型配置定义。"""
 
-from maibot_sdk import Field, PluginConfigBase
+from maibot_sdk import Field
 from typing import List
 
 from ...models.novelai_catalog import NOVELAI_DEFAULT_MODELS
 from ..types import NovelAIMode
 
+from .common import NegativePromptConfig
 
-class NovelAIModelConfig(PluginConfigBase):
+
+class NovelAIModelConfig(NegativePromptConfig):
     """NovelAI / NovelAPI 模型配置。"""
+
+    negative_prompt_enabled: bool = Field(
+        default=True,
+        description="是否接受本次请求的反向提示词并添加平台默认反向词",
+        json_schema_extra={
+            "label": "启用反向提示词",
+            "hint": "关闭时忽略 AI、命令、工作台和 API 传入的反向词及平台默认反向词；风格预设自己的正反向模板仍生效。",
+            "order": 80,
+        },
+    )
 
     __ui_label__ = "NovelAI / NovelAPI 配置"
     __ui_order__ = 10
@@ -159,12 +171,12 @@ class NovelAIModelConfig(PluginConfigBase):
     )
     negative_prompt: str = Field(
         default="lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry",
-        description="NovelAI 反向提示词",
+        description="NovelAI 默认反向提示词，启用后与本次反向词及风格词去重合并",
         json_schema_extra={
-            "label": "反向提示词",
-            "hint": "会写入 uc；留空则不传",
+            "label": "默认反向提示词（可选）",
+            "hint": "仅在反向提示词开关开启时生效；与本次反向词、风格反向词去重合并，英文改写后写入 uc",
             "input_type": "textarea",
-            "order": 11,
+            "order": 81,
         },
     )
     uc_preset: int = Field(

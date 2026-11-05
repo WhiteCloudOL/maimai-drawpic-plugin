@@ -23,6 +23,7 @@ class ImageExecutionMixin:
         novelai_mode: str = "",
         novelai_artist_tags: str = "",
         request_negative_prompt: str = "",
+        style_negative_prompt_template: str = "",
         source_image_bytes_list: list[bytes] | None = None,
         source_image_urls: list[str] | None = None,
         matched_message_id: str = "",
@@ -141,6 +142,7 @@ class ImageExecutionMixin:
                 source_image_urls=normalized_source_urls,
                 matched_message_id=matched_message_id,
                 request_negative_prompt=request_negative_prompt,
+                style_negative_prompt_template=style_negative_prompt_template,
             )
 
             if successful_attempt is None:

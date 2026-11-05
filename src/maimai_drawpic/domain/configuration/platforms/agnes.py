@@ -1,10 +1,12 @@
 """Agnes 图像平台配置。"""
 
-from maibot_sdk import Field, PluginConfigBase
+from maibot_sdk import Field
 from typing import List, Literal
 
+from .common import NegativePromptConfig
 
-class AgnesModelConfig(PluginConfigBase):
+
+class AgnesModelConfig(NegativePromptConfig):
     """Agnes Image 2.0、2.1 和 2.5 Flash 共用的连接与图片参数。"""
 
     __ui_label__ = "Agnes 配置"

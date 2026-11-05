@@ -739,6 +739,12 @@ def test_draw_service_passes_source_urls_only_to_aliyun_adapter() -> None:
         def supports_separate_negative_prompt(self, *_args: Any) -> bool:
             return False
 
+        def get_negative_prompt_config(self, model: str):
+            return types.SimpleNamespace(negative_prompt_enabled=False)
+
+        def resolve_negative_prompt(self, model: str, request_negative_prompt: str, task_type: str) -> str:
+            return ""
+
         def should_rewrite_prompt_to_english(self, *_args: Any) -> bool:
             return False
 

@@ -53,7 +53,7 @@ class StylePresetConfig(PluginConfigBase):
         description="反向提示词模板。{negative_prompt} 会替换为用户反向提示词；没有占位符时会自动追加",
         json_schema_extra={
             "label": "反向提示词模板",
-            "hint": "{negative_prompt} 会替换为你本次填写的反向提示词（不希望出现的内容）。例如“模糊，{negative_prompt}”遇到“水印”会变成“模糊，水印”。建议保留；删除时仍会自动追加本次反向词。平台不支持独立反向字段时会合并到提示词中。",
+            "hint": "{negative_prompt} 会替换为本次反向词与实例默认词，并与模板按词条去重。实例关闭反向词时清空本次输入与实例默认值，保留模板自己的内容；例如“模糊，{negative_prompt}”仍保留“模糊”。无占位符时自动追加；不支持独立反向字段的平台会合并提示词。",
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 4,

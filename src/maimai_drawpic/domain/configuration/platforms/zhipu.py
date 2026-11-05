@@ -1,9 +1,11 @@
 """configuration/platforms/zhipu.py 的强类型配置定义。"""
 
-from maibot_sdk import Field, PluginConfigBase
+from maibot_sdk import Field
+
+from .common import NegativePromptConfig
 
 
-class ZhipuModelConfig(PluginConfigBase):
+class ZhipuModelConfig(NegativePromptConfig):
     """智谱模型配置。"""
 
     __ui_label__ = "智谱配置"

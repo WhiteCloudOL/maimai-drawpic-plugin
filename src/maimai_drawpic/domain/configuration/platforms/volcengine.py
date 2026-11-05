@@ -1,11 +1,13 @@
 """configuration/platforms/volcengine.py 的强类型配置定义。"""
 
-from maibot_sdk import Field, PluginConfigBase
+from maibot_sdk import Field
 
 from ..types import VolcengineResponseFormat, VolcengineSequentialMode
 
+from .common import NegativePromptConfig
 
-class VolcengineModelConfig(PluginConfigBase):
+
+class VolcengineModelConfig(NegativePromptConfig):
     """火山引擎方舟模型配置。"""
 
     __ui_label__ = "火山引擎配置"

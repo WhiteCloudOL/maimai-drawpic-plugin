@@ -1,13 +1,15 @@
 """configuration/platforms/openai.py 的强类型配置定义。"""
 
-from maibot_sdk import Field, PluginConfigBase
+from maibot_sdk import Field
 from pydantic import field_validator
 from typing import Any
 
 from ...models.openai_profiles import OpenAICompatibilityMode, normalize_openai_mode
 
+from .common import NegativePromptConfig
 
-class OpenAICompatibleInstanceConfig(PluginConfigBase):
+
+class OpenAICompatibleInstanceConfig(NegativePromptConfig):
     """OpenAI 兼容接口实例配置。"""
 
     # 必填项：缺一项实例就无法正常调用
@@ -177,7 +179,7 @@ class OpenAICompatibleInstanceConfig(PluginConfigBase):
     )
 
 
-class OpenAIModelConfig(PluginConfigBase):
+class OpenAIModelConfig(NegativePromptConfig):
     """OpenAI 模型配置。"""
 
     __ui_label__ = "OpenAI 配置"

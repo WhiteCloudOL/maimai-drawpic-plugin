@@ -1,11 +1,13 @@
 """configuration/platforms/comfyui.py 的强类型配置定义。"""
 
-from maibot_sdk import Field, PluginConfigBase
+from maibot_sdk import Field
 
 from ..types import ComfyUIPromptMode
 
+from .common import NegativePromptConfig
 
-class ComfyUIModelConfig(PluginConfigBase):
+
+class ComfyUIModelConfig(NegativePromptConfig):
     """ComfyUI 本地工作流配置。"""
 
     __ui_label__ = "ComfyUI 配置"

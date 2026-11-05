@@ -16,7 +16,8 @@ def module(name):
 
 async def add_provider(plugin, kind, name, **values):
     config = storage.WorkspaceConfigStore.platform_model(kind)().model_dump(mode="json")
-    config.update(api_key="fixture-key", rewrite_prompt_to_english=False, **values)
+    config.update(api_key="fixture-key", rewrite_prompt_to_english=False)
+    config.update(values)
     return await plugin.workspace_provider_save(
         json.dumps({"kind": kind, "name": name, "config": config}), plugin._platform_store.revision
     )
@@ -26,6 +27,190 @@ async def set_settings(plugin, **values):
     settings = storage.common_config(plugin.config.model_dump(mode="json"))
     settings["general"].update(private_quota_enabled=False, **values)
     await plugin.workspace_settings_save(json.dumps(settings), plugin._platform_store.revision)
+
+
+@pytest.mark.parametrize("kind", ["openai", "siliconflow", "novelai"])
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("styled", [False, True])
+def test_negative_prompts_apply_instance_policy_before_style_and_translation(
+    make_plugin, monkeypatch, kind, enabled, styled,
+):
+    """从公开提交入口验证过滤、独立风格、默认词去重和最终请求的英文内容。"""
+
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            model = "nai-diffusion-3" if kind == "novelai" else "fixture-image"
+            await add_provider(
+                plugin, kind, "Drawing", models=[model], negative_prompt_enabled=enabled,
+                negative_prompt="水印，文字", rewrite_prompt_to_english=True,
+            )
+            await plugin.workspace_settings_save(json.dumps({"style": {"presets": [{
+                "name": "fixture", "positive_prompt_template": "{prompt}",
+                "negative_prompt_template": "水印，{negative_prompt}",
+            }]}}), plugin._platform_store.revision)
+            service = plugin._require_draw_service()
+            rewrites, requests = [], []
+            translations = {"猫": "a cat", "水印": "watermark", "模糊": "blurry", "文字": "text"}
+
+            async def rewrite(prompt, provider, selected_model):
+                assert service.router.should_rewrite_prompt_to_english(provider, selected_model)
+                rewrites.append(prompt)
+                return ", ".join(translations[term.strip()] for term in prompt.split(","))
+
+            async def generate(provider, prompt, model, n=1):
+                negative = "" if kind == "openai" else provider.negative_prompt
+                requests.append((prompt, negative))
+                return [image_bytes()]
+
+            provider_class = {
+                "openai": ("openai", "OpenaiImage"),
+                "siliconflow": ("siliconflow", "SiliconFlowImage"),
+                "novelai": ("novelai", "NovelAIImage"),
+            }[kind]
+            provider_module = module(f"infrastructure.providers.{provider_class[0]}")
+            monkeypatch.setattr(provider_module.__dict__[provider_class[1]], "generate_images", generate)
+            monkeypatch.setattr(service, "rewrite_prompt_to_english_if_needed", rewrite)
+            receipt = await plugin.drawpic_submit(
+                "猫", negative_prompt="模糊，水印", style="fixture" if styled else "none",
+            )
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            expected_terms = ["watermark"] if styled else []
+            if enabled:
+                expected_terms.extend(["blurry", "watermark", "text"])
+            expected_negative = ", ".join(dict.fromkeys(expected_terms))
+            assert len(rewrites) == (2 if expected_negative else 1)
+            assert requests == [(
+                "a cat" + (f", Negative prompt: {expected_negative}" if kind == "openai" and expected_negative else ""),
+                "" if kind == "openai" else expected_negative,
+            )]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("task_type", ["draw", "edit_image"])
+@pytest.mark.parametrize("prompt_mode", ["single_prompt", "positive_negative"])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_comfyui_negative_prompts_keep_task_defaults_and_style_separate(
+    make_plugin, monkeypatch, task_type, prompt_mode, enabled,
+):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            config = storage.WorkspaceConfigStore.platform_model("comfyui")().model_dump(mode="json")
+            config.update(
+                enabled=True, negative_prompt_enabled=enabled,
+                negative_prompt="watermark", rewrite_prompt_to_english=False,
+                t2i_prompt_mode=prompt_mode, i2i_prompt_mode=prompt_mode,
+                t2i_negative_prompt="text", i2i_negative_prompt="signature",
+            )
+            saved = await plugin.workspace_provider_save(json.dumps({
+                "kind": "comfyui", "name": "Workflow", "config": config,
+            }), plugin._platform_store.revision)
+            assert saved["saved"], saved
+            requests = []
+
+            async def generate(provider, prompt, model, *args):
+                negative = provider.i2i_negative_prompt if task_type == "edit_image" else provider.t2i_negative_prompt
+                requests.append((prompt, negative))
+                return [image_bytes()]
+
+            provider_class = module("infrastructure.providers.comfyui").ComfyUIImage
+            monkeypatch.setattr(provider_class, "generate_images", generate)
+            monkeypatch.setattr(provider_class, "edit_images", generate)
+            monkeypatch.setattr(provider_class, "validate_task_configuration", lambda *args: None)
+            service = plugin._require_draw_service()
+            await service._run_image_request_attempt(
+                attempt=module("application.drawing").ImageRequestAttempt(
+                    model="Workflow/comfyui", provider_name="comfyui", openai_compatibility_mode="",
+                ),
+                prompt="a cat", task_id="fixture-task", task_type=task_type,
+                source_image_bytes_list=[image_bytes()] if task_type == "edit_image" else [],
+                source_image_urls=[""] if task_type == "edit_image" else [], matched_message_id="",
+                request_negative_prompt="blurry", style_negative_prompt_template="watermark, {negative_prompt}",
+            )
+            negative = "watermark" + (", blurry" if enabled else "")
+            if prompt_mode == "positive_negative" and enabled:
+                negative += ", signature" if task_type == "edit_image" else ", text"
+            assert requests == [(
+                "a cat" + (f", Negative prompt: {negative}" if prompt_mode == "single_prompt" else ""),
+                "" if prompt_mode == "single_prompt" else negative,
+            )]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+def test_negative_prompt_fallback_uses_each_instance_settings(make_plugin, monkeypatch):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            await add_provider(plugin, "openai", "Primary", models=["first"], negative_prompt_enabled=False)
+            await add_provider(
+                plugin, "openai", "Backup", models=["second"],
+                negative_prompt_enabled=True, negative_prompt="watermark, text",
+            )
+            await set_settings(plugin, fallback_models=["Backup/second"], request_retry_count=0)
+            requests = []
+
+            async def post(provider, url, payload):
+                requests.append(payload["prompt"])
+                if payload["model"] == "first":
+                    raise module("domain.errors").ProviderConnectionError("connection not established")
+                return {"data": [{"b64_json": base64.b64encode(image_bytes()).decode("ascii")}]}
+
+            monkeypatch.setattr(module("infrastructure.providers.openai").OpenaiImage, "_post_json", post)
+            service = plugin._require_draw_service()
+            receipt = await plugin.drawpic_submit("a cat", negative_prompt="blurry, watermark")
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            assert requests == ["a cat", "a cat, Negative prompt: blurry, watermark, text"]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+def test_negative_prompt_rewrite_failure_stops_submission_and_redacts_errors(make_plugin, monkeypatch):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            await add_provider(
+                plugin, "openai", "Drawing", models=["image"],
+                negative_prompt_enabled=True, negative_prompt="secret negative terms", rewrite_prompt_to_english=True,
+            )
+            service = plugin._require_draw_service()
+
+            async def rewrite(prompt, **kwargs):
+                if "secret negative terms" in prompt:
+                    raise ValueError("fixture-key translation failure")
+                return {"success": True, "response": "a cat"}
+
+            async def unexpected_post(*args, **kwargs):
+                pytest.fail("Rewriting failed before any generation request was sent")
+
+            monkeypatch.setattr(plugin.ctx.llm, "generate", rewrite)
+            monkeypatch.setattr(module("infrastructure.providers.openai").OpenaiImage, "_post_json", unexpected_post)
+            receipt = await plugin.drawpic_submit("a cat")
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "failed"
+            assert "反向提示词英文改写失败" in result["message"]
+            assert "fixture-key" not in result["message"]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
 
 
 def mock_chat(plugin, monkeypatch):

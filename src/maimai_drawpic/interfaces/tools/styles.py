@@ -122,7 +122,8 @@ class StyleToolMixin:
             return await self._start_background_image_request(
                 defer_prompt_review=True,
                 prompt=resolved_prompt.positive_prompt,
-                request_negative_prompt=resolved_prompt.negative_prompt,
+                request_negative_prompt=negative_prompt,
+                style_negative_prompt_template=resolved_prompt.negative_prompt_template,
                 stream_id=runtime_context["stream_id"],
                 source_image_bytes_list=source_image_bytes_list,
                 source_image_urls=source_image_urls,

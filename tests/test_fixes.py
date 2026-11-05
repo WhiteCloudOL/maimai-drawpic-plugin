@@ -417,6 +417,16 @@ def test_novelai_mode_and_prompt_merging() -> None:
     print("[OK] NovelAI mode：Furry 数据集标签与正反向提示词独立合并")
 
 
+def test_negative_prompt_deduplication_preserves_weighted_and_escaped_terms() -> None:
+    from maimai_drawpic_pkg.src.maimai_drawpic.domain.styles import deduplicate_negative_prompt
+
+    assert deduplicate_negative_prompt("Blurry，watermark", "blurry; TEXT\nwatermark") == "Blurry, watermark, TEXT"
+    weighted = "1.5::one, two, three::, (hands, fingers:1.2), {{bad anatomy}}"
+    assert deduplicate_negative_prompt(weighted, "two, TWO", weighted) == weighted + ", two"
+    assert deduplicate_negative_prompt(r"tag\,with comma, other", r"tag\,with comma") == r"tag\,with comma, other"
+    assert deduplicate_negative_prompt("trailing\\") == "trailing\\"
+
+
 def test_style_prompt_templates_are_platform_independent() -> None:
     """插件风格只渲染通用提示词，不携带任何 NAI mode。"""
 
@@ -456,7 +466,7 @@ def test_style_descriptions_are_structured_and_backward_compatible() -> None:
 
     legacy_preset = StylePresetConfig(name="旧风格")
     assert legacy_preset.description == ""
-    assert DrawpicConfig().plugin.config_version == "2.41.0"
+    assert DrawpicConfig().plugin.config_version == "2.42.0"
 
     resolver = StylePromptResolver(
         StyleConfig(
@@ -644,7 +654,7 @@ def test_regular_novelai_route_uses_session_settings_and_prompts() -> None:
         n=1,
     )
     assert payload["input"] == "artist:session, default positive, user positive"
-    assert payload["parameters"]["negative_prompt"] == "default negative, user negative"
+    assert payload["parameters"]["negative_prompt"] == "user negative, default negative"
     assert provider.img2img_strength == 0.72
     assert provider.img2img_noise == 0.18
     print("[OK] 普通 NAI 路由：mode、画师标签、平台参数和正反向提示词保持一致")
@@ -785,6 +795,14 @@ def test_background_tasks_are_concurrent_and_user_isolated() -> None:
         @staticmethod
         def resolve_request_timeout_seconds() -> int:
             return 10
+
+        @staticmethod
+        def get_negative_prompt_config(model: str):
+            return types.SimpleNamespace(negative_prompt_enabled=True)
+
+        @staticmethod
+        def resolve_negative_prompt(model: str, request_negative_prompt: str, task_type: str) -> str:
+            return request_negative_prompt
 
         @staticmethod
         def supports_separate_negative_prompt(model: str, task_type: str) -> bool:
@@ -1309,6 +1327,14 @@ def test_style_negative_prompt_routing() -> None:
             self.supports_negative = supports_negative
             self.provider = _Provider()
             self.received_negative = ""
+
+        @staticmethod
+        def get_negative_prompt_config(model: str):
+            return types.SimpleNamespace(negative_prompt_enabled=True)
+
+        @staticmethod
+        def resolve_negative_prompt(model: str, request_negative_prompt: str, task_type: str) -> str:
+            return request_negative_prompt
 
         def supports_separate_negative_prompt(self, model: str, task_type: str) -> bool:
             del model, task_type

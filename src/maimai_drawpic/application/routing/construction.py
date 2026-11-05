@@ -1,3 +1,6 @@
+from typing import Optional
+
+from ...domain.styles import deduplicate_negative_prompt
 from ...paths import PLUGIN_DIR
 from ...infrastructure.providers.aliyun import AliyunImage
 from ...infrastructure.providers.agnes import AgnesImage
@@ -16,6 +19,21 @@ from .types import ImageProvider, OpenAIModelRoute, ProviderName, RoutedOpenAIIm
 
 class ProviderConstructionMixin:
     """ProviderConstructionMixin 的独立绘图职责。"""
+
+    def _provider_negative_prompt(
+        self,
+        provider_name: ProviderName,
+        request_negative_prompt: str,
+        prepared_negative_prompt: Optional[str],
+        legacy_default: str = "",
+    ) -> str:
+        # 已完成实例过滤、风格合并和改写的内容必须原样传递，不能再追加原始默认词。
+        if prepared_negative_prompt is not None:
+            return prepared_negative_prompt
+        config = self.config.__dict__[provider_name]
+        if not config.negative_prompt_enabled:
+            return ""
+        return deduplicate_negative_prompt(request_negative_prompt, config.negative_prompt, legacy_default)
 
     def create_agnes_provider(self) -> AgnesImage:
         """使用实例自己的密钥、尺寸及响应格式构造 Agnes 适配器。"""
@@ -52,7 +70,9 @@ class ProviderConstructionMixin:
             password=proxy_config.password,
         )
 
-    def create_aliyun_provider(self, request_negative_prompt: str = "") -> AliyunImage:
+    def create_aliyun_provider(
+        self, request_negative_prompt: str = "", *, prepared_negative_prompt: Optional[str] = None
+    ) -> AliyunImage:
         """创建阿里百炼图片提供商实例。"""
 
         return AliyunImage(
@@ -62,9 +82,8 @@ class ProviderConstructionMixin:
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
             default_size=self.config.aliyun.default_size,
             model_size_overrides=parse_model_value_overrides(self.config.aliyun.model_size_overrides),
-            negative_prompt=self.merge_prompt_parts(
-                self.config.aliyun.negative_prompt,
-                request_negative_prompt,
+            negative_prompt=self._provider_negative_prompt(
+                "aliyun", request_negative_prompt, prepared_negative_prompt,
             ),
             prompt_extend=self.config.aliyun.prompt_extend,
             qwen_prompt_extend_mode=self.config.aliyun.qwen_prompt_extend_mode,
@@ -132,7 +151,9 @@ class ProviderConstructionMixin:
         )
         return RoutedOpenAIImage(provider, route.upstream_model)
 
-    def create_google_provider(self, request_negative_prompt: str = "") -> GoogleImage:
+    def create_google_provider(
+        self, request_negative_prompt: str = "", *, prepared_negative_prompt: Optional[str] = None
+    ) -> GoogleImage:
         """创建 Google 图片提供商实例。"""
 
         return GoogleImage(
@@ -142,9 +163,8 @@ class ProviderConstructionMixin:
             request_timeout_seconds=self.resolve_request_timeout_seconds(),
             aspect_ratio=self.config.google.aspect_ratio,
             image_size=self.config.google.image_size,
-            negative_prompt=self.merge_prompt_parts(
-                self.config.google.negative_prompt,
-                request_negative_prompt,
+            negative_prompt=self._provider_negative_prompt(
+                "google", request_negative_prompt, prepared_negative_prompt,
             ),
             seed=self.config.google.seed,
             extra_parameters=parse_key_value_options(self.config.google.extra_parameters),
@@ -194,7 +214,9 @@ class ProviderConstructionMixin:
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
-    def create_siliconflow_provider(self, request_negative_prompt: str = "") -> SiliconFlowImage:
+    def create_siliconflow_provider(
+        self, request_negative_prompt: str = "", *, prepared_negative_prompt: Optional[str] = None
+    ) -> SiliconFlowImage:
         """创建硅基流动图片提供商实例。"""
 
         return SiliconFlowImage(
@@ -207,9 +229,8 @@ class ProviderConstructionMixin:
             num_inference_steps=self.config.siliconflow.num_inference_steps,
             guidance_scale=self.config.siliconflow.guidance_scale,
             cfg=self.config.siliconflow.cfg,
-            negative_prompt=self.merge_prompt_parts(
-                self.config.siliconflow.negative_prompt,
-                request_negative_prompt,
+            negative_prompt=self._provider_negative_prompt(
+                "siliconflow", request_negative_prompt, prepared_negative_prompt,
             ),
             extra_parameters=parse_key_value_options(self.config.siliconflow.extra_parameters),
             proxy_settings=self._get_proxy_settings("siliconflow"),
@@ -221,6 +242,8 @@ class ProviderConstructionMixin:
         request_negative_prompt: str = "",
         novelai_mode: str = "",
         novelai_artist_tags: str = "",
+        *,
+        prepared_negative_prompt: Optional[str] = None,
     ) -> NovelAIImage:
         """创建 NovelAI / NovelAPI 图片提供商实例。"""
 
@@ -238,9 +261,8 @@ class ProviderConstructionMixin:
             seed=self.config.novelai.seed,
             artist_tags=self.resolve_novelai_artist_tags(novelai_artist_tags),
             positive_prompt=self.config.novelai.positive_prompt,
-            negative_prompt=self.merge_prompt_parts(
-                self.config.novelai.negative_prompt,
-                request_negative_prompt,
+            negative_prompt=self._provider_negative_prompt(
+                "novelai", request_negative_prompt, prepared_negative_prompt,
             ),
             mode=self.resolve_novelai_mode(novelai_mode),
             uc_preset=self.config.novelai.uc_preset,
@@ -257,7 +279,9 @@ class ProviderConstructionMixin:
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
-    def create_comfyui_provider(self, request_negative_prompt: str = "") -> ComfyUIImage:
+    def create_comfyui_provider(
+        self, request_negative_prompt: str = "", *, prepared_negative_prompt: Optional[str] = None
+    ) -> ComfyUIImage:
         """创建 ComfyUI 图片提供商实例。"""
 
         if self.data_dir is None:
@@ -280,13 +304,11 @@ class ProviderConstructionMixin:
             t2i_negative_prompt_node_id=config.t2i_negative_prompt_node_id,
             i2i_positive_prompt_node_id=config.i2i_positive_prompt_node_id,
             i2i_negative_prompt_node_id=config.i2i_negative_prompt_node_id,
-            t2i_negative_prompt=self.merge_prompt_parts(
-                config.t2i_negative_prompt,
-                request_negative_prompt,
+            t2i_negative_prompt=self._provider_negative_prompt(
+                "comfyui", request_negative_prompt, prepared_negative_prompt, config.t2i_negative_prompt,
             ),
-            i2i_negative_prompt=self.merge_prompt_parts(
-                config.i2i_negative_prompt,
-                request_negative_prompt,
+            i2i_negative_prompt=self._provider_negative_prompt(
+                "comfyui", request_negative_prompt, prepared_negative_prompt, config.i2i_negative_prompt,
             ),
             i2i_image_node_id=config.i2i_image_node_id,
             prompt_input_name=config.prompt_input_name,
@@ -307,6 +329,7 @@ class ProviderConstructionMixin:
         request_negative_prompt: str = "",
         novelai_mode: str = "",
         novelai_artist_tags: str = "",
+        prepared_negative_prompt: Optional[str] = None,
     ) -> tuple[ImageProvider, ProviderName]:
         """根据模型解析并创建对应的平台实例，带实例缓存避免重复构造。"""
 
@@ -322,7 +345,10 @@ class ProviderConstructionMixin:
             openai_compatibility_mode.strip() if provider_type == "openai" else "",
         )
         use_cache = (
-            not normalized_negative_prompt and not normalized_novelai_mode and not normalized_novelai_artist_tags
+            prepared_negative_prompt is None
+            and not normalized_negative_prompt
+            and not normalized_novelai_mode
+            and not normalized_novelai_artist_tags
         )
         if use_cache:
             cached_provider = self._provider_cache.get(cache_key)
@@ -330,23 +356,32 @@ class ProviderConstructionMixin:
                 return cached_provider, provider_type
 
         if provider_type == "aliyun":
-            provider = self.create_aliyun_provider(normalized_negative_prompt)
+            provider = self.create_aliyun_provider(
+                normalized_negative_prompt, prepared_negative_prompt=prepared_negative_prompt,
+            )
         elif provider_type == "google":
-            provider = self.create_google_provider(normalized_negative_prompt)
+            provider = self.create_google_provider(
+                normalized_negative_prompt, prepared_negative_prompt=prepared_negative_prompt,
+            )
         elif provider_type == "zhipu":
             provider = self.create_zhipu_provider()
         elif provider_type == "volcengine":
             provider = self.create_volcengine_provider()
         elif provider_type == "siliconflow":
-            provider = self.create_siliconflow_provider(normalized_negative_prompt)
+            provider = self.create_siliconflow_provider(
+                normalized_negative_prompt, prepared_negative_prompt=prepared_negative_prompt,
+            )
         elif provider_type == "novelai":
             provider = self.create_novelai_provider(
                 normalized_negative_prompt,
                 normalized_novelai_mode,
                 normalized_novelai_artist_tags,
+                prepared_negative_prompt=prepared_negative_prompt,
             )
         elif provider_type == "comfyui":
-            provider = self.create_comfyui_provider(normalized_negative_prompt)
+            provider = self.create_comfyui_provider(
+                normalized_negative_prompt, prepared_negative_prompt=prepared_negative_prompt,
+            )
         elif provider_type == "agnes":
             provider = self.create_agnes_provider()
         elif provider_type == "openai":

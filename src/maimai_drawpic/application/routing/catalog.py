@@ -79,6 +79,7 @@ class ModelCatalogMixin:
                         max_images=self.config.openai.max_images,
                         extra_parameters=parse_key_value_options(self.config.openai.extra_parameters),
                         rewrite_prompt_to_english=self.config.openai.rewrite_prompt_to_english,
+                        negative_prompt_config=self.config.openai,
                     )
                 )
 
@@ -114,6 +115,7 @@ class ModelCatalogMixin:
                         max_images=instance.max_images,
                         extra_parameters=instance_extra_parameters,
                         rewrite_prompt_to_english=instance.rewrite_prompt_to_english,
+                        negative_prompt_config=instance,
                     )
                 )
         self._openai_routes_cache = routes

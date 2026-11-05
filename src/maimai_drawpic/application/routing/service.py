@@ -3,6 +3,8 @@ from typing import Any
 
 from ...domain.models.openai_profiles import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
 from ...domain.configuration.models import DrawpicConfig, OpenAICompatibilityMode
+from ...domain.configuration.platforms.common import NegativePromptConfig
+from ...domain.styles import deduplicate_negative_prompt
 from .types import ImageProvider, OpenAIModelRoute
 from .construction import ProviderConstructionMixin
 from .catalog import ModelCatalogMixin
@@ -113,6 +115,36 @@ class ProviderRouter(ProviderConstructionMixin, ModelCatalogMixin, TaskCapabilit
         if normalized_provider == "comfyui":
             return self.config.comfyui.rewrite_prompt_to_english
         return False
+
+    def get_negative_prompt_config(self, model: str) -> NegativePromptConfig:
+        """读取当前模型实际归属实例的反向词设置，兼容旧 OpenAI 实例。"""
+
+        provider_name = self.get_model_provider(model)
+        if provider_name == "openai":
+            route = self.resolve_openai_model_route(model)
+            if route is not None:
+                return route.negative_prompt_config
+        if not provider_name:
+            raise ValueError(f"模型未归属于任何已配置提供商：{model}")
+        return self.config.__dict__[provider_name]
+
+    def resolve_negative_prompt(self, model: str, request_negative_prompt: str, task_type: str) -> str:
+        """过滤调用方反向词并追加当前实例的默认词，先于风格渲染及英文改写。"""
+
+        config = self.get_negative_prompt_config(model)
+        if not config.negative_prompt_enabled:
+            return ""
+        legacy_default = ""
+        if self.get_model_provider(model) == "comfyui":
+            comfyui = self.config.comfyui
+            prompt_mode, task_default = (
+                (comfyui.i2i_prompt_mode, comfyui.i2i_negative_prompt)
+                if task_type == "edit_image"
+                else (comfyui.t2i_prompt_mode, comfyui.t2i_negative_prompt)
+            )
+            if prompt_mode == "positive_negative":
+                legacy_default = task_default
+        return deduplicate_negative_prompt(request_negative_prompt, config.negative_prompt, legacy_default)
 
     def resolve_model_name(self, model: str = "", allow_unknown_model: bool = False) -> str:
         """解析最终使用的模型名。"""

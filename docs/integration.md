@@ -205,7 +205,7 @@ async def resume_drawing(ctx, saved, wait_seconds=120):
 | `novelai_mode=""` | `anime`、`furry`、`background`；空值的继承规则同上 |
 | `novelai_artist_tags=None` | `None` 在回传会话时继承会话画师偏好；文本覆盖，空文本跳过会话画师偏好并跟随平台默认 |
 
-模型省略时继续使用工作台默认模型，不自动改为会话模型；需使用会话偏好模型时先读取偏好再显式传入。风格使用 `style` 预设名，未指定时遵循工作台默认风格；反向提示词使用 `negative_prompt`。模式只对对应平台生效。相同 request_id 下改变显式参数会返回冲突；未指定新参数的历史请求仍保持原签名。
+模型省略时继续使用工作台默认模型，不自动改为会话模型；需使用会话偏好模型时先读取偏好再显式传入。风格使用 `style` 预设名，未指定时遵循工作台默认风格；反向提示词使用 `negative_prompt`，仅在目标实例开启反向提示词后接受，并追加该实例默认词、与风格词去重及参与英文改写。关闭实例反向词时仍保留风格预设自己的内容；备选实例各自解析开关与默认词。模式只对对应平台生效。相同 request_id 下改变显式参数会返回冲突；未指定新参数的历史请求仍保持原签名。
 
 成功返回 `accepted=True`、`task_id`、`request_id`、`reused`，并附 task 结构。明确未受理返回 `accepted=False`、`task_id=None`、`status="not_accepted"` 和结构化 error。磁盘/Host/IPC 故障可能没有可信业务回执，客户端保留原请求键返回 submission_unknown，不假定未受理。
 

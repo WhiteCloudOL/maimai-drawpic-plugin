@@ -185,6 +185,15 @@
   function bind(root, fields, values, options = {}) {
     U.formControls.bind(root);
     U.formCollections.bind(root);
+    const negativeToggle = $('[data-input="negative_prompt_enabled"]', root);
+    const negativeDefault = $('[data-field="negative_prompt"]', root);
+    if (negativeToggle && negativeDefault) {
+      const refreshNegativeDefault = () => {
+        negativeDefault.hidden = !negativeToggle.checked;
+      };
+      negativeToggle.addEventListener("change", refreshNegativeDefault);
+      refreshNegativeDefault();
+    }
     root.addEventListener("input", () => refreshStyleChoices(root));
     root.onclick = (event) => {
       const move = event.target.closest("[data-move]");

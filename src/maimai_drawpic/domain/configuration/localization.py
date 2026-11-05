@@ -230,7 +230,8 @@ _FIELD_LABELS: Dict[str, Tuple[str, str, str]] = {
     "models": ("Models", "モデル一覧", "모델 목록"),
     "moderation": ("Moderation Level", "モデレーション強度", "검토 강도"),
     "name": ("Name", "名前", "이름"),
-    "negative_prompt": ("Negative Prompt", "ネガティブプロンプト", "네거티브 프롬프트"),
+    "negative_prompt": ("Default Negative Prompt (Optional)", "既定のネガティブプロンプト（任意）", "기본 네거티브 프롬프트(선택 사항)"),
+    "negative_prompt_enabled": ("Enable Negative Prompts", "ネガティブプロンプトを有効化", "네거티브 프롬프트 활성화"),
     "negative_prompt_template": (
         "Negative Prompt Template",
         "ネガティブプロンプトテンプレート",
@@ -444,6 +445,16 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "negative_prompt_enabled": (
+        "When disabled, ignore negative prompts from AI tools, commands, the workspace and APIs, including this instance's defaults. Style presets keep their own positive and negative content.",
+        "無効時は AI ツール、コマンド、ワークスペース、API のネガティブプロンプトと、このインスタンスの既定値を無視します。スタイル固有の正負プロンプトは保持されます。",
+        "비활성화하면 AI 도구, 명령, 작업 공간, API의 네거티브 프롬프트와 이 인스턴스의 기본값을 무시합니다. 스타일 자체의 긍정 및 부정 내용은 유지됩니다.",
+    ),
+    "negative_prompt": (
+        "Used only when negative prompts are enabled. Append to the request, remove duplicate terms with the style preset, and include in English rewriting. Providers without a separate negative field receive the merged prompt.",
+        "ネガティブプロンプトが有効な場合のみ使用します。今回の入力に追加し、スタイルとの重複語を除去して英語書き換えにも含めます。専用フィールドのないサービスでは本文に統合します。",
+        "네거티브 프롬프트가 활성화된 경우에만 사용합니다. 요청 뒤에 추가하고 스타일과 중복되는 항목을 제거하며 영어 변환에도 포함합니다. 별도 필드가 없는 제공자는 본문에 합칩니다.",
+    ),
     "GeneralConfig.prompt_review_retry_count": (
         "Default: 2 extra retries, at most 3 calls. Range 0–5; 0 disables retries. Explicit rejection and cancellation never retry.",
         "既定は追加 2 回、最大 3 回の呼び出しです。範囲は 0～5、0 で無効。明確な拒否とキャンセルは再試行しません。",
@@ -530,9 +541,9 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "{prompt}는 이번 요청의 그림 설명으로 바뀝니다. 유지하고 앞뒤에 스타일을 추가하세요. 예: 수채화, {prompt}에 고양이를 입력하면 수채화, 고양이가 됩니다. 삭제해도 설명을 뒤에 추가하며 NovelAI {{tag}} 가중치는 유지합니다.",
     ),
     "StylePresetConfig.negative_prompt_template": (
-        "{negative_prompt} inserts this request's unwanted content. Keep it: blurry, {negative_prompt} + watermark becomes blurry, watermark. Without it, the negative prompt is appended automatically; platforms without a separate negative field receive merged text.",
-        "{negative_prompt} は今回避けたい要素に置換されます。例：「ぼけ、{negative_prompt}」に「透かし」を入力すると「ぼけ、透かし」になります。残すことを推奨します。削除時も末尾に追加し、専用フィールドのないサービスでは本文に統合します。",
-        "{negative_prompt}는 이번 요청에서 제외할 내용으로 바뀝니다. 예: 흐림, {negative_prompt}에 워터마크를 입력하면 흐림, 워터마크가 됩니다. 유지하는 것을 권장하며 삭제해도 뒤에 추가합니다. 별도 필드가 없는 플랫폼은 본문에 합칩니다.",
+        "{negative_prompt} inserts request and instance default negatives, with duplicate terms removed. When the instance disables negatives, its inputs and defaults are cleared while the template's own content remains. Without the placeholder, negatives are appended. Providers without a separate field receive merged text.",
+        "{negative_prompt} には今回の入力とインスタンスの既定値を挿入し、重複語を除去します。無効時は入力と既定値を空にし、テンプレート固有の内容を保持します。プレースホルダーがなくても末尾に追加し、専用フィールドのないサービスでは本文に統合します。",
+        "{negative_prompt}에는 요청과 인스턴스 기본값을 넣고 중복 항목을 제거합니다. 비활성화하면 입력과 기본값은 비우고 템플릿 자체의 내용은 유지합니다. 자리표시자가 없어도 뒤에 추가하며 별도 필드가 없는 제공자는 본문에 합칩니다.",
     ),
     "PluginSectionConfig.image_cache_max_mb": (
         "Default 300 MB for originals and WebP previews in the plugin temporary directory. Old images are removed automatically; task records remain.",
@@ -637,8 +648,9 @@ def _localized_field_entries(
         label = labels[index]
         localized: Dict[str, str] = {"label": label}
         if str(json_schema_extra.get("hint") or "").strip():
-            if field_path in _FIELD_HINT_OVERRIDES:
-                localized["hint"] = _FIELD_HINT_OVERRIDES[field_path][index]
+            hints = _FIELD_HINT_OVERRIDES.get(field_path, _FIELD_HINT_OVERRIDES.get(field_name))
+            if hints is not None:
+                localized["hint"] = hints[index]
             elif field_name == "default_openai_compatibility_mode":
                 localized["hint"] = _OPENAI_MODE_HINTS[index]
             elif locale == "en_US":

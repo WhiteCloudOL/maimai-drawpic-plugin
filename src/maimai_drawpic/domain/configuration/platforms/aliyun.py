@@ -1,12 +1,14 @@
 """configuration/platforms/aliyun.py 的强类型配置定义。"""
 
-from maibot_sdk import Field, PluginConfigBase
+from maibot_sdk import Field
 
 from ...models.aliyun_profiles import DEFAULT_ALIYUN_MODELS
 from ..types import AliyunImageInputMode, AliyunKlingResultType, AliyunPromptExtendMode
 
+from .common import NegativePromptConfig
 
-class AliyunModelConfig(PluginConfigBase):
+
+class AliyunModelConfig(NegativePromptConfig):
     """阿里百炼模型配置。"""
 
     __ui_label__ = "阿里百炼配置"
@@ -72,16 +74,6 @@ class AliyunModelConfig(PluginConfigBase):
             "label": "按模型覆盖分辨率",
             "hint": "每行填写一个 模型名=宽*高，例如 qwen-image-plus=1328*1328。qwen-image-2.0 系列支持自由宽高，总像素需在 512*512 至 2048*2048",
             "order": 4,
-        },
-    )
-    negative_prompt: str = Field(
-        default="低分辨率，低画质，肢体畸形，手指畸形，文字模糊，构图混乱，过度光滑，画面具有 AI 感",
-        description="阿里百炼反向提示词，用于描述不希望在图像中出现的内容",
-        json_schema_extra={
-            "label": "反向提示词",
-            "hint": "留空则不传 negative_prompt；百炼限制长度不超过 500 个字符",
-            "input_type": "textarea",
-            "order": 5,
         },
     )
     prompt_extend: bool = Field(

@@ -7,6 +7,7 @@ import asyncio
 import inspect
 
 from ...domain.configuration.models import DrawpicConfig
+from ...domain.configuration.platforms.common import NegativePromptConfig
 from .service import ProviderRouter
 from .types import ModelTaskCapability
 
@@ -178,6 +179,14 @@ class InstanceProviderRouter(ProviderRouter):
     def supports_separate_negative_prompt(self, model: str, task_type: str) -> bool:
         route = self._route(model)
         return route.router.supports_separate_negative_prompt(route.model, task_type)
+
+    def get_negative_prompt_config(self, model: str) -> NegativePromptConfig:
+        route = self._route(model)
+        return route.router.get_negative_prompt_config(route.model)
+
+    def resolve_negative_prompt(self, model: str, request_negative_prompt: str, task_type: str) -> str:
+        route = self._route(model)
+        return route.router.resolve_negative_prompt(route.model, request_negative_prompt, task_type)
 
     def should_rewrite_prompt_to_english(self, provider_name: str, model: str = "") -> bool:
         route = self._route(model)

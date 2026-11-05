@@ -1,9 +1,11 @@
 """configuration/platforms/siliconflow.py 的强类型配置定义。"""
 
-from maibot_sdk import Field, PluginConfigBase
+from maibot_sdk import Field
+
+from .common import NegativePromptConfig
 
 
-class SiliconFlowModelConfig(PluginConfigBase):
+class SiliconFlowModelConfig(NegativePromptConfig):
     """硅基流动模型配置。"""
 
     __ui_label__ = "硅基流动配置"
@@ -94,16 +96,6 @@ class SiliconFlowModelConfig(PluginConfigBase):
             "label": "Qwen Image CFG",
             "hint": "仅 Qwen Image 系列使用；0 不传，常用值 4；Kolors 使用上方引导强度",
             "order": 7.5,
-        },
-    )
-    negative_prompt: str = Field(
-        default="",
-        description="硅基流动反向提示词",
-        json_schema_extra={
-            "label": "反向提示词",
-            "hint": "留空则不传 negative_prompt",
-            "input_type": "textarea",
-            "order": 8,
         },
     )
     extra_parameters: list[str] = Field(
