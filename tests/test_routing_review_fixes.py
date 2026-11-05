@@ -31,9 +31,9 @@ async def set_settings(plugin, **values):
 
 @pytest.mark.parametrize("kind", ["openai", "siliconflow", "novelai"])
 @pytest.mark.parametrize("enabled", [False, True])
-@pytest.mark.parametrize("styled", [False, True])
+@pytest.mark.parametrize("style_template", [None, "", "{negative_prompt}", "水印，{negative_prompt}"])
 def test_negative_prompts_apply_instance_policy_before_style_and_translation(
-    make_plugin, monkeypatch, kind, enabled, styled,
+    make_plugin, monkeypatch, kind, enabled, style_template,
 ):
     """从公开提交入口验证过滤、独立风格、默认词去重和最终请求的英文内容。"""
 
@@ -48,7 +48,7 @@ def test_negative_prompts_apply_instance_policy_before_style_and_translation(
             )
             await plugin.workspace_settings_save(json.dumps({"style": {"presets": [{
                 "name": "fixture", "positive_prompt_template": "{prompt}",
-                "negative_prompt_template": "水印，{negative_prompt}",
+                "negative_prompt_template": style_template if style_template is not None else "{negative_prompt}",
             }]}}), plugin._platform_store.revision)
             service = plugin._require_draw_service()
             rewrites, requests = [], []
@@ -73,12 +73,12 @@ def test_negative_prompts_apply_instance_policy_before_style_and_translation(
             monkeypatch.setattr(provider_module.__dict__[provider_class[1]], "generate_images", generate)
             monkeypatch.setattr(service, "rewrite_prompt_to_english_if_needed", rewrite)
             receipt = await plugin.drawpic_submit(
-                "猫", negative_prompt="模糊，水印", style="fixture" if styled else "none",
+                "猫", negative_prompt="模糊，水印", style="fixture" if style_template is not None else "none",
             )
             await asyncio.gather(*tuple(service.background_tasks))
             result = await plugin.drawpic_task(receipt["task_id"])
             assert result["status"] == "completed", result["message"]
-            expected_terms = ["watermark"] if styled else []
+            expected_terms = ["watermark"] if style_template == "水印，{negative_prompt}" else []
             if enabled:
                 expected_terms.extend(["blurry", "watermark", "text"])
             expected_negative = ", ".join(dict.fromkeys(expected_terms))
