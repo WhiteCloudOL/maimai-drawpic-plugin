@@ -135,7 +135,7 @@ def parse_option_value(value: str) -> Any:
     if lower_value in {"none", "null"}:
         return None
 
-    if normalized_value.startswith(("{", "[")):
+    if normalized_value.startswith(("{", "[", '"')):
         try:
             return json.loads(normalized_value)
         except json.JSONDecodeError:

@@ -29,6 +29,47 @@ async def set_settings(plugin, **values):
     await plugin.workspace_settings_save(json.dumps(settings), plugin._platform_store.revision)
 
 
+@pytest.mark.parametrize("text", [
+    "high", "true", "false", "null", "123", "", "  padded  ",
+    '{"enabled":true}', '中文, value=1; "quoted"\nnext line\\path',
+])
+def test_webui_text_extra_parameters_reach_http_as_strings(make_plugin, monkeypatch, text):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            saved = await add_provider(
+                plugin, "openai", "Drawing", models=["review-image"],
+                extra_parameters=[
+                    'input_fidelity="high"', f"custom_text={json.dumps(text, ensure_ascii=False)}",
+                    "output_compression=50", "custom_flag=false", 'custom_json={"enabled":true}',
+                ],
+            )
+            assert saved["saved"], saved
+            payloads = []
+
+            async def post(provider, url, payload):
+                payloads.append(payload)
+                return {"data": [{"b64_json": base64.b64encode(image_bytes()).decode("ascii")}]}
+
+            monkeypatch.setattr(module("infrastructure.providers.openai").OpenaiImage, "_post_json", post)
+            service = plugin._require_draw_service()
+            receipt = await plugin.drawpic_submit("a cat")
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            assert len(payloads) == 1
+            assert payloads[0]["input_fidelity"] == "high"
+            assert payloads[0]["custom_text"] == text
+            assert payloads[0]["output_compression"] == 50
+            assert payloads[0]["custom_flag"] is False
+            assert payloads[0]["custom_json"] == {"enabled": True}
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("kind", ["openai", "siliconflow", "novelai"])
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("negative_key", ["negative_prompt", "uc", "v4_negative_prompt"])
