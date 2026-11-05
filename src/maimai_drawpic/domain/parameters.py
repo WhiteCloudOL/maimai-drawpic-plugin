@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from copy import deepcopy
+from typing import Any, Dict, List, Optional
 import json
 import re
 
@@ -48,7 +49,29 @@ def without_negative_prompt_options(options: Dict[str, Any]) -> Dict[str, Any]:
     return {key: value for key, value in options.items() if key not in NEGATIVE_PROMPT_OPTION_KEYS}
 
 
-def negative_prompt_option_parts(options: Dict[str, Any]) -> List[str]:
+def v4_negative_prompt_option(options: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """校验并复制 NAI 结构化反向词，保留角色顺序、坐标和协议标记。"""
+
+    value = options.get("v4_negative_prompt")
+    if value is None:
+        return None
+    if not isinstance(value, dict) or not isinstance(value.get("caption"), dict):
+        raise ValueError("扩展参数 v4_negative_prompt.caption 必须是对象")
+    caption = value["caption"]
+    if not isinstance(caption.get("base_caption", ""), str):
+        raise ValueError("扩展参数 v4_negative_prompt.caption.base_caption 必须是字符串")
+    characters = caption.get("char_captions", [])
+    if not isinstance(characters, list):
+        raise ValueError("扩展参数 v4_negative_prompt.caption.char_captions 必须是列表")
+    for index, character in enumerate(characters, start=1):
+        if not isinstance(character, dict) or not isinstance(character.get("char_caption", ""), str):
+            raise ValueError(f"扩展参数 v4_negative_prompt 第 {index} 个角色必须是对象且 char_caption 必须是字符串")
+    return deepcopy(value)
+
+
+def negative_prompt_option_parts(
+    options: Dict[str, Any], *, allow_character_captions: bool = False,
+) -> List[str]:
     """读取旧扩展参数中的反向文本，交给实例统一过滤、去重和改写。"""
 
     parts: List[str] = []
@@ -59,17 +82,12 @@ def negative_prompt_option_parts(options: Dict[str, Any]) -> List[str]:
         if not isinstance(value, str):
             raise ValueError(f"扩展参数 {key} 必须是字符串")
         parts.append(value)
-    v4_prompt = options.get("v4_negative_prompt")
+    v4_prompt = v4_negative_prompt_option(options)
     if v4_prompt is not None:
-        if not isinstance(v4_prompt, dict) or not isinstance(v4_prompt.get("caption"), dict):
-            raise ValueError("扩展参数 v4_negative_prompt.caption 必须是对象")
         caption = v4_prompt["caption"]
-        if caption.get("char_captions"):
-            raise ValueError("扩展参数 v4_negative_prompt 的角色反向词无法参与统一处理，请移除该字段")
-        text = caption.get("base_caption", "")
-        if not isinstance(text, str):
-            raise ValueError("扩展参数 v4_negative_prompt.caption.base_caption 必须是字符串")
-        parts.append(text)
+        if caption.get("char_captions") and not allow_character_captions:
+            raise ValueError("扩展参数 v4_negative_prompt 的角色反向词需要使用 NovelAI 平台实例")
+        parts.append(caption.get("base_caption", ""))
     return parts
 
 

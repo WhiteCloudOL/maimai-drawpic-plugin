@@ -188,6 +188,10 @@ class InstanceProviderRouter(ProviderRouter):
         route = self._route(model)
         return route.router.resolve_negative_prompt(route.model, request_negative_prompt, task_type)
 
+    def resolve_v4_negative_prompt(self, model: str) -> Optional[Dict[str, Any]]:
+        route = self._route(model)
+        return route.router.resolve_v4_negative_prompt(route.model)
+
     def should_rewrite_prompt_to_english(self, provider_name: str, model: str = "") -> bool:
         route = self._route(model)
         return route.router.should_rewrite_prompt_to_english(provider_name, route.model)

@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ...domain.models.openai_profiles import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
 from ...domain.models.aliyun_profiles import resolve_aliyun_model_profile
-from ...domain.parameters import negative_prompt_option_parts, parse_key_value_options
+from ...domain.parameters import negative_prompt_option_parts, parse_key_value_options, v4_negative_prompt_option
 from ...domain.configuration.models import DrawpicConfig, OpenAICompatibilityMode
 from ...domain.configuration.platforms.common import NegativePromptConfig
 from ...domain.styles import deduplicate_negative_prompt
@@ -146,8 +146,18 @@ class ProviderRouter(ProviderConstructionMixin, ModelCatalogMixin, TaskCapabilit
             )
             if prompt_mode == "positive_negative":
                 legacy_default = task_default
-        extra_parts = negative_prompt_option_parts(self._negative_prompt_extra_parameters(model))
+        extra_parts = negative_prompt_option_parts(
+            self._negative_prompt_extra_parameters(model),
+            allow_character_captions=self.get_model_provider(model) == "novelai",
+        )
         return deduplicate_negative_prompt(request_negative_prompt, config.negative_prompt, legacy_default, *extra_parts)
+
+    def resolve_v4_negative_prompt(self, model: str) -> Optional[Dict[str, Any]]:
+        """角色反向词只从当前 NAI 实例读取，关闭时连同旧扩展参数一起忽略。"""
+
+        if not self.get_negative_prompt_config(model).negative_prompt_enabled:
+            return None
+        return v4_negative_prompt_option(self._negative_prompt_extra_parameters(model))
 
     def _negative_prompt_extra_parameters(self, model: str) -> Dict[str, Any]:
         """只读取当前实例、当前模型协议实际使用的扩展参数。"""

@@ -1,8 +1,10 @@
+from typing import Optional
 import re
 import unicodedata
 
 from ..moderation import DrawpicModerationService
 from ...domain.errors import ProviderRequestError
+from ...domain.styles import deduplicate_negative_prompt
 
 
 class PromptReviewMixin:
@@ -73,6 +75,37 @@ class PromptReviewMixin:
                 return rewritten_prompt
 
         raise RuntimeError(f"英文提示词改写失败：{validation_error or '改写结果为空'}")
+
+    async def _rewrite_negative_prompt(
+        self,
+        prompt: str,
+        provider_name: str,
+        model: str,
+        *,
+        task_id: str,
+        role_index: Optional[int] = None,
+    ) -> str:
+        """全图与单个角色分别去重、改写，空角色占位不发起 LLM 调用。"""
+
+        normalized_prompt = deduplicate_negative_prompt(prompt)
+        if not normalized_prompt:
+            return ""
+        self.ctx.logger.debug(
+            "准备反向提示词英文改写: task_id=%s provider=%s model=%s role_index=%s rewrite_enabled=%s negative_len=%s",
+            task_id, provider_name, model, role_index,
+            self.router.should_rewrite_prompt_to_english(provider_name, model), len(normalized_prompt),
+        )
+        try:
+            return deduplicate_negative_prompt(
+                await self.rewrite_prompt_to_english_if_needed(normalized_prompt, provider_name, model)
+            )
+        except Exception as exc:
+            self.ctx.logger.error(
+                "反向提示词英文改写失败: task_id=%s provider=%s model=%s role_index=%s error_type=%s",
+                task_id, provider_name, model, role_index, type(exc).__name__, exc_info=True,
+            )
+            role_description = "" if role_index is None else f"第 {role_index} 个角色"
+            raise RuntimeError(f"{role_description}反向提示词英文改写失败：{exc}") from exc
 
     @classmethod
     def _normalize_rewritten_prompt(cls, prompt: str) -> str:

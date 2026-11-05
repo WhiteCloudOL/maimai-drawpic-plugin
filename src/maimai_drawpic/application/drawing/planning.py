@@ -3,7 +3,7 @@ import asyncio
 import inspect
 
 from ...infrastructure.media.collection import validate_result_images
-from ...domain.styles import StylePromptResolver, deduplicate_negative_prompt
+from ...domain.styles import StylePromptResolver
 from .admission import wait_for_admission
 from .types import ImageRequestAttempt
 
@@ -179,43 +179,45 @@ class RequestPlanningMixin:
             style_negative_prompt_template,
             self.router.resolve_negative_prompt(attempt.model, request_negative_prompt, task_type),
         )
+        v4_negative_prompt = (
+            self.router.resolve_v4_negative_prompt(attempt.model) if provider_name == "novelai" else None
+        )
+        characters = [] if v4_negative_prompt is None else v4_negative_prompt["caption"].get("char_captions", [])
         supports_negative_prompt = self.router.supports_separate_negative_prompt(
             attempt.model,
             task_type,
         )
         self.ctx.logger.info(
             "反向提示词处理: task_id=%s task_type=%s provider=%s model=%s enabled=%s "
-            "request_ignored=%s style_present=%s negative_len=%s transport=%s",
+            "request_ignored=%s style_present=%s negative_len=%s character_count=%s transport=%s",
             task_id, task_type, provider_name, attempt.model, negative_config.negative_prompt_enabled,
             bool(request_negative_prompt.strip()) and not negative_config.negative_prompt_enabled,
             bool(style_negative_prompt_template.strip(" \t\r\n,").replace("{negative_prompt}", "")),
             len(provider_negative_prompt),
-            "none" if not provider_negative_prompt else "separate" if supports_negative_prompt else "merged",
+            len(characters),
+            "none" if not provider_negative_prompt and not characters else "separate" if supports_negative_prompt else "merged",
         )
         provider_prompt = await self.rewrite_prompt_to_english_if_needed(
             provider_prompt,
             provider_name,
             attempt.model,
         )
-        if provider_negative_prompt:
-            self.ctx.logger.debug(
-                "准备反向提示词英文改写: task_id=%s provider=%s model=%s rewrite_enabled=%s negative_len=%s",
-                task_id, provider_name, attempt.model,
-                self.router.should_rewrite_prompt_to_english(provider_name, attempt.model),
-                len(provider_negative_prompt),
+        provider_negative_prompt = await self._rewrite_negative_prompt(
+            provider_negative_prompt, provider_name, attempt.model, task_id=task_id,
+        )
+        for index, character in enumerate(characters, start=1):
+            # 角色列表的位置与坐标共同表达归属，不能过滤空项或在角色之间合并词条。
+            if "char_caption" in character:
+                character["char_caption"] = await self._rewrite_negative_prompt(
+                    character["char_caption"], provider_name, attempt.model, task_id=task_id, role_index=index,
+                )
+        if v4_negative_prompt is not None:
+            v4_negative_prompt["caption"]["base_caption"] = provider_negative_prompt
+            self.ctx.logger.info(
+                "NAI 角色反向词处理完成: task_id=%s model=%s character_count=%s nonempty_count=%s",
+                task_id, attempt.model, len(characters),
+                sum(bool(character.get("char_caption", "")) for character in characters),
             )
-            try:
-                provider_negative_prompt = deduplicate_negative_prompt(
-                    await self.rewrite_prompt_to_english_if_needed(
-                        provider_negative_prompt, provider_name, attempt.model,
-                    )
-                )
-            except Exception as exc:
-                self.ctx.logger.error(
-                    "反向提示词英文改写失败: task_id=%s provider=%s model=%s error_type=%s",
-                    task_id, provider_name, attempt.model, type(exc).__name__, exc_info=True,
-                )
-                raise RuntimeError(f"反向提示词英文改写失败：{exc}") from exc
         if provider_negative_prompt and not supports_negative_prompt:
             provider_prompt = self.router.merge_prompt_parts(
                 provider_prompt, f"Negative prompt: {provider_negative_prompt}",
@@ -226,6 +228,7 @@ class RequestPlanningMixin:
             attempt.openai_compatibility_mode,
             request_negative_prompt=provider_negative_prompt,
             prepared_negative_prompt=provider_negative_prompt,
+            prepared_v4_negative_prompt=v4_negative_prompt,
             novelai_mode=attempt.novelai_mode,
             novelai_artist_tags=attempt.novelai_artist_tags,
         )

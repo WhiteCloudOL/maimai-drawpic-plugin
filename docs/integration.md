@@ -209,6 +209,8 @@ async def resume_drawing(ctx, saved, wait_seconds=120):
 
 `style` 省略或传空字符串均采用当前配置的默认风格；没有配置默认风格时使用原始描述。显式传入 `style="none"` 可跳过默认风格，传入其他预设名则只套用指定风格一次。
 
+`negative_prompt` 提供本次全图反向文本。NovelAI 实例扩展参数中的多角色 `char_captions` 由该实例分别处理，保留角色顺序与坐标，并遵循反向词开关和英文改写设置；每个备选实例读取自己的角色配置。某个角色改写失败时任务终止，错误消息包含角色序号。
+
 成功返回 `accepted=True`、`task_id`、`request_id`、`reused`，并附 task 结构。明确未受理返回 `accepted=False`、`task_id=None`、`status="not_accepted"` 和结构化 error。磁盘/Host/IPC 故障可能没有可信业务回执，客户端保留原请求键返回 submission_unknown，不假定未受理。
 
 ### task 返回结构

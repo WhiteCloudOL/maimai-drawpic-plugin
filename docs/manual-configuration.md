@@ -93,7 +93,9 @@
 
 ### 扩展参数的值类型
 
-扩展参数中的 `negative_prompt`、`uc` 和 `v4_negative_prompt.caption.base_caption` 会作为旧版默认反向文本并入实例处理，受反向词开关、去重和英文改写控制，不再直接覆盖最终请求。实例关闭反向词时忽略这些内容。`v4_negative_prompt` 中非空的角色反向词无法作为全局默认词处理，会明确报错；请移除该扩展字段后使用插件支持的反向词配置。
+扩展参数中的 `negative_prompt`、`uc` 和 `v4_negative_prompt.caption.base_caption` 会作为旧版默认反向文本并入实例处理，受反向词开关、去重和英文改写控制，不再直接覆盖最终请求。实例关闭反向词时忽略这些内容。
+
+NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向词。开启实例反向词后，每个角色的 `char_caption` 分别去重，并按实例的英文改写设置处理；空角色占位、列表顺序、`centers` 坐标以及 `use_coords`、`use_order` 等标记会保留。全图默认词与风格词在 `base_caption` 中处理；不同角色之间分别保留词条。关闭实例反向词后忽略整个扩展反向结构，风格模板自己的全图反向内容继续生效。角色格式错误或改写失败时会报出角色序号，并在发送生成请求前终止任务。[NovelAI 字段结构](https://image.novelai.net/docs/index.html)
 
 `extra_parameters` 以及百炼各模型族的 `*_extra_parameters` 只用于服务实际支持的扩展字段。以下仅展示类型写法，参数名为示意：
 

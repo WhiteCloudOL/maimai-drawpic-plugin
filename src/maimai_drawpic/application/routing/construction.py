@@ -1,4 +1,5 @@
-from typing import Optional
+from copy import deepcopy
+from typing import Any, Dict, Optional
 
 from ...domain.styles import deduplicate_negative_prompt
 from ...paths import PLUGIN_DIR
@@ -17,6 +18,7 @@ from ...domain.parameters import (
     negative_prompt_option_parts,
     parse_key_value_options,
     parse_model_value_overrides,
+    v4_negative_prompt_option,
     without_negative_prompt_options,
 )
 from .types import ImageProvider, OpenAIModelRoute, ProviderName, RoutedOpenAIImage, _DOMESTIC_PROXY_BYPASS_PROVIDERS
@@ -39,7 +41,8 @@ class ProviderConstructionMixin:
         if not config.negative_prompt_enabled:
             return ""
         extra_parts = negative_prompt_option_parts(
-            parse_key_value_options(config.__dict__.get("extra_parameters", []))
+            parse_key_value_options(config.__dict__.get("extra_parameters", [])),
+            allow_character_captions=provider_name == "novelai",
         )
         return deduplicate_negative_prompt(request_negative_prompt, config.negative_prompt, legacy_default, *extra_parts)
 
@@ -273,9 +276,25 @@ class ProviderConstructionMixin:
         novelai_artist_tags: str = "",
         *,
         prepared_negative_prompt: Optional[str] = None,
+        prepared_v4_negative_prompt: Optional[Dict[str, Any]] = None,
     ) -> NovelAIImage:
         """创建 NovelAI / NovelAPI 图片提供商实例。"""
 
+        config = self.config.novelai
+        negative_prompt = self._provider_negative_prompt("novelai", request_negative_prompt, prepared_negative_prompt)
+        raw_extra_parameters = parse_key_value_options(config.extra_parameters)
+        extra_parameters = without_negative_prompt_options(raw_extra_parameters)
+        if config.negative_prompt_enabled:
+            v4_prompt = (
+                deepcopy(prepared_v4_negative_prompt)
+                if prepared_v4_negative_prompt is not None
+                else v4_negative_prompt_option(raw_extra_parameters)
+            )
+            if v4_prompt is not None:
+                # 只回写已处理文本，角色元数据不与全局默认词、风格模板混合。
+                v4_prompt["caption"]["base_caption"] = negative_prompt
+                v4_prompt["caption"].setdefault("char_captions", [])
+                extra_parameters["v4_negative_prompt"] = v4_prompt
         return NovelAIImage(
             api_key=self.config.novelai.api_key,
             base_url=self.config.novelai.base_url,
@@ -290,9 +309,7 @@ class ProviderConstructionMixin:
             seed=self.config.novelai.seed,
             artist_tags=self.resolve_novelai_artist_tags(novelai_artist_tags),
             positive_prompt=self.config.novelai.positive_prompt,
-            negative_prompt=self._provider_negative_prompt(
-                "novelai", request_negative_prompt, prepared_negative_prompt,
-            ),
+            negative_prompt=negative_prompt,
             mode=self.resolve_novelai_mode(novelai_mode),
             uc_preset=self.config.novelai.uc_preset,
             quality_toggle=self.config.novelai.quality_toggle,
@@ -303,9 +320,7 @@ class ProviderConstructionMixin:
             img2img_strength=self.config.novelai.img2img_strength,
             img2img_noise=self.config.novelai.img2img_noise,
             max_images=self.config.novelai.max_images,
-            extra_parameters=without_negative_prompt_options(
-                parse_key_value_options(self.config.novelai.extra_parameters)
-            ),
+            extra_parameters=extra_parameters,
             proxy_settings=self._get_proxy_settings("novelai"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
@@ -361,6 +376,7 @@ class ProviderConstructionMixin:
         novelai_mode: str = "",
         novelai_artist_tags: str = "",
         prepared_negative_prompt: Optional[str] = None,
+        prepared_v4_negative_prompt: Optional[Dict[str, Any]] = None,
     ) -> tuple[ImageProvider, ProviderName]:
         """根据模型解析并创建对应的平台实例，带实例缓存避免重复构造。"""
 
@@ -377,6 +393,7 @@ class ProviderConstructionMixin:
         )
         use_cache = (
             prepared_negative_prompt is None
+            and prepared_v4_negative_prompt is None
             and not normalized_negative_prompt
             and not normalized_novelai_mode
             and not normalized_novelai_artist_tags
@@ -408,6 +425,7 @@ class ProviderConstructionMixin:
                 normalized_novelai_mode,
                 normalized_novelai_artist_tags,
                 prepared_negative_prompt=prepared_negative_prompt,
+                prepared_v4_negative_prompt=prepared_v4_negative_prompt,
             )
         elif provider_type == "comfyui":
             provider = self.create_comfyui_provider(
