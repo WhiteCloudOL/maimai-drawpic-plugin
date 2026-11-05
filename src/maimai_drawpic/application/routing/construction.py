@@ -13,7 +13,12 @@ from ...infrastructure.providers.volcengine import VolcengineImage
 from ...infrastructure.providers.zhipu import ZhipuImage
 from ...domain.configuration.models import OpenAICompatibilityMode
 from ...infrastructure.http import HttpProxySettings
-from ...domain.parameters import parse_key_value_options, parse_model_value_overrides
+from ...domain.parameters import (
+    negative_prompt_option_parts,
+    parse_key_value_options,
+    parse_model_value_overrides,
+    without_negative_prompt_options,
+)
 from .types import ImageProvider, OpenAIModelRoute, ProviderName, RoutedOpenAIImage, _DOMESTIC_PROXY_BYPASS_PROVIDERS
 
 
@@ -33,7 +38,10 @@ class ProviderConstructionMixin:
         config = self.config.__dict__[provider_name]
         if not config.negative_prompt_enabled:
             return ""
-        return deduplicate_negative_prompt(request_negative_prompt, config.negative_prompt, legacy_default)
+        extra_parts = negative_prompt_option_parts(
+            parse_key_value_options(config.__dict__.get("extra_parameters", []))
+        )
+        return deduplicate_negative_prompt(request_negative_prompt, config.negative_prompt, legacy_default, *extra_parts)
 
     def create_agnes_provider(self) -> AgnesImage:
         """使用实例自己的密钥、尺寸及响应格式构造 Agnes 适配器。"""
@@ -47,7 +55,7 @@ class ProviderConstructionMixin:
             ratio=config.ratio,
             response_format=config.response_format,
             model_size_overrides=parse_model_value_overrides(config.model_size_overrides),
-            extra_parameters=parse_key_value_options(config.extra_parameters),
+            extra_parameters=without_negative_prompt_options(parse_key_value_options(config.extra_parameters)),
             proxy_settings=self._get_proxy_settings("agnes"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
@@ -98,11 +106,21 @@ class ProviderConstructionMixin:
             kling_resolution=self.config.aliyun.kling_resolution,
             kling_result_type=self.config.aliyun.kling_result_type,
             kling_series_amount=self.config.aliyun.kling_series_amount,
-            qwen_extra_parameters=parse_key_value_options(self.config.aliyun.qwen_extra_parameters),
-            zimage_extra_parameters=parse_key_value_options(self.config.aliyun.zimage_extra_parameters),
-            kling_extra_parameters=parse_key_value_options(self.config.aliyun.kling_extra_parameters),
-            vidu_extra_parameters=parse_key_value_options(self.config.aliyun.vidu_extra_parameters),
-            extra_parameters=parse_key_value_options(self.config.aliyun.extra_parameters),
+            qwen_extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.aliyun.qwen_extra_parameters)
+            ),
+            zimage_extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.aliyun.zimage_extra_parameters)
+            ),
+            kling_extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.aliyun.kling_extra_parameters)
+            ),
+            vidu_extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.aliyun.vidu_extra_parameters)
+            ),
+            extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.aliyun.extra_parameters)
+            ),
             proxy_settings=self._get_proxy_settings("aliyun"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
@@ -127,8 +145,11 @@ class ProviderConstructionMixin:
                 background=self.config.openai.background,
                 moderation=self.config.openai.moderation,
                 max_images=self.config.openai.max_images,
-                extra_parameters=parse_key_value_options(self.config.openai.extra_parameters),
+                extra_parameters=without_negative_prompt_options(
+                    parse_key_value_options(self.config.openai.extra_parameters)
+                ),
                 rewrite_prompt_to_english=self.config.openai.rewrite_prompt_to_english,
+                negative_prompt_config=self.config.openai,
             )
 
         provider = OpenaiImage(
@@ -145,7 +166,7 @@ class ProviderConstructionMixin:
             background=route.background,
             moderation=route.moderation,
             max_images=route.max_images,
-            extra_parameters=route.extra_parameters,
+            extra_parameters=without_negative_prompt_options(route.extra_parameters),
             proxy_settings=self._get_proxy_settings("openai"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
@@ -167,7 +188,9 @@ class ProviderConstructionMixin:
                 "google", request_negative_prompt, prepared_negative_prompt,
             ),
             seed=self.config.google.seed,
-            extra_parameters=parse_key_value_options(self.config.google.extra_parameters),
+            extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.google.extra_parameters)
+            ),
             proxy_settings=self._get_proxy_settings("google"),
         )
 
@@ -182,7 +205,9 @@ class ProviderConstructionMixin:
             size=self.config.zhipu.size,
             watermark_enabled=self.config.zhipu.watermark_enabled,
             user_id=self.config.zhipu.user_id,
-            extra_parameters=parse_key_value_options(self.config.zhipu.extra_parameters),
+            extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.zhipu.extra_parameters)
+            ),
             proxy_settings=self._get_proxy_settings("zhipu"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
@@ -209,7 +234,9 @@ class ProviderConstructionMixin:
             seed=self.config.volcengine.seed,
             watermark=self.config.volcengine.watermark,
             max_images=self.config.volcengine.max_images,
-            extra_parameters=parse_key_value_options(self.config.volcengine.extra_parameters),
+            extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.volcengine.extra_parameters)
+            ),
             proxy_settings=self._get_proxy_settings("volcengine"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
@@ -232,7 +259,9 @@ class ProviderConstructionMixin:
             negative_prompt=self._provider_negative_prompt(
                 "siliconflow", request_negative_prompt, prepared_negative_prompt,
             ),
-            extra_parameters=parse_key_value_options(self.config.siliconflow.extra_parameters),
+            extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.siliconflow.extra_parameters)
+            ),
             proxy_settings=self._get_proxy_settings("siliconflow"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
@@ -274,7 +303,9 @@ class ProviderConstructionMixin:
             img2img_strength=self.config.novelai.img2img_strength,
             img2img_noise=self.config.novelai.img2img_noise,
             max_images=self.config.novelai.max_images,
-            extra_parameters=parse_key_value_options(self.config.novelai.extra_parameters),
+            extra_parameters=without_negative_prompt_options(
+                parse_key_value_options(self.config.novelai.extra_parameters)
+            ),
             proxy_settings=self._get_proxy_settings("novelai"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )

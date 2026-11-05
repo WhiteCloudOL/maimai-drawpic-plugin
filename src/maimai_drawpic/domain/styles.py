@@ -107,16 +107,16 @@ class StylePromptResolver:
         user_prompt: str,
         user_negative_prompt: str = "",
     ) -> ResolvedStylePrompt:
-        """解析一个风格；未指定风格时保持普通绘图行为。"""
+        """未指定时使用默认风格；显式选择无风格时保持原始描述。"""
 
         normalized_style_name = style_name.strip()
-        if normalized_style_name.casefold() in self.NO_STYLE_ALIASES or not normalized_style_name:
+        if normalized_style_name.casefold() in self.NO_STYLE_ALIASES:
             return ResolvedStylePrompt(
                 style_name="",
                 positive_prompt=user_prompt.strip(),
                 negative_prompt=user_negative_prompt.strip(),
             )
-        if normalized_style_name.casefold() in self.DEFAULT_STYLE_ALIASES:
+        if not normalized_style_name or normalized_style_name.casefold() in self.DEFAULT_STYLE_ALIASES:
             normalized_style_name = self.config.default_style.strip()
             if not normalized_style_name:
                 return ResolvedStylePrompt(

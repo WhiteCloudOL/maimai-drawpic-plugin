@@ -445,6 +445,11 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "StyleConfig.default_style": (
+        "Automatically applied when AI tools, ordinary drawing commands, the workspace or plugin APIs omit a style. Select an enabled preset. Leave blank to disable automatic styling; explicitly choose no style to skip it for one request.",
+        "AI ツール、通常の描画コマンド、ワークスペース、プラグイン API でスタイル未指定の場合に自動適用します。有効なプリセットを選択してください。空欄は自動適用なしで、明示的にスタイルなしを選べば今回だけ省略できます。",
+        "AI 도구, 일반 그리기 명령, 작업 공간, 플러그인 API가 스타일을 생략하면 자동 적용합니다. 활성 프리셋을 선택하세요. 비워 두면 자동 적용하지 않으며 명시적으로 스타일 없음을 선택하면 이번 요청에서 건너뜁니다.",
+    ),
     "negative_prompt_enabled": (
         "When disabled, ignore negative prompts from AI tools, commands, the workspace and APIs, including this instance's defaults. Style presets keep their own positive and negative content.",
         "無効時は AI ツール、コマンド、ワークスペース、API のネガティブプロンプトと、このインスタンスの既定値を無視します。スタイル固有の正負プロンプトは保持されます。",

@@ -1,7 +1,9 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 from ...domain.models.openai_profiles import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
+from ...domain.models.aliyun_profiles import resolve_aliyun_model_profile
+from ...domain.parameters import negative_prompt_option_parts, parse_key_value_options
 from ...domain.configuration.models import DrawpicConfig, OpenAICompatibilityMode
 from ...domain.configuration.platforms.common import NegativePromptConfig
 from ...domain.styles import deduplicate_negative_prompt
@@ -144,7 +146,25 @@ class ProviderRouter(ProviderConstructionMixin, ModelCatalogMixin, TaskCapabilit
             )
             if prompt_mode == "positive_negative":
                 legacy_default = task_default
-        return deduplicate_negative_prompt(request_negative_prompt, config.negative_prompt, legacy_default)
+        extra_parts = negative_prompt_option_parts(self._negative_prompt_extra_parameters(model))
+        return deduplicate_negative_prompt(request_negative_prompt, config.negative_prompt, legacy_default, *extra_parts)
+
+    def _negative_prompt_extra_parameters(self, model: str) -> Dict[str, Any]:
+        """只读取当前实例、当前模型协议实际使用的扩展参数。"""
+
+        provider_name = self.get_model_provider(model)
+        if provider_name == "comfyui":
+            return {}
+        if provider_name == "openai":
+            route = self.resolve_openai_model_route(model)
+            if route is not None:
+                return route.extra_parameters
+        field = "extra_parameters"
+        if provider_name == "aliyun":
+            family = resolve_aliyun_model_profile(model).family
+            if family != "legacy":
+                field = f"{family}_extra_parameters"
+        return parse_key_value_options(self.get_negative_prompt_config(model).__dict__[field])
 
     def resolve_model_name(self, model: str = "", allow_unknown_model: bool = False) -> str:
         """解析最终使用的模型名。"""

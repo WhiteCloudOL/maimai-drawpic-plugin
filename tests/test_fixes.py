@@ -427,6 +427,23 @@ def test_negative_prompt_deduplication_preserves_weighted_and_escaped_terms() ->
     assert deduplicate_negative_prompt("trailing\\") == "trailing\\"
 
 
+def test_legacy_inline_options_preserve_json_and_negative_text() -> None:
+    from maimai_drawpic_pkg.src.maimai_drawpic.domain.parameters import parse_key_value_options, split_inline_key_value_options
+
+    values = split_inline_key_value_options(
+        'negative_prompt=don\'t draw hands, blurry; watermark\n'
+        'nested={"text": "a=b,c", "enabled": true}\ncustom_flag=false'
+    )
+    parsed = parse_key_value_options(values)
+    assert parsed["negative_prompt"] == "don't draw hands, blurry; watermark"
+    assert parsed["nested"] == {"text": "a=b,c", "enabled": True}
+    assert parsed["custom_flag"] is False
+    assert split_inline_key_value_options("seed=1, strength=0.5；custom=true") == [
+        "seed=1", "strength=0.5", "custom=true",
+    ]
+    assert split_inline_key_value_options("seed=1，中文参数=值") == ["seed=1", "中文参数=值"]
+
+
 def test_style_prompt_templates_are_platform_independent() -> None:
     """插件风格只渲染通用提示词，不携带任何 NAI mode。"""
 
@@ -451,7 +468,10 @@ def test_style_prompt_templates_are_platform_independent() -> None:
     assert resolved.positive_prompt == "watercolor, a white cat"
     assert resolved.negative_prompt == "oil painting, blurry"
 
-    plain = resolver.resolve(style_name="", user_prompt="plain prompt")
+    automatic = resolver.resolve(style_name="", user_prompt="a white cat", user_negative_prompt="blurry")
+    assert automatic == resolved
+
+    plain = resolver.resolve(style_name="none", user_prompt="plain prompt")
     assert plain.style_name == ""
     assert plain.positive_prompt == "plain prompt"
     assert plain.negative_prompt == ""

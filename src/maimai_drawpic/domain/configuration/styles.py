@@ -70,10 +70,10 @@ class StyleConfig(PluginConfigBase):
 
     default_style: str = Field(
         default="",
-        description="使用“默认”风格名时解析到的风格。留空表示保持普通绘图行为",
+        description="未指定风格或使用“默认”风格名时自动套用的风格。留空表示保持普通绘图行为",
         json_schema_extra={
             "label": "默认风格",
-            "hint": "必须与下方某个已启用风格名称完全一致；留空时 /绘图 风格 默认 不套用模板",
+            "hint": "未指定风格的 AI 绘图、普通绘图命令、工作台和插件 API 会自动套用。必须选择已启用风格；留空不自动套用，显式选择“无风格”可跳过本次预设。",
             "order": 0,
         },
     )

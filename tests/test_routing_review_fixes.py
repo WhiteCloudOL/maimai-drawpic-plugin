@@ -31,6 +31,280 @@ async def set_settings(plugin, **values):
 
 @pytest.mark.parametrize("kind", ["openai", "siliconflow", "novelai"])
 @pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("negative_key", ["negative_prompt", "uc", "v4_negative_prompt"])
+def test_extra_negative_parameters_follow_controls_in_actual_payloads(
+    make_plugin, monkeypatch, kind, enabled, negative_key,
+):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            model = "nai-diffusion-4-full" if kind == "novelai" else "fixture-image"
+            if negative_key == "v4_negative_prompt":
+                value = {"caption": {"base_caption": "模糊，水印", "char_captions": []}}
+            else:
+                value = "模糊，水印"
+            encoded_value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+            await add_provider(
+                plugin, kind, "Drawing", models=[model], negative_prompt_enabled=enabled,
+                negative_prompt="水印", rewrite_prompt_to_english=True,
+                extra_parameters=[f"{negative_key}={encoded_value}", "custom_flag=false"],
+            )
+            service = plugin._require_draw_service()
+            payloads, rewrites = [], []
+            translations = {"猫": "a cat", "模糊": "blurry", "水印": "watermark"}
+
+            async def rewrite(prompt, provider, selected_model):
+                rewrites.append(prompt)
+                return ", ".join(translations[term.strip()] for term in prompt.split(","))
+
+            async def generate(provider, prompt, selected_model, n=1):
+                if kind == "openai":
+                    payload = provider._build_images_generation_payload(prompt, selected_model, n)
+                elif kind == "novelai":
+                    payload = provider._build_payload(prompt=prompt, model=selected_model, action="generate", n=n)
+                else:
+                    payload = provider._build_payload(prompt, selected_model, n)
+                payloads.append(payload)
+                return [image_bytes()]
+
+            provider_class = {
+                "openai": "OpenaiImage", "siliconflow": "SiliconFlowImage", "novelai": "NovelAIImage",
+            }[kind]
+            monkeypatch.setattr(module(f"infrastructure.providers.{kind}").__dict__[provider_class], "generate_images", generate)
+            monkeypatch.setattr(service, "rewrite_prompt_to_english_if_needed", rewrite)
+            receipt = await plugin.drawpic_submit("猫", negative_prompt="模糊")
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            payload = payloads[0]
+            parameters = payload["parameters"] if kind == "novelai" else payload
+            assert parameters["custom_flag"] is False
+            assert "模糊" not in json.dumps(payload, ensure_ascii=False)
+            assert "水印" not in json.dumps(payload, ensure_ascii=False)
+            assert len(rewrites) == (2 if enabled else 1)
+            if kind == "openai":
+                assert "negative_prompt" not in payload
+                assert payload["prompt"] == "a cat" + (", Negative prompt: blurry, watermark" if enabled else "")
+            else:
+                assert parameters.get("negative_prompt", "") == ("blurry, watermark" if enabled else "")
+                if kind == "novelai":
+                    assert parameters["v4_negative_prompt"]["caption"]["base_caption"] == (
+                        "blurry, watermark" if enabled else ""
+                    )
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_agnes_extra_negatives_are_controlled_before_http_submission(make_plugin, monkeypatch, enabled):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            config = storage.WorkspaceConfigStore.platform_model("agnes")().model_dump(mode="json")
+            config.update(
+                api_key="fixture-key", negative_prompt_enabled=enabled,
+                extra_parameters=["negative_prompt=extra", "custom_flag=false"],
+            )
+            saved = await plugin.workspace_provider_save(json.dumps({
+                "kind": "agnes", "name": "Drawing", "config": config,
+            }), plugin._platform_store.revision)
+            assert saved["saved"], saved
+            requests = []
+
+            async def post(provider, url, payload):
+                requests.append(payload)
+                return {"data": [{"b64_json": base64.b64encode(image_bytes()).decode("ascii")}]}
+
+            monkeypatch.setattr(module("infrastructure.providers.agnes").AgnesImage, "_post_json", post)
+            service = plugin._require_draw_service()
+            receipt = await plugin.drawpic_submit("a cat", negative_prompt="caller")
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            assert "negative_prompt" not in requests[0]
+            assert requests[0]["custom_flag"] is False
+            assert requests[0]["prompt"] == "a cat" + (", Negative prompt: caller, extra" if enabled else "")
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("invalid_value", [
+    123,
+    {"caption": {"base_caption": "blurry", "char_captions": [{"char_caption": "text"}]}},
+])
+def test_invalid_extra_negatives_are_ignored_when_disabled_and_fail_before_generation(
+    make_plugin, monkeypatch, enabled, invalid_value,
+):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            key = "negative_prompt" if isinstance(invalid_value, int) else "v4_negative_prompt"
+            await add_provider(
+                plugin, "openai", "Drawing", models=["image"], negative_prompt_enabled=enabled,
+                extra_parameters=[f"{key}={json.dumps(invalid_value)}"],
+            )
+            calls = []
+
+            async def post(provider, url, payload):
+                calls.append(payload)
+                return {"data": [{"b64_json": base64.b64encode(image_bytes()).decode("ascii")}]}
+
+            monkeypatch.setattr(module("infrastructure.providers.openai").OpenaiImage, "_post_json", post)
+            service = plugin._require_draw_service()
+            receipt = await plugin.drawpic_submit("a cat")
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == ("failed" if enabled else "completed")
+            assert len(calls) == (0 if enabled else 1)
+            if enabled:
+                assert "扩展参数" in result["message"]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("model,field,separate", [
+    ("qwen-image-3.0", "qwen_extra_parameters", True),
+    ("qwen-image-2.0", "qwen_extra_parameters", False),
+    ("z-image-turbo", "zimage_extra_parameters", False),
+    ("legacy-image", "extra_parameters", True),
+])
+def test_aliyun_extra_negatives_use_the_selected_model_protocol(
+    make_plugin, monkeypatch, enabled, model, field, separate,
+):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            await add_provider(
+                plugin, "aliyun", "Drawing", models=[model], negative_prompt_enabled=enabled,
+                negative_prompt="default", **{field: ["negative_prompt=caller, extra", "custom_flag=false"]},
+            )
+            payloads = []
+
+            async def generate(provider, prompt, selected_model, n=1):
+                payloads.append(provider._build_payload(prompt, selected_model, "draw", [], n))
+                return [image_bytes()]
+
+            monkeypatch.setattr(module("infrastructure.providers.aliyun").AliyunImage, "generate_images", generate)
+            service = plugin._require_draw_service()
+            receipt = await plugin.drawpic_submit("a cat", negative_prompt="caller")
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            payload = payloads[0]
+            assert payload["parameters"]["custom_flag"] is False
+            assert payload["parameters"].get("negative_prompt", "") == (
+                "caller, default, extra" if enabled and separate else ""
+            )
+            assert ("Negative prompt: caller, default, extra" in json.dumps(payload)) == (enabled and not separate)
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("entry", ["api", "api_v2"])
+@pytest.mark.parametrize("style", [None, "", "default", "none", "sketch"])
+def test_public_submission_uses_configured_style_unless_explicitly_overridden(
+    make_plugin, monkeypatch, entry, style,
+):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            await add_provider(plugin, "openai", "Drawing", models=["image"])
+            await plugin.workspace_settings_save(json.dumps({"style": {
+                "default_style": "watercolor", "presets": [
+                    {"name": "watercolor", "positive_prompt_template": "watercolor, {prompt}", "negative_prompt_template": "oil painting"},
+                    {"name": "sketch", "positive_prompt_template": "sketch, {prompt}", "negative_prompt_template": "3d"},
+                ],
+            }}), plugin._platform_store.revision)
+            prompts = []
+
+            async def post(provider, url, payload):
+                prompts.append(payload["prompt"])
+                return {"data": [{"b64_json": base64.b64encode(image_bytes()).decode("ascii")}]}
+
+            monkeypatch.setattr(module("infrastructure.providers.openai").OpenaiImage, "_post_json", post)
+            service = plugin._require_draw_service()
+            submit = plugin.drawpic_submit if entry == "api" else plugin.drawpic_submit_v2
+            receipt = await submit("a cat", **({"style": style} if style is not None else {}))
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            if style == "none":
+                expected = "a cat"
+            elif style == "sketch":
+                expected = "sketch, a cat, Negative prompt: 3d"
+            else:
+                expected = "watercolor, a cat, Negative prompt: oil painting"
+            assert prompts == [expected]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("explicit_style", [None, "none", "sketch"])
+def test_chat_default_style_is_applied_once(make_plugin, monkeypatch, explicit_style):
+    async def run():
+        plugin = make_plugin(False)
+        await plugin.on_load()
+        try:
+            await add_provider(plugin, "openai", "Drawing", models=["image"])
+            await plugin.workspace_settings_save(json.dumps({"style": {
+                "default_style": "watercolor", "presets": [
+                    {"name": "watercolor", "positive_prompt_template": "watercolor, {prompt}"},
+                    {"name": "sketch", "positive_prompt_template": "sketch, {prompt}"},
+                ],
+            }}), plugin._platform_store.revision)
+            mock_chat(plugin, monkeypatch)
+            prompts = []
+
+            async def post(provider, url, payload):
+                prompts.append(payload["prompt"])
+                return {"data": [{"b64_json": base64.b64encode(image_bytes()).decode("ascii")}]}
+
+            monkeypatch.setattr(module("infrastructure.providers.openai").OpenaiImage, "_post_json", post)
+            arguments = {"prompt": "a cat"}
+            if explicit_style is not None:
+                resolved = plugin._require_style_prompt_resolver().resolve(style_name=explicit_style, user_prompt="a cat")
+                arguments.update(
+                    prompt=resolved.positive_prompt, style_negative_prompt_template=resolved.negative_prompt_template,
+                )
+            service = plugin._require_draw_service()
+            receipt = await plugin._start_background_image_request(
+                stream_id="fixture-stream", user_id="12345", **arguments,
+            )
+            await asyncio.gather(*tuple(service.background_tasks))
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "completed", result["message"]
+            if explicit_style == "none":
+                expected = "a cat"
+            elif explicit_style == "sketch":
+                expected = "sketch, a cat"
+            else:
+                expected = "watercolor, a cat"
+            assert prompts == [expected]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("kind", ["openai", "siliconflow", "novelai"])
+@pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("style_template", [None, "", "{negative_prompt}", "水印，{negative_prompt}"])
 def test_negative_prompts_apply_instance_policy_before_style_and_translation(
     make_plugin, monkeypatch, kind, enabled, style_template,

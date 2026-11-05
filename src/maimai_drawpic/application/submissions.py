@@ -18,7 +18,7 @@ class RequestMixin:
         requested_model: str = "",
         requested_openai_compatibility_mode: str = "",
         request_negative_prompt: str = "",
-        style_negative_prompt_template: str = "",
+        style_negative_prompt_template: Optional[str] = None,
         requested_novelai_mode: str = "",
         requested_novelai_artist_tags: Optional[str] = None,
         source_image_bytes_list: list[bytes] | None = None,
@@ -57,6 +57,13 @@ class RequestMixin:
             normalized_source_urls = source_image_urls or [""] * len(normalized_source_images)
             if len(normalized_source_urls) != len(normalized_source_images):
                 raise ValueError("源图 URL 数量必须与源图数量一致")
+            # 风格入口已解析的模板（含显式无风格的空串）直接沿用，普通入口只套用一次默认风格。
+            if style_negative_prompt_template is None:
+                resolved_style = self._require_style_prompt_resolver().resolve(
+                    style_name="default", user_prompt=prompt, user_negative_prompt=request_negative_prompt,
+                )
+                prompt = resolved_style.positive_prompt
+                style_negative_prompt_template = resolved_style.negative_prompt_template
             session_preference = self._get_session_preference(
                 resolved_stream_id,
                 resolved_user_id,

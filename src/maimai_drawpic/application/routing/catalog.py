@@ -3,7 +3,7 @@ import re
 
 from ...domain.models.openai_profiles import OPENAI_COMPATIBILITY_MODES, normalize_openai_mode
 from ...domain.configuration.models import OpenAICompatibilityMode
-from ...domain.parameters import parse_key_value_options, parse_model_value_overrides
+from ...domain.parameters import parse_key_value_options, parse_model_value_overrides, split_inline_key_value_options
 from .types import OpenAIModelRoute, ProviderName
 
 
@@ -37,7 +37,7 @@ class ModelCatalogMixin:
     def _parse_key_value_text(cls, value: str) -> list[str]:
         """解析对象列表内的 key=value 多行字段为字符串列表。"""
 
-        return cls._split_inline_items(value)
+        return split_inline_key_value_options(value)
 
     @staticmethod
     def _normalize_openai_compatibility_mode(mode: str) -> OpenAICompatibilityMode:
