@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        填写平台名称和官网即可；如果找到了公开的使用说明或开发文档，也可以附上链接。
+        请填写平台名称和官网，并选择是否愿意提交 Pull Request；如果找到了公开的使用说明或开发文档，也可以附上链接。
         接入细节由维护者核对，请勿提交密钥、账号或其他个人信息。
 
   - type: checkboxes
@@ -40,6 +40,17 @@ body:
       label: 公开文档链接（可选）
       description: 官网的帮助、使用说明或开发文档均可；找不到可以留空。
       placeholder: https://example.com/docs
+
+  - type: dropdown
+    id: pull_request
+    attributes:
+      label: 是否愿意提交 Pull Request
+      description: 是否愿意提交 Pull Request 实现这个平台的接入？
+      options:
+        - 愿意
+        - 不愿意
+    validations:
+      required: true
 
   - type: textarea
     id: additional

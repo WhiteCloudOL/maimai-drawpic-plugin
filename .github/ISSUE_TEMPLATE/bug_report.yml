@@ -42,11 +42,12 @@ body:
   - type: dropdown
     id: deployment
     attributes:
-      label: 运行环境
+      label: 系统环境
+      description: 选择运行 MaiBot 的系统；使用容器时可在补充信息中说明部署方式。
       options:
         - Windows
+        - macOS
         - Linux
-        - Docker
         - 其他
     validations:
       required: true
@@ -153,6 +154,17 @@ body:
     attributes:
       label: 相关配置
       description: 仅粘贴相关的工作台设置、platforms.json / workspace_settings.json 片段或 config.toml 的 plugin/proxy 节，勿上传整份配置。密钥和密码替换为 ***；无需填写与问题无关的项目。
+
+  - type: dropdown
+    id: pull_request
+    attributes:
+      label: 是否愿意提交 Pull Request
+      description: 是否愿意提交 Pull Request 修复这个问题？
+      options:
+        - 愿意
+        - 不愿意
+    validations:
+      required: true
 
   - type: textarea
     id: additional

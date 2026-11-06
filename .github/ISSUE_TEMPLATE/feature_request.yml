@@ -19,6 +19,19 @@ body:
         - label: 我已搜索现有 Issue，确认没有相同请求。
           required: true
 
+  - type: dropdown
+    id: operating_system
+    attributes:
+      label: 系统环境
+      description: 选择运行 MaiBot 的系统；使用容器时可在补充信息中说明部署方式。
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - 其他
+    validations:
+      required: true
+
   - type: textarea
     id: scenario
     attributes:
@@ -46,6 +59,17 @@ body:
     attributes:
       label: 当前替代方式
       description: 如果你正在使用临时方案，请说明其限制。
+
+  - type: dropdown
+    id: pull_request
+    attributes:
+      label: 是否愿意提交 Pull Request
+      description: 是否愿意提交 Pull Request 实现这个功能？
+      options:
+        - 愿意
+        - 不愿意
+    validations:
+      required: true
 
   - type: textarea
     id: additional
