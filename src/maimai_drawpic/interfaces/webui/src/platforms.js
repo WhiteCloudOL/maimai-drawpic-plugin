@@ -10,6 +10,7 @@
     while (
       state.data.providers.some(
         (item) =>
+          item.id !== record?.id &&
           item.name.trim().toLocaleLowerCase() ===
           defaultName.toLocaleLowerCase(),
       )
@@ -34,9 +35,29 @@
       read = U.forms.bind(form, fields, values, { platform: true, kind });
     const keyControls = U.platformModels.bind(form, { kind, record, catalog });
     const nameInput = $("#provider-name", form);
+    const nameControls = document.createElement("div");
+    const nameValue = document.createElement("div");
+    const resetName = document.createElement("button");
+    nameControls.className = "field-controls";
+    nameValue.className = "field-control-value";
+    resetName.type = "button";
+    resetName.className = "icon-button field-reset";
+    resetName.title = "恢复默认值";
+    resetName.setAttribute("aria-label", "恢复平台名称的默认值");
+    resetName.innerHTML = icon("reset");
+    nameInput.replaceWith(nameControls);
+    nameControls.append(nameValue, resetName);
+    nameValue.append(nameInput);
+    resetName.onclick = () => {
+      nameInput.value = defaultName;
+      nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+      toast("已恢复平台名称默认值，保存后生效");
+    };
     nameInput.addEventListener("input", () => {
       nameInput.setCustomValidity(/\s/.test(nameInput.value) ? "平台名称不能包含空格，可使用下划线 _" : "");
+      resetName.hidden = nameInput.value === defaultName;
     });
+    resetName.hidden = nameInput.value === defaultName;
     const modalVersion = state.modalVersion,
       revision = state.data.revision;
     const current = () =>

@@ -23,6 +23,8 @@ function node(values = {}) {
     setAttribute(k, v) { this.attrs[k] = v; },
     removeAttribute(k) { delete this.attrs[k]; },
     addEventListener(k, fn) { this.listeners[k] = fn; },
+    append(...nodes) { this.children.push(...nodes); },
+    replaceWith() {},
     querySelectorAll() { return []; },
     classList: { toggle() {} }, contains() { return false; }, focus() {}, ...values };
 }
@@ -36,6 +38,7 @@ function harness(file, extra = {}) {
   let timerId = 0;
   const U = { state: { view: file, dirty: false, busy: 0, modalVersion: 0 },
     views: {}, $: get, e: String, icon: () => '', bindSubmit() {}, bindDirty() {},
+    selects: { refresh() {} },
     toast() {}, savedNotice() {}, error: e => errors.push(e),
     call(kind, name, args) {
       const d = deferred(); calls.push({ kind, name, args, ...d }); return d.promise;
@@ -315,12 +318,23 @@ test('forms: scalar hints link to controls and nested arrays have legends with u
       item_fields: { positive_prompt_template: { type: 'string', default: '', label: 'Prompt', hint: '{prompt}' } } },
   }, { presets: [{ positive_prompt_template: 'one' }, { positive_prompt_template: 'two' }] });
   assert.match(html, /<input id="(field-\d+)" aria-describedby="\1-hint"/);
-  assert.match(html, /<fieldset[^>]*aria-describedby="field-\d+-hint"><legend>Presets<\/legend>/);
+  assert.match(html, /<fieldset[^>]*aria-describedby="field-\d+-hint"><legend class="field-heading">Presets<\/legend>/);
   assert.equal((html.match(/<textarea id="(field-\d+)" aria-describedby="\1-hint"/g) || []).length, 2);
   const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
   assert.equal(ids.length, new Set(ids).size);
   for (const [, id] of html.matchAll(/(?:for|aria-describedby)="([^"]+)"/g)) assert.ok(ids.includes(id));
 });
+test('forms: credential defaults stay blank instead of inserting configuration placeholders', () => {
+  const h = harness('forms');
+  const html = h.U.forms.html({
+    api_key: { type: 'string', label: 'API Key', default: 'your-placeholder-api-key' },
+    password: { type: 'string', label: 'Password', default: 'your-placeholder-password' },
+  }, {});
+  assert.match(html, /data-input="api_key" value=""/);
+  assert.match(html, /data-input="password" value=""/);
+  assert.doesNotMatch(html, /your-placeholder-/);
+});
+
 test('invalid default model: diagnostics remain linked to the configuration control', () => {
   const h = harness('forms');
   h.U.state.data = { models: [], default_model: '', default_model_error: 'Ambiguous model',
@@ -391,7 +405,7 @@ test('mode state, mobile save label and allowed animations stay explicit', () =>
 // independently resolving RPC promises that the application cannot issue.
 function fifoController(file = 'studio') {
   const state = { view: file, busy: 0, lastTask: null, sources: [],
-    data: { models: [{ name: 'model', draw: true }], presets: [], default_model: 'model' },
+    data: { models: [{ name: 'model', draw: true }], presets: [], default_model: 'model', settings: { style: { default_style: '' } } },
     taskPage: 1, taskStatus: '', taskSearch: '' };
   const calls = [];
   const bridge = (name, args) => {

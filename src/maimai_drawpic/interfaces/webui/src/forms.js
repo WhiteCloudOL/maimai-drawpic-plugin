@@ -7,6 +7,9 @@
     const language = window.maibot?.context?.language?.replace("-", "_");
     return meta.i18n?.[language]?.[key] || meta[key] || "";
   }
+  function defaultValue(key, meta) {
+    return key === "api_key" || key === "password" ? "" : structuredClone(meta.default);
+  }
   function scalar(key, meta, value, id, values = {}) {
     const type = meta.type;
     if (key === "default_style") {
@@ -73,7 +76,7 @@
             !(options.platform && key === "instances"),
         )
         .map(([key, meta]) => {
-          const value = values[key] ?? structuredClone(meta.default);
+          const value = values[key] ?? defaultValue(key, meta);
           const id = `field-${++sequence}`;
           const hint = [
               meta.multiple
@@ -105,7 +108,13 @@
           const array = meta.type === "array",
             tag = array || meta.multiple ? "fieldset" : "div",
             label = e(localized(meta, "label") || key);
-          return `<${tag} class="field ${meta.type === "boolean" ? "field-toggle" : ""} ${full ? "full" : ""}" data-field="${e(key)}"${tag === "fieldset" ? description : ""}>${tag === "fieldset" ? `<legend>${label}</legend>` : `<label for="${id}">${label}</label>`}${control}${hint ? `<p id="${id}-hint" class="hint">${e(hint)}</p>` : ""}</${tag}>`;
+          const reset = Object.hasOwn(meta, "default")
+            ? `<button type="button" class="icon-button field-reset" data-reset-field title="恢复默认值" aria-label="恢复${label}的默认值" hidden>${icon("reset")}</button>`
+            : "";
+          const heading = tag === "fieldset"
+            ? `<legend class="field-heading">${label}</legend>`
+            : `<div class="field-heading"><label for="${id}">${label}</label></div>`;
+          return `<${tag} class="field ${meta.type === "boolean" ? "field-toggle" : ""} ${full ? "full" : ""}" data-field="${e(key)}"${tag === "fieldset" ? description : ""}>${heading}<div class="field-controls"><div class="field-control-value">${control}</div>${reset}</div>${hint ? `<p id="${id}-hint" class="hint">${e(hint)}</p>` : ""}</${tag}>`;
         })
         .join("") +
       "</div>"
@@ -120,8 +129,9 @@
         root.querySelectorAll(":scope > .form-grid > [data-field]"),
       ).find((n) => n.dataset.field === key);
       if (!field) continue;
-      const multiple = $(":scope > [data-multiple]", field),
-        control = $(":scope > [data-control]", field);
+      const controls = $(":scope > .field-controls > .field-control-value", field);
+      const multiple = $(":scope > [data-multiple]", controls),
+        control = $(":scope > [data-control]", controls);
       if (multiple)
         result[key] = [...multiple.querySelectorAll("input:checked")].map(
           (input) => input.value,
@@ -182,9 +192,78 @@
         .join("");
     if (!names.some((item) => item.name === selected)) select.value = "";
   }
+  function fieldMeta(field, root, fields) {
+    // 按嵌套路径找到字段定义，无需解析其他尚未填写完整的草稿。
+    const path = [];
+    for (let node = field; node && root.contains(node); node = node.parentElement?.closest("[data-field]"))
+      path.unshift(node.dataset.field);
+    let schema = fields, meta;
+    for (const key of path) {
+      meta = schema[key];
+      schema = meta.item_fields;
+    }
+    return meta;
+  }
+  function fieldSignature(field) {
+    // 比较实际编辑控件，允许未填完整的草稿，忽略未启用的自定义输入和未选中的多选项。
+    return JSON.stringify([...field.querySelectorAll("input,select,textarea,button[aria-pressed=true]")]
+      .filter(node => !node.disabled && !(node.hasAttribute("data-choice-value") && !node.checked))
+      .map(node => [node.tagName, node.type,
+        node.type === "checkbox" ? [node.value, node.checked]
+          : node.type === "button" ? true
+          : node.type === "number" && node.value !== "" && Number.isFinite(node.valueAsNumber)
+            ? node.valueAsNumber : node.value]));
+  }
+  function resetField(field, root, fields, options) {
+    const meta = fieldMeta(field, root, fields);
+    const key = field.dataset.field, value = defaultValue(key, meta);
+    const controls = $(":scope > .field-controls > .field-control-value", field);
+    const component = $(":scope > [data-array], :scope > [data-control], :scope > [data-multiple]", controls);
+    if (component) {
+      const template = document.createElement("template");
+      template.innerHTML = fieldsHTML({ [key]: meta }, { [key]: value }, options);
+      const replacement = template.content.querySelector("[data-array], [data-control], [data-multiple]");
+      // 数组保留字段外壳和模型工具栏；复合控件保留标签与说明的关联。
+      if (meta.type !== "array") {
+        const previous = component.id ? component : component.querySelector("[id]");
+        const next = replacement.id ? replacement : replacement.querySelector("[id]");
+        next.id = previous.id;
+        if (previous.hasAttribute("aria-describedby"))
+          next.setAttribute("aria-describedby", previous.getAttribute("aria-describedby"));
+        else next.removeAttribute("aria-describedby");
+      }
+      component.replaceWith(replacement);
+    } else {
+      const input = $("[data-input]", field);
+      if (meta.type === "boolean") input.checked = value;
+      else input.value = value ?? "";
+      input.setCustomValidity("");
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    field.dispatchEvent(new CustomEvent("fieldreset", { bubbles: true, detail: { key } }));
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    refreshStyleChoices(root);
+    U.formCollections.refresh(root);
+    U.selects.refresh(field);
+    field.querySelector(".select-trigger,input:not([hidden]),textarea,[data-add-array]")?.focus({ preventScroll: true });
+    U.toast(`已恢复「${localized(meta, "label") || key}」默认值，保存后生效`);
+  }
   function bind(root, fields, values, options = {}) {
     U.formControls.bind(root);
     U.formCollections.bind(root);
+    const defaultSignatures = new WeakMap();
+    const refreshResets = () => {
+      for (const button of root.querySelectorAll("[data-reset-field]")) {
+        const field = button.closest("[data-field]");
+        if (!defaultSignatures.has(field)) {
+          const meta = fieldMeta(field, root, fields), key = field.dataset.field;
+          const template = document.createElement("template");
+          template.innerHTML = fieldsHTML({ [key]: meta }, { [key]: defaultValue(key, meta) }, options);
+          defaultSignatures.set(field, fieldSignature(template.content.querySelector("[data-field]")));
+        }
+        button.hidden = fieldSignature(field) === defaultSignatures.get(field);
+      }
+    };
     const negativeToggle = $('[data-input="negative_prompt_enabled"]', root);
     const negativeDefault = $('[data-field="negative_prompt"]', root);
     if (negativeToggle && negativeDefault) {
@@ -194,8 +273,18 @@
       negativeToggle.addEventListener("change", refreshNegativeDefault);
       refreshNegativeDefault();
     }
-    root.addEventListener("input", () => refreshStyleChoices(root));
+    root.addEventListener("input", () => {
+      refreshStyleChoices(root);
+      refreshResets();
+    });
+    root.addEventListener("change", refreshResets);
+    refreshResets();
     root.onclick = (event) => {
+      const reset = event.target.closest("[data-reset-field]");
+      if (reset) {
+        resetField(reset.closest("[data-field]"), root, fields, options);
+        return;
+      }
       const move = event.target.closest("[data-move]");
       if (move) {
         const item = move.closest("[data-array-row]");
@@ -210,6 +299,7 @@
           state.dirty = true;
           const notice = $("[data-unsaved]", root);
           if (notice) notice.hidden = false;
+          refreshResets();
         }
         return;
       }
@@ -221,6 +311,7 @@
         state.dirty = true;
         const notice = $("[data-unsaved]", root);
         if (notice) notice.hidden = false;
+        refreshResets();
         return;
       }
       const add = event.target.closest("[data-add-array]");
@@ -257,6 +348,7 @@
       state.dirty = true;
       const notice = $("[data-unsaved]", root);
       if (notice) notice.hidden = false;
+      refreshResets();
     };
     U.bindDirty(root);
     return () => read(fields, values, root, options);

@@ -12,6 +12,9 @@
     terminal:
       '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3m6 0h4"/>',
     refresh: '<path d="M20 8a8 8 0 1 0 1 6M20 3v5h-5"/>',
+    reset: '<path d="M3 10a9 9 0 1 1 2.7 8.3M3 4v6h6"/>',
+    search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+    chevron: '<path d="m6 9 6 6 6-6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
     upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/>',

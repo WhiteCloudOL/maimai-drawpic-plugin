@@ -13,6 +13,7 @@ def build() -> Path:
     css = (source / "style.css").read_text(encoding="utf-8")
     names = (
         "app",
+        "forms/select",
         "forms/options",
         "forms/controls",
         "forms/collections",

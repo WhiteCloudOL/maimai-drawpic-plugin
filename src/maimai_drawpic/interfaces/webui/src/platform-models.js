@@ -170,6 +170,12 @@
         if (input.value) pending = false;
         update();
       });
+      form.addEventListener("fieldreset", (event) => {
+        if (event.detail.key !== "api_key") return;
+        pending = false;
+        previousInput = "";
+        update();
+      });
       update();
     }
     const field = $('[data-field="models"]', form);

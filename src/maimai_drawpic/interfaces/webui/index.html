@@ -459,6 +459,60 @@ footer {
   font-weight: 550;
   margin-bottom: 7px;
 }
+.field > .field-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 550;
+}
+.field-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.field-control-value {
+  flex: 1;
+  min-width: 0;
+}
+.field:is(fieldset) > .field-controls {
+  align-items: flex-start;
+}
+.field-toggle .field-control-value {
+  flex: 0 0 auto;
+}
+.field-heading > label,
+.field-heading > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.field-reset {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+}
+.field-reset:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.field-reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.field-toggle > .field-heading {
+  margin-bottom: 0;
+}
+@media (max-width: 640px) {
+  .field-reset {
+    width: 44px;
+    height: 44px;
+  }
+}
 .field input:not([type="checkbox"]),
 .field select,
 .field textarea,
@@ -478,6 +532,181 @@ footer {
   border-color: var(--accent);
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.search-select {
+  width: 100%;
+  min-width: 0;
+}
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: start;
+  font: inherit;
+}
+.select-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-trigger > svg {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.select-trigger:hover,
+.select-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+.select-trigger[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+.select-trigger:focus-visible,
+.select-trigger[aria-invalid="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+.select-trigger:disabled {
+  cursor: not-allowed;
+}
+.search-select-panel {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 8px;
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  max-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 40px #28262924, 0 2px 8px #2826290a;
+  overflow: hidden;
+}
+.search-select-panel:popover-open {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.select-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--soft);
+}
+.select-search-row:focus-within {
+  border-color: var(--accent);
+}
+.select-search-row > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.select-search-row > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+  box-shadow: none;
+}
+.select-options {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+  line-height: 1.5;
+}
+.select-option > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.select-option > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.select-option:hover,
+.select-option[data-active="true"] {
+  background: var(--accent-soft);
+}
+.select-option[aria-selected="true"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.select-option:disabled {
+  cursor: not-allowed;
+}
+.select-group,
+.select-status {
+  padding: 4px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.select-status {
+  flex-shrink: 0;
+  padding-bottom: 0;
+}
+.search-select:has(> #task-status) {
+  flex: 0 0 160px;
+  width: 160px;
+}
+.search-select:has(> #log-level) {
+  flex: 0 0 150px;
+  width: 150px;
+}
+@media (max-width: 640px) {
+  .select-trigger,
+  .select-option {
+    min-height: 44px;
+  }
+  .select-search-row > input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .search-select:has(> #task-status) {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .search-select:has(> #log-level) {
+    width: 100%;
+  }
 }
 textarea {
   resize: vertical;
@@ -1847,6 +2076,9 @@ dialog::backdrop {
     terminal:
       '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3m6 0h4"/>',
     refresh: '<path d="M20 8a8 8 0 1 0 1 6M20 3v5h-5"/>',
+    reset: '<path d="M3 10a9 9 0 1 1 2.7 8.3M3 4v6h6"/>',
+    search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+    chevron: '<path d="m6 9 6 6 6-6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
     upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/>',
@@ -2185,6 +2417,270 @@ dialog::backdrop {
       });
     return refresh();
   };
+})();
+
+(() => {
+  "use strict";
+  const U = window.DrawpicUI, { e, icon } = U;
+  const controls = new WeakMap();
+  let sequence = 0, active = null;
+  const panel = document.createElement("div");
+  panel.className = "search-select-panel";
+  panel.setAttribute("popover", "manual");
+  panel.innerHTML = `<div class="select-search-row">${icon("search")}<input type="search" data-select-search autocomplete="off" spellcheck="false" placeholder="搜索选项…"></div><div class="select-options" role="listbox" id="select-options"></div><p class="select-status" role="status" aria-live="polite"></p>`;
+  const search = panel.querySelector("input"), list = panel.querySelector("[role=listbox]"), status = panel.querySelector("[role=status]");
+  search.setAttribute("aria-controls", list.id);
+
+  function composing(event) {
+    return event.isComposing || event.keyCode === 229;
+  }
+  function labelFor(select) {
+    const explicit = select.getAttribute("aria-label");
+    if (explicit) return explicit;
+    return [...select.labels].map(label => {
+      const copy = label.cloneNode(true);
+      copy.querySelectorAll("select,.search-select").forEach(node => node.remove());
+      return copy.textContent.trim();
+    }).filter(Boolean).join(" ") || "选项";
+  }
+  function optionsFor(select) {
+    return [...select.options].map((option, index) => {
+      const group = option.parentElement.tagName === "OPTGROUP" ? option.parentElement : null;
+      return { index, value: option.value, label: option.label, group: group?.label || "",
+        disabled: option.disabled || Boolean(group?.disabled), hidden: option.hidden || Boolean(group?.hidden) };
+    }).filter(option => !option.hidden);
+  }
+  function update(control) {
+    const { select, trigger, text } = control;
+    text.textContent = select.selectedOptions[0]?.label || "请选择…";
+    trigger.title = text.textContent;
+    trigger.disabled = select.matches(":disabled");
+    trigger.setAttribute("aria-label", labelFor(select));
+    trigger.setAttribute("aria-required", String(select.required));
+    if (select.validity.valid) trigger.removeAttribute("aria-invalid");
+    const description = select.getAttribute("aria-describedby");
+    if (description) trigger.setAttribute("aria-describedby", description);
+    else trigger.removeAttribute("aria-describedby");
+    if (active?.control === control) {
+      if (trigger.disabled || !select.isConnected) close(false);
+      else renderOptions();
+    }
+  }
+  function close(returnFocus = false) {
+    if (!active) return;
+    const { trigger } = active.control;
+    active = null;
+    trigger.setAttribute("aria-expanded", "false");
+    search.removeAttribute("aria-activedescendant");
+    if (panel.matches(":popover-open")) panel.hidePopover();
+    if (returnFocus && trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
+  }
+  function position() {
+    if (!active) return;
+    const rect = active.control.trigger.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const top = viewport?.offsetTop || 0, bottom = top + (viewport?.height || innerHeight);
+    // 软键盘可能遮住触发器；搜索仍有焦点时，将弹层约束到可视区域而不关闭。
+    if ((rect.bottom < top || rect.top > bottom) && !panel.contains(document.activeElement)) { close(false); return; }
+    const left = viewport?.offsetLeft || 0;
+    const visibleWidth = Math.min(document.documentElement.clientWidth, viewport?.width || document.documentElement.clientWidth);
+    const width = Math.min(Math.max(rect.width, 230), visibleWidth - 16);
+    const below = bottom - rect.bottom - 8, above = rect.top - top - 8;
+    const upwards = below < 220 && above > below;
+    const height = Math.min(360, Math.max(0, bottom - top - 16), Math.max(100, (upwards ? above : below) - 8));
+    panel.style.width = `${width}px`;
+    panel.style.maxHeight = `${height}px`;
+    panel.style.left = `${Math.max(left + 8, Math.min(rect.left, left + visibleWidth - width - 8))}px`;
+    const desiredTop = upwards ? rect.top - panel.offsetHeight - 6 : rect.bottom + 6;
+    panel.style.top = `${Math.max(top + 8, Math.min(desiredTop, bottom - panel.offsetHeight - 8))}px`;
+  }
+  function highlight(index, scroll = true) {
+    if (!active) return;
+    active.index = index;
+    list.querySelectorAll("[data-select-index]").forEach(node => {
+      node.dataset.active = String(Number(node.dataset.selectIndex) === index);
+    });
+    const item = list.querySelector(`[data-select-index="${index}"]`);
+    if (item) {
+      search.setAttribute("aria-activedescendant", item.id);
+      if (scroll) item.scrollIntoView({ block: "nearest" });
+    } else search.removeAttribute("aria-activedescendant");
+  }
+  function renderOptions() {
+    const query = search.value.normalize("NFKC").toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
+    active.options = optionsFor(active.control.select).filter(option => {
+      const text = `${option.label} ${option.value} ${option.group}`.normalize("NFKC").toLocaleLowerCase();
+      return query.every(term => text.includes(term));
+    });
+    let group = "";
+    list.innerHTML = active.options.map(option => {
+      const heading = option.group && option.group !== group ? `<div class="select-group" role="presentation">${e(option.group)}</div>` : "";
+      group = option.group;
+      const selected = option.index === active.control.select.selectedIndex;
+      return `${heading}<button type="button" role="option" id="select-option-${option.index}" class="select-option" data-select-index="${option.index}" tabindex="-1" aria-selected="${selected}"${option.disabled ? ' disabled aria-disabled="true"' : ""}><span>${e(option.label || "未选择")}</span>${selected ? icon("check") : ""}</button>`;
+    }).join("");
+    status.textContent = active.options.length ? `${active.options.length} 个选项` : "没有匹配的选项";
+    const enabled = active.options.filter(option => !option.disabled);
+    const next = enabled.find(option => option.index === active.index)
+      || enabled.find(option => option.index === active.control.select.selectedIndex) || enabled[0];
+    highlight(next?.index ?? -1, false);
+    position();
+  }
+  function open(control, query = "") {
+    if (control.trigger.disabled) return;
+    close(false);
+    // 弹层属于当前模态框，并进入 top layer，保持可交互且不被滚动容器裁切。
+    (control.select.closest("dialog") || document.body).append(panel);
+    active = { control, options: [], index: control.select.selectedIndex };
+    search.value = query;
+    search.setAttribute("aria-label", `搜索${labelFor(control.select)}`);
+    list.setAttribute("aria-label", `${labelFor(control.select)}选项`);
+    control.trigger.setAttribute("aria-expanded", "true");
+    renderOptions();
+    panel.showPopover();
+    position();
+    search.focus({ preventScroll: true });
+    if (!query) highlight(active.index);
+  }
+  function choose(index) {
+    if (!active) return;
+    const option = active.options.find(item => item.index === index);
+    if (!option || option.disabled) return;
+    const control = active.control, changed = control.select.selectedIndex !== index;
+    control.select.selectedIndex = index;
+    close(true);
+    update(control);
+    if (changed) {
+      control.select.dispatchEvent(new Event("input", { bubbles: true }));
+      control.select.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  function enhance(select) {
+    if (select.multiple || controls.has(select)) return;
+    const focused = document.activeElement === select;
+    const wrapper = document.createElement("div"), trigger = document.createElement("button");
+    wrapper.className = "search-select";
+    trigger.className = "select-trigger";
+    trigger.type = "button";
+    trigger.id = `select-trigger-${++sequence}`;
+    trigger.setAttribute("role", "combobox");
+    trigger.setAttribute("aria-haspopup", "listbox");
+    trigger.setAttribute("aria-controls", list.id);
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.innerHTML = `<span class="select-label"></span>${icon("chevron")}`;
+    // 原字段只保留取值、校验与事件契约，交互和展示由共享组件完成。
+    select.replaceWith(wrapper);
+    wrapper.append(select, trigger);
+    select.hidden = true;
+    select.tabIndex = -1;
+    select.setAttribute("aria-hidden", "true");
+    const control = { select, trigger, text: trigger.querySelector(".select-label") };
+    controls.set(select, control);
+    update(control);
+    trigger.addEventListener("click", () => active?.control === control ? close(true) : open(control));
+    trigger.addEventListener("keydown", event => {
+      if (composing(event)) return;
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        open(control);
+        const enabled = active.options.filter(option => !option.disabled);
+        highlight((event.key === "End" || event.key === "ArrowUp" ? enabled.at(-1) : enabled[0])?.index ?? -1);
+      } else if (event.key.length === 1 && event.key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        open(control, event.key);
+      }
+    });
+    select.addEventListener("invalid", event => {
+      event.preventDefault();
+      trigger.setAttribute("aria-invalid", "true");
+      trigger.focus();
+      U.toast(select.validationMessage);
+    });
+    if (focused) trigger.focus({ preventScroll: true });
+  }
+  function refresh(root = document) {
+    const selects = [...root.querySelectorAll("select")];
+    if (root.matches?.("select")) selects.unshift(root);
+    selects.forEach(select => {
+      enhance(select);
+      const control = controls.get(select);
+      if (control) update(control);
+    });
+  }
+  search.addEventListener("input", () => {
+    if (!active) return;
+    active.index = -1;
+    renderOptions();
+  });
+  search.addEventListener("keydown", event => {
+    if (!active || composing(event)) return;
+    const enabled = active.options.filter(option => !option.disabled);
+    if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      const current = enabled.findIndex(option => option.index === active.index);
+      const next = (current + (event.key === "ArrowDown" ? 1 : -1) + enabled.length) % enabled.length;
+      highlight(enabled[next]?.index ?? -1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      choose(active.index);
+    }
+  });
+  list.addEventListener("click", event => {
+    const option = event.target.closest("[data-select-index]");
+    if (option) choose(Number(option.dataset.selectIndex));
+  });
+  document.addEventListener("pointerdown", event => {
+    if (active && !panel.contains(event.target) && !active.control.trigger.contains(event.target)) close(false);
+  }, true);
+  document.addEventListener("keydown", event => {
+    if (!active || composing(event)) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+    } else if (event.key === "Tab") close(true);
+  }, true);
+  document.addEventListener("close", event => {
+    if (active?.control.select.closest("dialog") === event.target) close(false);
+  }, true);
+  document.addEventListener("click", event => {
+    const label = event.target.closest("label[for]");
+    if (label && !event.target.closest("button,input")) {
+      const control = controls.get(document.getElementById(label.htmlFor));
+      if (control) { event.preventDefault(); control.trigger.focus(); }
+    }
+  });
+  for (const name of ["input", "change"]) document.addEventListener(name, event => {
+    const control = controls.get(event.target);
+    if (control) update(control);
+  }, true);
+  window.addEventListener("resize", position);
+  document.addEventListener("scroll", position, true);
+  window.visualViewport?.addEventListener("resize", position);
+  window.visualViewport?.addEventListener("scroll", position);
+  // 模型目录、风格、扩展参数等会动态更新选项或插入新控件。
+  new MutationObserver(records => {
+    if (active && !active.control.select.isConnected) close(false);
+    const changed = new Set();
+    for (const record of records) {
+      const element = record.target.nodeType === Node.ELEMENT_NODE ? record.target : record.target.parentElement;
+      const select = element?.closest("select");
+      if (select) changed.add(select);
+      for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.matches("select")) changed.add(node);
+        node.querySelectorAll("select").forEach(item => changed.add(item));
+      }
+    }
+    for (const select of changed) if (select.isConnected) {
+      enhance(select);
+      const control = controls.get(select);
+      if (control) update(control);
+    }
+  }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true,
+    attributeFilter: ["disabled", "required", "label", "selected", "hidden", "aria-label", "aria-describedby"] });
+  U.selects = { refresh, close };
+  refresh();
 })();
 
 (() => {
@@ -2644,6 +3140,9 @@ dialog::backdrop {
     const language = window.maibot?.context?.language?.replace("-", "_");
     return meta.i18n?.[language]?.[key] || meta[key] || "";
   }
+  function defaultValue(key, meta) {
+    return key === "api_key" || key === "password" ? "" : structuredClone(meta.default);
+  }
   function scalar(key, meta, value, id, values = {}) {
     const type = meta.type;
     if (key === "default_style") {
@@ -2710,7 +3209,7 @@ dialog::backdrop {
             !(options.platform && key === "instances"),
         )
         .map(([key, meta]) => {
-          const value = values[key] ?? structuredClone(meta.default);
+          const value = values[key] ?? defaultValue(key, meta);
           const id = `field-${++sequence}`;
           const hint = [
               meta.multiple
@@ -2742,7 +3241,13 @@ dialog::backdrop {
           const array = meta.type === "array",
             tag = array || meta.multiple ? "fieldset" : "div",
             label = e(localized(meta, "label") || key);
-          return `<${tag} class="field ${meta.type === "boolean" ? "field-toggle" : ""} ${full ? "full" : ""}" data-field="${e(key)}"${tag === "fieldset" ? description : ""}>${tag === "fieldset" ? `<legend>${label}</legend>` : `<label for="${id}">${label}</label>`}${control}${hint ? `<p id="${id}-hint" class="hint">${e(hint)}</p>` : ""}</${tag}>`;
+          const reset = Object.hasOwn(meta, "default")
+            ? `<button type="button" class="icon-button field-reset" data-reset-field title="恢复默认值" aria-label="恢复${label}的默认值" hidden>${icon("reset")}</button>`
+            : "";
+          const heading = tag === "fieldset"
+            ? `<legend class="field-heading">${label}</legend>`
+            : `<div class="field-heading"><label for="${id}">${label}</label></div>`;
+          return `<${tag} class="field ${meta.type === "boolean" ? "field-toggle" : ""} ${full ? "full" : ""}" data-field="${e(key)}"${tag === "fieldset" ? description : ""}>${heading}<div class="field-controls"><div class="field-control-value">${control}</div>${reset}</div>${hint ? `<p id="${id}-hint" class="hint">${e(hint)}</p>` : ""}</${tag}>`;
         })
         .join("") +
       "</div>"
@@ -2757,8 +3262,9 @@ dialog::backdrop {
         root.querySelectorAll(":scope > .form-grid > [data-field]"),
       ).find((n) => n.dataset.field === key);
       if (!field) continue;
-      const multiple = $(":scope > [data-multiple]", field),
-        control = $(":scope > [data-control]", field);
+      const controls = $(":scope > .field-controls > .field-control-value", field);
+      const multiple = $(":scope > [data-multiple]", controls),
+        control = $(":scope > [data-control]", controls);
       if (multiple)
         result[key] = [...multiple.querySelectorAll("input:checked")].map(
           (input) => input.value,
@@ -2819,9 +3325,78 @@ dialog::backdrop {
         .join("");
     if (!names.some((item) => item.name === selected)) select.value = "";
   }
+  function fieldMeta(field, root, fields) {
+    // 按嵌套路径找到字段定义，无需解析其他尚未填写完整的草稿。
+    const path = [];
+    for (let node = field; node && root.contains(node); node = node.parentElement?.closest("[data-field]"))
+      path.unshift(node.dataset.field);
+    let schema = fields, meta;
+    for (const key of path) {
+      meta = schema[key];
+      schema = meta.item_fields;
+    }
+    return meta;
+  }
+  function fieldSignature(field) {
+    // 比较实际编辑控件，允许未填完整的草稿，忽略未启用的自定义输入和未选中的多选项。
+    return JSON.stringify([...field.querySelectorAll("input,select,textarea,button[aria-pressed=true]")]
+      .filter(node => !node.disabled && !(node.hasAttribute("data-choice-value") && !node.checked))
+      .map(node => [node.tagName, node.type,
+        node.type === "checkbox" ? [node.value, node.checked]
+          : node.type === "button" ? true
+          : node.type === "number" && node.value !== "" && Number.isFinite(node.valueAsNumber)
+            ? node.valueAsNumber : node.value]));
+  }
+  function resetField(field, root, fields, options) {
+    const meta = fieldMeta(field, root, fields);
+    const key = field.dataset.field, value = defaultValue(key, meta);
+    const controls = $(":scope > .field-controls > .field-control-value", field);
+    const component = $(":scope > [data-array], :scope > [data-control], :scope > [data-multiple]", controls);
+    if (component) {
+      const template = document.createElement("template");
+      template.innerHTML = fieldsHTML({ [key]: meta }, { [key]: value }, options);
+      const replacement = template.content.querySelector("[data-array], [data-control], [data-multiple]");
+      // 数组保留字段外壳和模型工具栏；复合控件保留标签与说明的关联。
+      if (meta.type !== "array") {
+        const previous = component.id ? component : component.querySelector("[id]");
+        const next = replacement.id ? replacement : replacement.querySelector("[id]");
+        next.id = previous.id;
+        if (previous.hasAttribute("aria-describedby"))
+          next.setAttribute("aria-describedby", previous.getAttribute("aria-describedby"));
+        else next.removeAttribute("aria-describedby");
+      }
+      component.replaceWith(replacement);
+    } else {
+      const input = $("[data-input]", field);
+      if (meta.type === "boolean") input.checked = value;
+      else input.value = value ?? "";
+      input.setCustomValidity("");
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    field.dispatchEvent(new CustomEvent("fieldreset", { bubbles: true, detail: { key } }));
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    refreshStyleChoices(root);
+    U.formCollections.refresh(root);
+    U.selects.refresh(field);
+    field.querySelector(".select-trigger,input:not([hidden]),textarea,[data-add-array]")?.focus({ preventScroll: true });
+    U.toast(`已恢复「${localized(meta, "label") || key}」默认值，保存后生效`);
+  }
   function bind(root, fields, values, options = {}) {
     U.formControls.bind(root);
     U.formCollections.bind(root);
+    const defaultSignatures = new WeakMap();
+    const refreshResets = () => {
+      for (const button of root.querySelectorAll("[data-reset-field]")) {
+        const field = button.closest("[data-field]");
+        if (!defaultSignatures.has(field)) {
+          const meta = fieldMeta(field, root, fields), key = field.dataset.field;
+          const template = document.createElement("template");
+          template.innerHTML = fieldsHTML({ [key]: meta }, { [key]: defaultValue(key, meta) }, options);
+          defaultSignatures.set(field, fieldSignature(template.content.querySelector("[data-field]")));
+        }
+        button.hidden = fieldSignature(field) === defaultSignatures.get(field);
+      }
+    };
     const negativeToggle = $('[data-input="negative_prompt_enabled"]', root);
     const negativeDefault = $('[data-field="negative_prompt"]', root);
     if (negativeToggle && negativeDefault) {
@@ -2831,8 +3406,18 @@ dialog::backdrop {
       negativeToggle.addEventListener("change", refreshNegativeDefault);
       refreshNegativeDefault();
     }
-    root.addEventListener("input", () => refreshStyleChoices(root));
+    root.addEventListener("input", () => {
+      refreshStyleChoices(root);
+      refreshResets();
+    });
+    root.addEventListener("change", refreshResets);
+    refreshResets();
     root.onclick = (event) => {
+      const reset = event.target.closest("[data-reset-field]");
+      if (reset) {
+        resetField(reset.closest("[data-field]"), root, fields, options);
+        return;
+      }
       const move = event.target.closest("[data-move]");
       if (move) {
         const item = move.closest("[data-array-row]");
@@ -2847,6 +3432,7 @@ dialog::backdrop {
           state.dirty = true;
           const notice = $("[data-unsaved]", root);
           if (notice) notice.hidden = false;
+          refreshResets();
         }
         return;
       }
@@ -2858,6 +3444,7 @@ dialog::backdrop {
         state.dirty = true;
         const notice = $("[data-unsaved]", root);
         if (notice) notice.hidden = false;
+        refreshResets();
         return;
       }
       const add = event.target.closest("[data-add-array]");
@@ -2894,6 +3481,7 @@ dialog::backdrop {
       state.dirty = true;
       const notice = $("[data-unsaved]", root);
       if (notice) notice.hidden = false;
+      refreshResets();
     };
     U.bindDirty(root);
     return () => read(fields, values, root, options);
@@ -3080,6 +3668,12 @@ dialog::backdrop {
         if (input.value) pending = false;
         update();
       });
+      form.addEventListener("fieldreset", (event) => {
+        if (event.detail.key !== "api_key") return;
+        pending = false;
+        previousInput = "";
+        update();
+      });
       update();
     }
     const field = $('[data-field="models"]', form);
@@ -3120,6 +3714,7 @@ dialog::backdrop {
     while (
       state.data.providers.some(
         (item) =>
+          item.id !== record?.id &&
           item.name.trim().toLocaleLowerCase() ===
           defaultName.toLocaleLowerCase(),
       )
@@ -3144,9 +3739,29 @@ dialog::backdrop {
       read = U.forms.bind(form, fields, values, { platform: true, kind });
     const keyControls = U.platformModels.bind(form, { kind, record, catalog });
     const nameInput = $("#provider-name", form);
+    const nameControls = document.createElement("div");
+    const nameValue = document.createElement("div");
+    const resetName = document.createElement("button");
+    nameControls.className = "field-controls";
+    nameValue.className = "field-control-value";
+    resetName.type = "button";
+    resetName.className = "icon-button field-reset";
+    resetName.title = "恢复默认值";
+    resetName.setAttribute("aria-label", "恢复平台名称的默认值");
+    resetName.innerHTML = icon("reset");
+    nameInput.replaceWith(nameControls);
+    nameControls.append(nameValue, resetName);
+    nameValue.append(nameInput);
+    resetName.onclick = () => {
+      nameInput.value = defaultName;
+      nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+      toast("已恢复平台名称默认值，保存后生效");
+    };
     nameInput.addEventListener("input", () => {
       nameInput.setCustomValidity(/\s/.test(nameInput.value) ? "平台名称不能包含空格，可使用下划线 _" : "");
+      resetName.hidden = nameInput.value === defaultName;
     });
+    resetName.hidden = nameInput.value === defaultName;
     const modalVersion = state.modalVersion,
       revision = state.data.revision;
     const current = () =>
