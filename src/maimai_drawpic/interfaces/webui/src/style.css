@@ -1735,11 +1735,12 @@ dialog::backdrop {
 .inline-choice {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 8px;
   font-size: 12px;
 }
-.inline-choice input,
-.model-picker-item input {
+.inline-choice input:not(.toggle),
+.model-picker-item input:not(.toggle) {
   width: auto;
   accent-color: var(--accent);
 }
