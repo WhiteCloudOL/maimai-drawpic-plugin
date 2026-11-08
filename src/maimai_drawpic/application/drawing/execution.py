@@ -228,8 +228,18 @@ class ImageExecutionMixin:
                     task_id=task_id,
                     provider=successful_attempt.provider_name,
                     model=successful_attempt.model,
+                    sync_to_maisaka_history=self.router.config.general.sync_generated_images_to_history,
+                    task_type=task_type,
+                    source_image_count=len(normalized_source_images),
                 )
                 delivery_started = False
+            elif self.router.config.general.sync_generated_images_to_history:
+                self.ctx.logger.debug(
+                    "生成结果未投递，跳过会话历史同步: task_id=%s task_type=%s provider=%s model=%s "
+                    "source_image_count=%s history_sync_requested=False",
+                    task_id, task_type, successful_attempt.provider_name, successful_attempt.model,
+                    len(normalized_source_images),
+                )
             success_message = (
                 f"图片已发送，数量={sent_count}" if stream_id else f"图片已生成，数量={len(reviewed_images)}"
             )

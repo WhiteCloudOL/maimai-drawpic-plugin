@@ -131,6 +131,7 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
       "request_retry_count": 1,
       "request_timeout_seconds": 150,
       "skip_image_url_ip_check": false,
+        "sync_generated_images_to_history": false,
       "admin_user_ids": [],
       "prompt_review_enabled": false,
       "prompt_review_model": "vlm",
@@ -158,6 +159,8 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 ```
 
 常用字段：
+
+- `sync_generated_images_to_history`：默认 `false`。开启后，成功投递到聊天的生成图通过 Host 同步到当前 MaiSaka 历史，视觉 Planner 可查看图片，文本 Planner 使用图片描述；可能增加视觉上下文与后台识图开销。未投递任务和命令回复卡片不请求同步，回执未知不重发。详见[同步范围与日志](configuration.md#生成图片与会话历史)。
 
 - `default_model`：空字符串表示自动选择；指定时填写完整“平台名/模型名”。
 - `fallback_models`：有顺序的模型名称列表，空列表表示不启用备选。

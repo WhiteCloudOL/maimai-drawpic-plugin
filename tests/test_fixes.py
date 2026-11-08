@@ -771,7 +771,10 @@ def test_background_tasks_are_concurrent_and_user_isolated() -> None:
         def __init__(self, provider: _ConcurrentProvider) -> None:
             self.provider = provider
             self.config = types.SimpleNamespace(
-                general=types.SimpleNamespace(fallback_model="", fallback_models=[], request_retry_count=0)
+                general=types.SimpleNamespace(
+                    fallback_model="", fallback_models=[], request_retry_count=0,
+                    sync_generated_images_to_history=False,
+                )
             )
 
         @staticmethod

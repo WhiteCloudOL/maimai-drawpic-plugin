@@ -134,6 +134,15 @@ class GeneralConfig(PluginConfigBase):
             "order": 3,
         },
     )
+    sync_generated_images_to_history: bool = Field(
+        default=False,
+        description="成功投递生成图片后，通过 Host 同步到当前会话的 MaiSaka 历史",
+        json_schema_extra={
+            "label": "生成图片同步到会话历史",
+            "hint": "默认关闭。开启后视觉 Planner 可查看已发送的生成图，文本 Planner 使用图片描述，可能增加视觉上下文和后台识图开销。仅生成不投递的任务与命令回复卡片不受影响。",
+            "order": 3.25,
+        },
+    )
     failure_reason_enabled: bool = Field(
         default=True,
         description="是否由插件主动发送绘图失败状态和简要原因。关闭后仅保留日志、任务状态和工具返回，不主动发送通知",

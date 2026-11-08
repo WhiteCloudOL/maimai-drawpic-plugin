@@ -16,6 +16,8 @@
 
 还需要发现接口时再声明 `api.list` 或 `api.get`。绘图服务当前分支要求 MaiBot ≥1.3.6、SDK ≥2.12.0、Python ≥3.12 和配套 Dashboard。
 
+管理员可在工作台通用配置中开启默认关闭的 `general.sync_generated_images_to_history`。开启后，仅成功投递到真实 `stream_id` 的生成图会由 Host 同步到当前 MaiSaka 历史；不指定会话的任务只生成结果。此选项可能增加视觉上下文和后台识图开销，且依赖对应会话的活动 MaiSaka 运行时。API 的 `delivery.status="sent"` 仅确认投递，不确认 Planner 已读取图片；同步失败或投递回执未知都不能成为重复发送的依据。详见[配置说明](configuration.md#生成图片与会话历史)。
+
 正式 **`DrawingClient` 随插件 2.0.0 提供**，可整体复制 [clients/maimai_drawing_client](../clients/maimai_drawing_client)，仅依赖标准库。安装到调用插件的 `vendor/` 后：
 
 ```python

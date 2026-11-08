@@ -151,6 +151,9 @@ _FIELD_LABELS: Dict[str, Tuple[str, str, str]] = {
         "중국 제공자 프록시 우회",
     ),
     "command_reply_mode": ("Command Reply Mode", "コマンド応答モード", "명령 응답 모드"),
+    "sync_generated_images_to_history": (
+        "Sync Generated Images to Chat History", "生成画像を会話履歴に同期", "생성 이미지를 대화 기록에 동기화",
+    ),
     "config_version": ("Configuration Version", "設定バージョン", "설정 버전"),
     "custom_models": ("Custom Models", "カスタムモデル", "사용자 지정 모델"),
     "default_artist_tags": ("Default Artist Tags", "既定のアーティストタグ", "기본 아티스트 태그"),
@@ -445,6 +448,11 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "GeneralConfig.sync_generated_images_to_history": (
+        "Off by default. After successful delivery, let a visual Planner view generated images; a text Planner uses image descriptions. May increase visual context and background recognition costs. Tasks without chat delivery and command reply cards are unaffected.",
+        "既定は無効です。送信成功後、視覚 Planner は生成画像を参照でき、テキスト Planner は画像説明を使用します。視覚コンテキストとバックグラウンド画像認識のコストが増える場合があります。会話に送信しないタスクとコマンド応答カードには適用しません。",
+        "기본적으로 꺼져 있습니다. 전송 성공 후 시각 Planner는 생성 이미지를 볼 수 있고 텍스트 Planner는 이미지 설명을 사용합니다. 시각 컨텍스트 및 백그라운드 이미지 인식 비용이 늘어날 수 있습니다. 대화로 전송하지 않는 작업과 명령 응답 카드에는 적용하지 않습니다.",
+    ),
     "StyleConfig.default_style": (
         "Automatically applied when AI tools, ordinary drawing commands, the workspace or plugin APIs omit a style. Select an enabled preset. Leave blank to disable automatic styling; explicitly choose no style to skip it for one request.",
         "AI ツール、通常の描画コマンド、ワークスペース、プラグイン API でスタイル未指定の場合に自動適用します。有効なプリセットを選択してください。空欄は自動適用なしで、明示的にスタイルなしを選べば今回だけ省略できます。",

@@ -229,6 +229,11 @@ class WorkspaceService:
             review["image_review_enabled"], review["image_review_model"],
             review["image_review_timeout_seconds"], review["image_review_retry_count"],
         )
+        if current["general"]["sync_generated_images_to_history"] != review["sync_generated_images_to_history"]:
+            self.ctx.logger.info(
+                "生成图片历史同步设置已保存: revision=%s runtime_refresh_pending=%s enabled=%s",
+                self.store.revision, self.runtime_refresh_pending, review["sync_generated_images_to_history"],
+            )
         return status
 
     async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
