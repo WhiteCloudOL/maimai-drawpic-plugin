@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "id": "maimai-drawpic-plugin",
   "plugin_type": "creative",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "name": "麦麦绘图",
   "description": "让麦麦拥有绘图能力，提供LLM工具、命令调用、在线WebUI，支持多平台多实例、文生图与图生图、模型与风格管理、任务追踪及插件联动",
   "author": {
