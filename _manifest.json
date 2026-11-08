@@ -22,7 +22,7 @@
   },
   "sdk": {
     "min_version": "2.12.0",
-    "max_version": "2.21.0"
+    "max_version": "2.22.1"
   },
   "dependencies": [
 	{"type": "python_package", "name": "aiohttp", "version_spec": ">=3.9.0"},
