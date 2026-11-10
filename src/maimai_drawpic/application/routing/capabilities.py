@@ -7,6 +7,7 @@ from ...domain.models.aliyun_profiles import (
     supports_aliyun_negative_prompt,
 )
 from ...domain.models.rinkoai_profiles import RINKOAI_EDIT_UNSUPPORTED_REASON, is_rinkoai_nai_model
+from ...domain.models.minimax_profiles import MINIMAX_MODELS, build_minimax_payload, max_reference_images
 from ...infrastructure.providers.gemini import GoogleImage
 from ...infrastructure.providers.siliconflow import SiliconFlowImage
 from ...infrastructure.providers.volcengine import VolcengineImage
@@ -68,6 +69,9 @@ class TaskCapabilityMixin:
 
         if self.get_model_provider(model) == "comfyui":
             self.create_comfyui_provider().validate_task_configuration(task_type)
+        elif self.get_model_provider(model) == "minimax":
+            provider = self.create_minimax_provider()
+            build_minimax_payload(provider.values, "配置校验", model, edit=task_type == "edit_image")
 
     def supports_image_edit(self, model: str) -> bool:
         """判断模型是否支持图生图编辑。"""
@@ -93,6 +97,8 @@ class TaskCapabilityMixin:
         """人工名单优先，并结合平台与模型注册表判断任务能力。"""
 
         normalized_model = model.strip()
+        if self.get_model_provider(normalized_model) == "minimax" and normalized_model not in MINIMAX_MODELS:
+            return ModelTaskCapability(False, "当前未接入此 MiniMax 图片模型，请选择官方已支持的 H3/image-01 模型", "minimax_registry")
         if not normalized_model:
             return ModelTaskCapability(
                 allowed=False,
@@ -226,6 +232,8 @@ class TaskCapabilityMixin:
         """返回模型已知的参考图上限；None 表示注册表未声明。"""
         provider = self.get_model_provider(model)
         maximum = None
+        if provider == "minimax":
+            maximum = max_reference_images(model)
         if provider in {"novelai", "comfyui"}:
             maximum = 1
         elif provider == "siliconflow":

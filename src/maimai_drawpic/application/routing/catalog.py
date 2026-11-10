@@ -158,6 +158,9 @@ class ModelCatalogMixin:
             return []
         return [model.strip() for model in self.config.zhipu.models if model.strip()]
 
+    def get_minimax_models(self) -> list[str]:
+        return [model.strip() for model in self.config.minimax.models if model.strip()] if self.config.minimax.enabled else []
+
     def get_volcengine_models(self) -> list[str]:
         """获取火山引擎单一模型列表。"""
 
@@ -195,6 +198,7 @@ class ModelCatalogMixin:
             + self.get_openai_models()
             + self.get_google_models()
             + self.get_zhipu_models()
+            + self.get_minimax_models()
             + self.get_volcengine_models()
             + self.get_siliconflow_models()
             + self.get_novelai_models()
@@ -220,6 +224,8 @@ class ModelCatalogMixin:
             return "google"
         if normalized_model in self.get_zhipu_models():
             return "zhipu"
+        if normalized_model in self.get_minimax_models():
+            return "minimax"
         if normalized_model in self.get_volcengine_models():
             return "volcengine"
         if normalized_model in self.get_siliconflow_models():

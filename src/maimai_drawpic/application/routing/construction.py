@@ -1,5 +1,6 @@
 from copy import deepcopy
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 from ...domain.styles import deduplicate_negative_prompt
 from ...paths import PLUGIN_DIR
@@ -12,6 +13,7 @@ from ...infrastructure.providers.openai import OpenaiImage
 from ...infrastructure.providers.siliconflow import SiliconFlowImage
 from ...infrastructure.providers.volcengine import VolcengineImage
 from ...infrastructure.providers.zhipu import ZhipuImage
+from ...infrastructure.providers.minimax import MiniMaxImage
 from ...domain.configuration.models import OpenAICompatibilityMode
 from ...infrastructure.http import HttpProxySettings
 from ...domain.parameters import (
@@ -69,7 +71,10 @@ class ProviderConstructionMixin:
         proxy_config = self.config.proxy
         if not proxy_config.enabled:
             return HttpProxySettings.disabled()
-        if proxy_config.bypass_china_providers and provider_name in _DOMESTIC_PROXY_BYPASS_PROVIDERS:
+        domestic = provider_name in _DOMESTIC_PROXY_BYPASS_PROVIDERS
+        if provider_name == "minimax":
+            domestic = urlsplit(self.config.minimax.base_url).hostname in {"api.minimax.cn", "api.minimaxi.com"}
+        if proxy_config.bypass_china_providers and domestic:
             return HttpProxySettings.disabled()
         return HttpProxySettings(
             enabled=True,
@@ -212,6 +217,16 @@ class ProviderConstructionMixin:
                 parse_key_value_options(self.config.zhipu.extra_parameters)
             ),
             proxy_settings=self._get_proxy_settings("zhipu"),
+            skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
+        )
+
+    def create_minimax_provider(self) -> MiniMaxImage:
+        values = self.config.minimax.model_dump(mode="json")
+        values["model_size_overrides"] = parse_model_value_overrides(values["model_size_overrides"])
+        values["extra_parameters"] = without_negative_prompt_options(parse_key_value_options(values["extra_parameters"]))
+        return MiniMaxImage(
+            api_key=self.config.minimax.api_key, values=values, logger=self.logger,
+            proxy_settings=self._get_proxy_settings("minimax"),
             skip_image_url_ip_check=self.config.general.skip_image_url_ip_check,
         )
 
@@ -413,6 +428,8 @@ class ProviderConstructionMixin:
             )
         elif provider_type == "zhipu":
             provider = self.create_zhipu_provider()
+        elif provider_type == "minimax":
+            provider = self.create_minimax_provider()
         elif provider_type == "volcengine":
             provider = self.create_volcengine_provider()
         elif provider_type == "siliconflow":

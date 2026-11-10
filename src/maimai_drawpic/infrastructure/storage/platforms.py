@@ -36,6 +36,7 @@ PLATFORM_NAMES = {
     "volcengine": "火山引擎",
     "siliconflow": "硅基流动",
     "zhipu": "智谱",
+    "minimax": "MiniMax",
     "novelai": "NovelAI / NovelAPI",
     "agnes": "Agnes AI",
     "comfyui": "ComfyUI",

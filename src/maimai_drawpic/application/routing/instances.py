@@ -97,6 +97,9 @@ class InstanceProviderRouter(ProviderRouter):
     def get_zhipu_models(self) -> List[str]:
         return self._models("zhipu")
 
+    def get_minimax_models(self) -> List[str]:
+        return self._models("minimax")
+
     def get_aliyun_models(self) -> List[str]:
         return self._models("aliyun")
 

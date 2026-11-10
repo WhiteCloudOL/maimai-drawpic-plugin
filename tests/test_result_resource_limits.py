@@ -109,6 +109,9 @@ def test_pixels_rejected_before_preview_decode(monkeypatch, size):
 def test_4k_dimensions_and_total_pixel_gate(monkeypatch):
     assert media.check_image_dimensions(SimpleNamespace(size=(4096,4096))) == 16777216
     assert media.check_image_dimensions(SimpleNamespace(size=(8192,2048))) == 16777216
+    assert media.check_image_dimensions(SimpleNamespace(size=(5000,4000))) == 20000000
+    with pytest.raises(ValueError, match='像素'):
+        media.check_image_dimensions(SimpleNamespace(size=(5000,4001)))
     monkeypatch.setattr(collection, 'MAX_RESULT_PIXELS', 640 * 400)
     with pytest.raises(errors.ProviderResultError):
         collection.validate_result_images([image_bytes(), image_bytes()])

@@ -108,6 +108,8 @@ class ProviderRouter(ProviderConstructionMixin, ModelCatalogMixin, TaskCapabilit
             return self.config.google.rewrite_prompt_to_english
         if normalized_provider == "zhipu":
             return self.config.zhipu.rewrite_prompt_to_english
+        if normalized_provider == "minimax":
+            return self.config.minimax.rewrite_prompt_to_english
         if normalized_provider == "volcengine":
             return self.config.volcengine.rewrite_prompt_to_english
         if normalized_provider == "siliconflow":

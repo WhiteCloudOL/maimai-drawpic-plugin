@@ -4,8 +4,8 @@ from PIL import Image as PILImage
 from io import BytesIO
 
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
-# Allow square 4K and panoramic model output without permitting arbitrary rasters.
-MAX_IMAGE_PIXELS = 4096 * 4096
+# MiniMax H3 permits 20 MP, including 4K ratios slightly above a square 4096 raster.
+MAX_IMAGE_PIXELS = 20_000_000
 MAX_IMAGE_DIMENSION = 8192
 
 
@@ -13,7 +13,7 @@ def check_image_dimensions(image) -> int:
     width, height = image.size
     if (width <= 0 or height <= 0 or max(width, height) > MAX_IMAGE_DIMENSION
             or width * height > MAX_IMAGE_PIXELS):
-        raise ValueError("图片像素超过限制：最长边 8192，单张最多 16777216 像素")
+        raise ValueError("图片像素超过限制：最长边 8192，单张最多 20000000 像素")
     return width * height
 
 

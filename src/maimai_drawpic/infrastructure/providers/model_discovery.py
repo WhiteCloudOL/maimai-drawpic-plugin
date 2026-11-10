@@ -12,6 +12,7 @@ from ...domain.models.discovery import is_image_candidate, is_supported_aliyun_i
 
 DISCOVERY_KINDS = frozenset({"openai", "agnes", "google", "aliyun", "siliconflow", "volcengine"})
 DISCOVERY_HINTS = {
+    "minimax": "MiniMax 模型接口当前只返回文本模型；图片模型请从官方文档预设添加或手动填写。",
     "zhipu": "当前未接入智谱的官方模型发现接口，请手动添加模型。",
     "novelai": "NovelAI 未公开绘图模型目录接口，可从预设添加或直接输入模型 ID。",
     "comfyui": "ComfyUI 使用本地 API 工作流，不将 checkpoint 列表作为绘图模型导入。",

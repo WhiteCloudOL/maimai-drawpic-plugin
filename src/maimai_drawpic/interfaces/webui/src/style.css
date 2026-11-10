@@ -1260,13 +1260,11 @@ textarea {
   max-width: 360px;
   margin: 0 auto 20px;
 }
-.save-label-short {
-  display: none;
-}
 .settings-layout {
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
   gap: 20px;
+  align-items: start;
 }
 .page-actions {
   display: flex;
@@ -1274,22 +1272,94 @@ textarea {
   flex-shrink: 0;
   gap: 8px;
 }
+.page-actions > .button > [data-icon] {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+}
+.page-actions > .button > [data-icon] > svg {
+  display: block;
+}
 .page-header > div:first-child {
   min-width: 0;
-}
-@media (max-width: 640px) {
-  .page-actions .unsaved {
-    font-size: 0;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-  }
 }
 .settings-tabs {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+#settings-heading {
+  scroll-margin-top: 24px;
+}
+.shell:has(.settings-layout) main {
+  padding-right: 208px;
+}
+.shell:has(.settings-layout) .page-actions {
+  position: fixed;
+  right: 24px;
+  bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  width: 52px;
+  flex-direction: column;
+  gap: 18px;
+  z-index: 4;
+}
+.shell:has(.settings-layout) .page-actions > .button {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  min-height: 52px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+  box-shadow: 0 6px 20px #34232520;
+}
+.shell:has(.settings-layout) .page-actions .action-tag {
+  display: block;
+  opacity: 0;
+  visibility: hidden;
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 10px);
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+}
+.shell:has(.settings-layout) .page-actions > .button:focus-visible .action-tag {
+  opacity: 1;
+  visibility: visible;
+}
+@media (hover: hover) and (pointer: fine) {
+  .shell:has(.settings-layout) .page-actions > .button:hover .action-tag {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+.shell:has(.settings-layout) .page-actions .unsaved {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  max-width: 180px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  text-align: center;
+  white-space: nowrap;
 }
 .settings-tab {
   padding: 12px 16px;
@@ -1392,6 +1462,42 @@ dialog::backdrop {
 }
 .provider-footer .button {
   min-height: 44px;
+}
+#modal[open]:has(#provider-form) {
+  display: flex;
+  flex-direction: column;
+  max-height: 90dvh;
+  overflow: hidden;
+}
+#modal:has(#provider-form) > .modal-header {
+  flex-shrink: 0;
+  position: static;
+}
+#modal-content:has(> #provider-form) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+#provider-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.provider-form-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 16px;
+  padding: 24px;
+}
+#provider-form > .provider-footer {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 16px 24px;
+  background: var(--surface);
 }
 .detail-image {
   width: 100%;
@@ -1582,12 +1688,8 @@ dialog::backdrop {
     font-size: 8px;
     letter-spacing: 1.6px;
   }
-  #refresh > span:last-child,
-  #save-settings .save-label-full {
+  #refresh > span:last-child {
     display: none;
-  }
-  #save-settings .save-label-short {
-    display: inline;
   }
   .studio-grid,
   .card-grid,
@@ -1626,14 +1728,15 @@ dialog::backdrop {
   }
   .settings-tabs {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     overflow: visible;
   }
   .settings-tab {
     white-space: nowrap;
     min-height: 44px;
     text-align: center;
-    padding: 9px 12px;
+    padding: 9px 4px;
+    font-size: 12px;
   }
   .catalog-grid {
     grid-template-columns: 1fr;
@@ -1917,6 +2020,107 @@ dialog::backdrop {
   }
   .provider-footer-actions > .button {
     flex: 1;
+  }
+  .provider-form-body {
+    padding: 18px;
+  }
+  #provider-form > .provider-footer {
+    padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+    gap: 10px;
+  }
+}
+
+@media (max-width: 860px) {
+  body:has(.settings-layout) {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .shell:has(.settings-layout) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+  }
+  .shell:has(.settings-layout) .sidebar {
+    flex-shrink: 0;
+  }
+  .shell:has(.settings-layout) main {
+    flex: 1;
+    min-height: 0;
+    align-self: stretch;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 24px;
+    margin-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+    scrollbar-gutter: stable;
+  }
+  .settings-tabs {
+    max-height: calc(100dvh - 250px);
+  }
+  .shell:has(.settings-layout) .page-actions {
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: calc(104px + env(safe-area-inset-bottom, 0px));
+    padding: 40px 36px calc(12px + env(safe-area-inset-bottom, 0px));
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: flex-end;
+    gap: 64px;
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .shell:has(.settings-layout) .page-actions > .button {
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    min-height: 48px;
+  }
+  .shell:has(.settings-layout) .page-actions .action-tag {
+    top: auto;
+    bottom: calc(100% + 8px);
+    right: 50%;
+    transform: translateX(50%);
+  }
+  .shell:has(.settings-layout) .page-actions .unsaved {
+    left: 12px;
+    right: auto;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    max-width: 80px;
+    font-size: 11px;
+    white-space: normal;
+  }
+  body:has(.settings-layout) #toast {
+    bottom: calc(116px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (max-width: 640px) {
+  .shell:has(.settings-layout) main {
+    padding-right: 16px;
+  }
+  .settings-tabs {
+    top: 0;
+    z-index: 3;
+    padding: 8px 0;
+    max-height: none;
+    overflow: visible;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  #settings-heading,
+  #settings-form input,
+  #settings-form textarea,
+  #settings-form select {
+    scroll-margin-top: 96px;
+  }
+}
+@media (max-width: 860px) and (max-height: 560px) {
+  .shell:has(.settings-layout) .sidebar {
+    padding: 8px 12px;
+    gap: 0;
+  }
+  .shell:has(.settings-layout) .brand {
+    display: none;
   }
 }
 

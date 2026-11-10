@@ -40,6 +40,11 @@
     vlm: "视觉任务组",
   };
   const presets = {
+    minimax: {
+      area: ["", "1K", "2K", "4K"],
+      aspect_ratio: ["", "auto", "1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"],
+      style_type: ["", "漫画", "元气", "中世纪", "水彩"],
+    },
     openai: {
       quality: ["", "auto", "low", "medium", "high", "standard", "hd"],
       response_format: ["", "b64_json", "url"],

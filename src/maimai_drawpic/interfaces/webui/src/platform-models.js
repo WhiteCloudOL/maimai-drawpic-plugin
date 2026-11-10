@@ -188,7 +188,7 @@
         button.className = "button secondary compact";
         button.innerHTML = catalog.model_discovery
           ? `${icon("refresh")}从接口获取模型`
-          : `${icon("plus")}从预设添加模型`;
+          : `${icon("plus")}从官方预设添加`;
         button.onclick = () => picker(form, { kind, record, catalog, clearApiKey });
         toolbar.append(button);
       } else {

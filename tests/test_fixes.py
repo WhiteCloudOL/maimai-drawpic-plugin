@@ -486,7 +486,7 @@ def test_style_descriptions_are_structured_and_backward_compatible() -> None:
 
     legacy_preset = StylePresetConfig(name="旧风格")
     assert legacy_preset.description == ""
-    assert DrawpicConfig().plugin.config_version == "2.44.0"
+    assert DrawpicConfig().plugin.config_version == "2.45.0"
 
     resolver = StylePromptResolver(
         StyleConfig(
@@ -1221,6 +1221,10 @@ def test_provider_router_openai_routes_cache() -> None:
             enabled = False
             models: list[str] = []
 
+        class minimax:
+            enabled = False
+            models: list[str] = []
+
         class volcengine:
             enabled = False
             models: list[str] = []
@@ -1290,6 +1294,10 @@ def test_provider_router_fallback_model_resolution() -> None:
             models: list[str] = []
 
         class zhipu:
+            enabled = False
+            models: list[str] = []
+
+        class minimax:
             enabled = False
             models: list[str] = []
 

@@ -20,6 +20,7 @@
     upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
+    save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/>',
     close: '<path d="m6 6 12 12M6 18 18 6"/>',
     download: '<path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/>',
     eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',

@@ -91,6 +91,7 @@ def test_all_config_classes_have_section_i18n() -> None:
         "OpenAIModelConfig",
         "GoogleModelConfig",
         "ZhipuModelConfig",
+        "MiniMaxModelConfig",
         "AliyunModelConfig",
         "VolcengineModelConfig",
         "SiliconFlowModelConfig",

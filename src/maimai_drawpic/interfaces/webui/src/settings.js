@@ -52,7 +52,7 @@
     }
     for (const name of Object.keys(sections))
       renderSection(name, structuredClone(state.data.settings[sourceSection(name)]));
-    function activate(name) {
+    function activate(name, reveal = false) {
       selected = state.settingsSection = name;
       $("#settings-heading").textContent = sections[name];
       $("#settings-description").textContent =
@@ -62,7 +62,7 @@
             ? "分别设置提示词审核和生成图片审核，使用 MaiBot 配置的审核模型。切换分类保留草稿。"
           : name === "access"
             ? "分别设置群聊和私聊的访问规则。填写群号、QQ 号或 QQ 官方 OpenID，无需会话哈希；保存后对新的命令、AI 工具和指定会话的任务生效。"
-          : "切换分类会保留草稿，点击右上角“保存全部设置”统一保存。";
+          : "切换分类会保留草稿，点击右下角“保存全部设置”统一保存。";
       for (const tab of document.querySelectorAll("[data-section]")) {
         const active = tab.dataset.section === name;
         tab.classList.toggle("active", active);
@@ -71,10 +71,11 @@
       }
       for (const panel of form.children)
         panel.hidden = panel.dataset.settingsPanel !== name;
+      if (reveal) $("#settings-heading").scrollIntoView({ block: "start", behavior: "instant" });
     }
     const tabs = [...document.querySelectorAll("[data-section]")];
     for (const [index, tab] of tabs.entries()) {
-      tab.onclick = () => activate(tab.dataset.section);
+      tab.onclick = () => activate(tab.dataset.section, true);
       tab.onkeydown = (event) => {
         let target;
         if (["ArrowRight", "ArrowDown"].includes(event.key))
@@ -86,7 +87,7 @@
         else return;
         event.preventDefault();
         tabs[target].focus();
-        activate(tabs[target].dataset.section);
+        activate(tabs[target].dataset.section, true);
       };
     }
     const updateNotice = () => {

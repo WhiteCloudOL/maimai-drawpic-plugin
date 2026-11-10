@@ -8,6 +8,7 @@ from typing import Dict, Tuple, Type
 _LOCALES = ("en_US", "ja_JP", "ko_KR")
 
 _SECTION_TEXTS: Dict[str, Tuple[Tuple[str, str, str], Tuple[str, str, str]]] = {
+    "MiniMaxModelConfig": (("MiniMax Settings", "MiniMax 設定", "MiniMax 설정"), ("Official MiniMax image models.", "MiniMax 公式画像モデルの設定。", "MiniMax 공식 이미지 모델 설정.")),
     "AgnesModelConfig": (
         ("Agnes Settings", "Agnes 設定", "Agnes 설정"),
         ("Agnes image generation and editing.", "Agnes の画像生成・編集設定です。", "Agnes 이미지 생성 및 편집 설정입니다."),
@@ -346,6 +347,28 @@ _FIELD_LABELS: Dict[str, Tuple[str, str, str]] = {
 }
 
 _FIELD_LABEL_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "MiniMaxModelConfig.enabled": ("Enabled", "有効", "활성화"),
+    "MiniMaxModelConfig.api_key": ("API Key", "API キー", "API 키"),
+    "MiniMaxModelConfig.base_url": ("API Base URL", "API 基本 URL", "API 기본 URL"),
+    "MiniMaxModelConfig.models": ("Models", "モデル", "모델"),
+    "MiniMaxModelConfig.size": ("Output Size", "出力サイズ", "출력 크기"),
+    "MiniMaxModelConfig.model_size_overrides": ("Per-model Sizes", "モデル別サイズ", "모델별 크기"),
+    "MiniMaxModelConfig.aspect_ratio": ("Aspect Ratio", "アスペクト比", "화면 비율"),
+    "MiniMaxModelConfig.area": ("H3 Area", "H3 面積", "H3 면적"),
+    "MiniMaxModelConfig.n": ("Image Count", "生成枚数", "생성 수"),
+    "MiniMaxModelConfig.response_format": ("Response Format", "応答形式", "응답 형식"),
+    "MiniMaxModelConfig.output_format": ("H3 Output Format", "H3 出力形式", "H3 출력 형식"),
+    "MiniMaxModelConfig.output_compression": ("H3 Compression Quality", "H3 圧縮品質", "H3 압축 품질"),
+    "MiniMaxModelConfig.stream": ("H3 Streaming", "H3 ストリーミング", "H3 스트리밍"),
+    "MiniMaxModelConfig.disable_prompt_enhanced": ("Disable H3 Prompt Enhancement", "H3 プロンプト強化を無効化", "H3 프롬프트 강화 비활성화"),
+    "MiniMaxModelConfig.prompt_optimizer": ("image-01 Prompt Optimizer", "image-01 プロンプト最適化", "image-01 프롬프트 최적화"),
+    "MiniMaxModelConfig.seed": ("image-01 Seed", "image-01 シード", "image-01 시드"),
+    "MiniMaxModelConfig.style_type": ("image-01-live Style", "image-01-live スタイル", "image-01-live 스타일"),
+    "MiniMaxModelConfig.style_weight": ("image-01-live Style Weight", "image-01-live スタイル強度", "image-01-live 스타일 가중치"),
+    "MiniMaxModelConfig.aigc_watermark": ("Visible AIGC Watermark", "AIGC 可視透かし", "AIGC 표시 워터마크"),
+    "MiniMaxModelConfig.request_timeout_seconds": ("MiniMax Request Timeout", "MiniMax リクエスト制限時間", "MiniMax 요청 제한 시간"),
+    "MiniMaxModelConfig.extra_parameters": ("Extra Parameters", "追加パラメータ", "추가 매개변수"),
+    "MiniMaxModelConfig.rewrite_prompt_to_english": ("Rewrite Prompt in English", "英語プロンプトに変換", "영어 프롬프트로 변환"),
     "PluginSectionConfig.enabled": ("Enable Plugin", "プラグインを有効化", "플러그인 활성화"),
     "StylePresetConfig.enabled": ("Enable Preset", "プリセットを有効化", "프리셋 활성화"),
     "ProxyConfig.enabled": ("Enable Global Proxy", "共通プロキシを有効化", "전역 프록시 활성화"),
@@ -453,6 +476,28 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "MiniMaxModelConfig.enabled": ("Enabled. See the MiniMax model-specific limits in the platform guide.", "有効。モデルごとの制約はプラットフォームガイドを参照してください。", "활성화. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.api_key": ("API Key. See the MiniMax model-specific limits in the platform guide.", "API キー。モデルごとの制約はプラットフォームガイドを参照してください。", "API 키. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.base_url": ("API Base URL. See the MiniMax model-specific limits in the platform guide.", "API 基本 URL。モデルごとの制約はプラットフォームガイドを参照してください。", "API 기본 URL. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.models": ("Defaults to MiniMax-H3-Image. Add H3 Highspeed or image-01 variants from the documented presets; image-01 editing is character reference only.", "既定は MiniMax-H3-Image。公式プリセットから他の H3/image-01 を追加できます。image-01 の編集は人物参照です。", "기본 모델은 MiniMax-H3-Image입니다. 공식 문서 프리셋에서 다른 H3/image-01 모델을 추가하세요. image-01 편집은 인물 참조입니다."),
+    "MiniMaxModelConfig.size": ("auto or WIDTHxHEIGHT. H3 explicit dimensions cannot be combined with aspect_ratio/area. image-01 dimensions must be multiples of 8 in 512–2048; not supported by live.", "auto または 幅x高さ。H3 の固定サイズは比率・面積と併用不可。image-01 は 512～2048 の8の倍数、live は固定サイズ不可。", "auto 또는 너비x높이. H3 고정 크기는 비율/면적과 함께 사용할 수 없습니다. image-01은 512~2048 범위의 8의 배수이며 live에는 고정 크기를 지원하지 않습니다."),
+    "MiniMaxModelConfig.model_size_overrides": ("Per-model Sizes. See the MiniMax model-specific limits in the platform guide.", "モデル別サイズ。モデルごとの制約はプラットフォームガイドを参照してください。", "모델별 크기. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.aspect_ratio": ("Aspect Ratio. See the MiniMax model-specific limits in the platform guide.", "アスペクト比。モデルごとの制約はプラットフォームガイドを参照してください。", "화면 비율. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.area": ("H3 only, with size=auto. Leave blank for the server default of 4K; choose 1K/2K to reduce output area.", "H3 の size=auto のみ。空欄はサーバー既定の 4K。面積を抑えるには 1K/2K を選択します。", "H3의 size=auto에서만 사용합니다. 비우면 서버 기본 4K이며 면적을 줄이려면 1K/2K를 선택하세요."),
+    "MiniMaxModelConfig.n": ("H3: 1–10; image-01: 1–9. Partial success returns only successful images without regenerating failed items.", "H3 は1～10枚、image-01 は1～9枚。部分成功時は成功画像のみ返し、失敗分を再生成しません。", "H3는 1~10장, image-01은 1~9장입니다. 일부 성공 시 성공한 이미지만 반환하고 실패 이미지를 다시 생성하지 않습니다."),
+    "MiniMaxModelConfig.response_format": ("Response Format. See the MiniMax model-specific limits in the platform guide.", "応答形式。モデルごとの制約はプラットフォームガイドを参照してください。", "응답 형식. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.output_format": ("H3 Output Format. See the MiniMax model-specific limits in the platform guide.", "H3 出力形式。モデルごとの制約はプラットフォームガイドを参照してください。", "H3 출력 형식. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.output_compression": ("H3 Compression Quality. See the MiniMax model-specific limits in the platform guide.", "H3 圧縮品質。モデルごとの制約はプラットフォームガイドを参照してください。", "H3 압축 품질. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.stream": ("H3 only and URL responses only. Results are collected in image-index order; interrupted streams never resubmit generation.", "H3 の URL 応答のみ。画像番号順に収集し、ストリーム切断時も再生成しません。", "H3의 URL 응답에만 적용됩니다. 이미지 인덱스 순서로 수집하며 스트림 중단 시 다시 생성하지 않습니다."),
+    "MiniMaxModelConfig.disable_prompt_enhanced": ("H3 text-to-image only. Disabling enhancement requires explicit dimensions or a fixed ratio. Editing always uses enhancement.", "H3 文生図のみ。無効化時は固定サイズか比率が必須。画像編集は常に強化を使用します。", "H3 텍스트 이미지 생성에만 적용됩니다. 끄려면 고정 크기나 비율을 지정해야 하며 편집은 항상 강화를 사용합니다."),
+    "MiniMaxModelConfig.prompt_optimizer": ("image-01 Prompt Optimizer. See the MiniMax model-specific limits in the platform guide.", "image-01 プロンプト最適化。モデルごとの制約はプラットフォームガイドを参照してください。", "image-01 프롬프트 최적화. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.seed": ("image-01 only. -1 omits the parameter; zero is a valid seed. H3 does not declare a seed parameter.", "image-01 のみ。-1 は未送信、0 は有効です。H3 は seed 非対応です。", "image-01에만 사용합니다. -1이면 생략하며 0은 유효한 시드입니다. H3는 seed를 지원하지 않습니다."),
+    "MiniMaxModelConfig.style_type": ("image-01-live Style. See the MiniMax model-specific limits in the platform guide.", "image-01-live スタイル。モデルごとの制約はプラットフォームガイドを参照してください。", "image-01-live 스타일. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.style_weight": ("image-01-live Style Weight. See the MiniMax model-specific limits in the platform guide.", "image-01-live スタイル強度。モデルごとの制約はプラットフォームガイドを参照してください。", "image-01-live 스타일 가중치. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.aigc_watermark": ("Visible AIGC Watermark. See the MiniMax model-specific limits in the platform guide.", "AIGC 可視透かし。モデルごとの制約はプラットフォームガイドを参照してください。", "AIGC 표시 워터마크. 모델별 제한은 플랫폼 가이드를 참조하세요."),
+    "MiniMaxModelConfig.request_timeout_seconds": ("Instance timeout in seconds, default/minimum 600. MiniMax is non-idempotent: timeout and result-read failures never regenerate.", "インスタンスごとの秒数、既定・最小600秒。MiniMax は冪等でなく、タイムアウトや結果読込失敗時も再生成しません。", "인스턴스별 제한 시간(초)으로 기본/최솟값은 600입니다. MiniMax는 멱등하지 않으며 시간 초과나 결과 읽기 실패 시 다시 생성하지 않습니다."),
+    "MiniMaxModelConfig.extra_parameters": ("KEY=VALUE extensions. Cannot replace model, prompt or source images, or mix known H3/image-01 protocol fields.", "名前=値。モデル・プロンプト・元画像の上書きや H3/image-01 の異なるプロトコル項目の混在は禁止です。", "이름=값 형식의 확장입니다. 모델, 프롬프트, 원본 이미지를 덮어쓰거나 H3/image-01의 서로 다른 프로토콜 필드를 혼합할 수 없습니다."),
+    "MiniMaxModelConfig.rewrite_prompt_to_english": ("Rewrite Prompt in English. See the MiniMax model-specific limits in the platform guide.", "英語プロンプトに変換。モデルごとの制約はプラットフォームガイドを参照してください。", "영어 프롬프트로 변환. 모델별 제한은 플랫폼 가이드를 참조하세요."),
     "GeneralConfig.integration_api_enabled": (
         "On by default. Disable all public plugin integration APIs. Workspace, chat commands and AI tools remain available. Accepted tasks continue.",
         "既定は有効です。無効にすると公開連携 API を拒否します。ワークスペース、コマンド、AI ツールは使用可能で、受理済みタスクは継続します。",

@@ -26,7 +26,7 @@ function node(values = {}) {
     append(...nodes) { this.children.push(...nodes); },
     replaceWith() {},
     querySelectorAll() { return []; },
-    classList: { toggle() {} }, contains() { return false; }, focus() {}, ...values };
+    classList: { toggle() {} }, contains() { return false; }, focus() {}, scrollIntoView() {}, ...values };
 }
 function harness(file, extra = {}) {
   const nodes = new Map();
@@ -406,7 +406,7 @@ test('mode state, mobile save label and allowed animations stay explicit', () =>
   assert.match(studio, /id="mode-draw" aria-pressed="\$\{mode === "draw"\}"/);
   assert.match(studio, /id="mode-edit" aria-pressed="\$\{mode === "edit_image"\}"/);
   assert.doesNotMatch(studio, /duration: 190|translateY\(-5px\)/);
-  assert.match(read('index.html'), /class="save-label-short" aria-hidden="true">保存<\/span>/);
+  assert.match(read('index.html'), /class="action-tag" aria-hidden="true">保存全部设置<\/span>/);
 });
 
 // Use the actual production bridge queue: ordering bugs must not be tested with

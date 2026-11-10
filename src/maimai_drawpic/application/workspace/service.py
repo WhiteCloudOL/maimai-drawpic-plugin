@@ -5,6 +5,7 @@ import asyncio
 
 from ...domain.configuration.models import DrawpicConfig, StylePresetConfig
 from ...domain.models.novelai_catalog import NOVELAI_PRESET_HINT, NOVELAI_PRESET_MODELS
+from ...domain.models.minimax_profiles import MINIMAX_MODELS, MINIMAX_PRESET_HINT
 from ...infrastructure.storage.platforms import (
     PLATFORM_DEFAULT_NAMES,
     PLATFORM_NAMES,
@@ -130,8 +131,8 @@ class WorkspaceService:
                     "default_name": PLATFORM_DEFAULT_NAMES[key],
                     "model_discovery": key in DISCOVERY_KINDS,
                     "model_discovery_hint": DISCOVERY_HINTS.get(key, ""),
-                    "model_presets": list(NOVELAI_PRESET_MODELS) if key == "novelai" else [],
-                    "model_presets_hint": NOVELAI_PRESET_HINT if key == "novelai" else "",
+                    "model_presets": list(NOVELAI_PRESET_MODELS) if key == "novelai" else list(MINIMAX_MODELS) if key == "minimax" else [],
+                    "model_presets_hint": NOVELAI_PRESET_HINT if key == "novelai" else MINIMAX_PRESET_HINT if key == "minimax" else "",
                     "defaults": _mask_secrets(self.store.platform_model(key)().model_dump(mode="json")),
                 }
                 for key, name in PLATFORM_NAMES.items()

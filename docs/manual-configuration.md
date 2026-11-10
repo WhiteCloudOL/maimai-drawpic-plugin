@@ -116,6 +116,34 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 
 文件里的 `api_key` 是真实值：手动改成空字符串就会清空密钥。它不同于 WebUI 密钥框“留空保留”的交互规则。
 
+### MiniMax 实例示例
+
+在 `platforms.json` 的 `providers` 中添加平台时沿用已有记录的 ID 格式，实际操作推荐先通过工作台创建再编辑。以下仅展示 `config` 字段，密钥请自行填写，不使用任何共享测试密钥：
+
+```json
+{
+  "enabled": true,
+  "api_key": "填写自己的 MiniMax API Key",
+  "base_url": "https://api.minimax.cn/v1",
+  "models": ["MiniMax-H3-Image"],
+  "size": "auto",
+  "aspect_ratio": "",
+  "area": "1K",
+  "n": 1,
+  "response_format": "url",
+  "output_format": "jpeg",
+  "output_compression": 95,
+  "stream": false,
+  "disable_prompt_enhanced": false,
+  "aigc_watermark": false,
+  "request_timeout_seconds": 600,
+  "negative_prompt_enabled": false,
+  "extra_parameters": []
+}
+```
+
+此示例显式选择 1K；平台默认 `area` 为空，使用服务端默认 4K。H3、image-01 与 image-01-live 的字段差异、流式限制和其他参数见 [MiniMax 平台说明](platforms.md#minimax)。图片模型使用官方文档预设，不能通过仅返回文本模型的 `/v1/models` 获取。
+
 ## 通用与风格示例
 
 `workspace_settings.json` 顶层同时包含 `general` 和 `style`。以下是一份最小结构示例，未列出的通用字段沿用默认值：
