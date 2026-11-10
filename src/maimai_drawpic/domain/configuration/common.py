@@ -1,9 +1,10 @@
 """configuration/common.py 的强类型配置定义。"""
 
 from maibot_sdk import Field, PluginConfigBase
+from pydantic import field_validator
 from typing import List
 
-from .types import CommandReplyMode, ProxyScheme, QuotaPeriodMode, ReviewModelTask
+from .types import AccessListMode, CommandReplyMode, ProxyScheme, QuotaPeriodMode, ReviewModelTask
 
 
 class PluginSectionConfig(PluginConfigBase):
@@ -21,7 +22,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.43.0",
+        default="2.44.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -65,6 +66,64 @@ class GeneralConfig(PluginConfigBase):
 
     __ui_label__ = "通用配置"
     __ui_order__ = 1
+
+    integration_api_enabled: bool = Field(
+        default=True,
+        description="是否允许其他插件调用公开联动 API",
+        json_schema_extra={
+            "label": "插件联动 API",
+            "hint": "默认开启。关闭后拒绝其他插件调用所有公开绘图 API；工作台、聊天命令和 AI 工具仍可使用。已受理任务继续执行。",
+            "order": -1,
+        },
+    )
+    group_access_mode: AccessListMode = Field(
+        default="blacklist",
+        description="群聊访问规则：黑名单拒绝列表中的群聊，白名单仅允许列表中的群聊",
+        json_schema_extra={
+            "label": "群聊名单模式",
+            "hint": "默认黑名单，空列表允许所有群聊；白名单空列表禁止所有群聊。管理员同样受此规则限制。",
+            "order": 0,
+        },
+    )
+    group_access_ids: List[str] = Field(
+        default=[], max_length=2000,
+        description="群聊访问名单，填写群号或 QQ 官方群 OpenID",
+        json_schema_extra={
+            "label": "群聊名单",
+            "hint": "每项填写一个群号；QQ 官方适配器填写群 OpenID。无需填写 stream_id 或会话哈希，不填写群内成员 QQ 号。",
+            "order": 1,
+        },
+    )
+    private_access_mode: AccessListMode = Field(
+        default="blacklist",
+        description="私聊访问规则：黑名单拒绝列表中的用户，白名单仅允许列表中的用户",
+        json_schema_extra={
+            "label": "私聊名单模式",
+            "hint": "默认黑名单，空列表允许所有私聊；白名单空列表禁止所有私聊。只影响私聊，不限制该用户在群聊中使用。",
+            "order": 2,
+        },
+    )
+    private_access_ids: List[str] = Field(
+        default=[], max_length=2000,
+        description="私聊访问名单，填写 QQ 号或 QQ 官方用户 OpenID",
+        json_schema_extra={
+            "label": "私聊名单",
+            "hint": "每项填写一个 QQ 号；QQ 官方适配器填写用户 OpenID。无需填写 stream_id 或会话哈希，OpenID 按原样匹配。",
+            "order": 3,
+        },
+    )
+
+    @field_validator("group_access_ids", "private_access_ids")
+    @classmethod
+    def normalize_access_ids(cls, values: List[str]) -> List[str]:
+        result: List[str] = []
+        for value in values:
+            identifier = value.strip()
+            if not identifier or len(identifier) > 200 or any(char.isspace() for char in identifier):
+                raise ValueError("名单项应为 1～200 个字符的群号、QQ 号或 OpenID，不能包含空白字符")
+            if identifier not in result:
+                result.append(identifier)
+        return result
 
     default_model: str = Field(
         default="",

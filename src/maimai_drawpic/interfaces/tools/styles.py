@@ -3,6 +3,8 @@
 from maibot_sdk import Tool
 from typing import Any
 
+from ...application.access import ChatAccessDenied
+from ..chat.access import chat_access_endpoint
 from ..chat.message_images import (
     SourceImageInput,
     collect_command_source_image_inputs,
@@ -25,6 +27,7 @@ class StyleToolMixin:
         ),
         parameters=DRAW_STYLES_TOOL_PARAMETERS_SCHEMA,
     )
+    @chat_access_endpoint
     async def handle_draw_styles(self, **kwargs: Any) -> dict[str, Any]:
         """向模型提供配置热重载后的最新风格名称与描述。"""
 
@@ -56,6 +59,7 @@ class StyleToolMixin:
         ),
         parameters=STYLED_DRAW_TOOL_PARAMETERS_SCHEMA,
     )
+    @chat_access_endpoint
     async def handle_styled_draw(
         self,
         prompt: str = "",
@@ -133,6 +137,8 @@ class StyleToolMixin:
                 platform_name=runtime_context["platform"],
                 notify_start=True,
             )
+        except ChatAccessDenied:
+            raise
         except Exception as exc:
             reason = outward_error(self, exc)
             self.ctx.logger.error("启动风格化绘图失败: %s", exc, exc_info=True)

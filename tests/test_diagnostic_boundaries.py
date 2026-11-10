@@ -51,7 +51,7 @@ def test_pre_admission_errors_are_safe_in_tools_and_chat(method, error_type, not
         def __init__(self):
             self._redactor = redactor
             self.ctx = SimpleNamespace(logger=logging.Logger('tool-test'))
-            self.config = SimpleNamespace(general=SimpleNamespace(failure_reason_enabled=notify))
+            self.config = SimpleNamespace(general=module('domain.configuration.models').GeneralConfig(failure_reason_enabled=notify))
             self.sent = []
         def _extract_invocation_context(self, **kwargs):
             return dict(stream_id='mock', user_id='mock', group_id='', platform='mock')

@@ -17,6 +17,7 @@ from ...domain.styles import StylePromptResolver
 from ...infrastructure.storage.tasks import DrawTaskStore
 from ...domain.task_errors import TaskRequestError, task_error
 from ..drawing.admission import update_task_owned
+from ..access import access_restricted, require_chat_access, require_integration_api
 from .preferences import validate_preferences
 
 
@@ -141,6 +142,8 @@ class WorkspaceTaskService:
         novelai_artist_tags: str | None = None,
         require_existing_stream: bool = False,
     ) -> Dict[str, Any]:
+        if origin == "plugin":
+            require_integration_api(self.get_config().general, self.ctx.logger, "submit")
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 16000:
             raise ValueError("提示词应为 1～16000 个字符")
         if not all(
@@ -162,6 +165,12 @@ class WorkspaceTaskService:
             raise ValueError("源图片参数必须为列表")
         if len(source_ids or []) + len(source_images or []) > 8:
             raise ValueError("最多提供 8 张源图")
+        context = {}
+        if stream_id and access_restricted(self.get_config().general):
+            context = await self.get_service().stream_service.existing_stream_context(stream_id)
+            if not context:
+                raise TaskRequestError("STREAM_UNAVAILABLE", "必须提供当前实例中已存在的真实聊天流 ID")
+            require_chat_access(self.get_config().general, context, self.ctx.logger)
         options = {"openai_compatibility_mode": openai_compatibility_mode, "novelai_mode": novelai_mode}
         if novelai_artist_tags is not None:
             options["novelai_artist_tags"] = novelai_artist_tags
@@ -179,6 +188,10 @@ class WorkspaceTaskService:
             ).hexdigest()
         )
         async with self.lock:
+            if origin == "plugin":
+                require_integration_api(self.get_config().general, self.ctx.logger, "submit")
+            if context:
+                require_chat_access(self.get_config().general, context, self.ctx.logger)
             retained = await asyncio.to_thread(self.task_store.retained_task_ids)
             self.metadata = {key: value for key, value in self.metadata.items() if key in retained}
             if request_id:
@@ -223,12 +236,16 @@ class WorkspaceTaskService:
                 "prompt": prompt,
                 "style": style,
             }
+            if origin == "plugin":
+                require_integration_api(self.get_config().general, self.ctx.logger, "submit")
+            if context:
+                require_chat_access(self.get_config().general, context, self.ctx.logger)
             if stream_id:
-                context = {}
-                if require_existing_stream:
+                if require_existing_stream and not context:
                     context = await service.stream_service.existing_stream_context(stream_id)
                     if not context:
                         raise TaskRequestError("STREAM_UNAVAILABLE", "必须提供当前实例中已存在的真实聊天流 ID")
+                    require_chat_access(self.get_config().general, context, self.ctx.logger)
                 result = await self.submit_chat(
                     prompt=resolved_style.positive_prompt,
                     stream_id=stream_id,

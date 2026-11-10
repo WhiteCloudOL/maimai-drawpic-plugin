@@ -4,6 +4,7 @@ from maibot_sdk import HookHandler
 from maibot_sdk.types import HookMode
 from typing import Any
 
+from ..application.access import ChatAccessDenied, require_chat_access
 from .chat.message_images import cache_source_image_from_message
 
 
@@ -46,7 +47,8 @@ class HookMixin:
             platform=context["platform"],
         )
         action = "abort" if intercept_message_level else "continue"
-        self.ctx.logger.info(
+        log = self.ctx.logger.info if success else self.ctx.logger.debug
+        log(
             "已通过兜底 Hook 处理绘图命令: success=%s response=%s intercept=%s",
             success,
             response,
@@ -77,6 +79,12 @@ class HookMixin:
 
         resolved_stream_id = stream_id or self._resolve_stream_id_from_hook_message(message)
         if not resolved_stream_id:
+            return True, True, None, None, None
+
+        context = {**self._extract_message_context(message), "stream_id": resolved_stream_id}
+        try:
+            require_chat_access(self.config.general, context, self.ctx.logger)
+        except ChatAccessDenied:
             return True, True, None, None, None
 
         try:

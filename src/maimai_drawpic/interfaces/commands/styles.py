@@ -1,9 +1,9 @@
 """commands/styles.py 的插件组件。"""
 
-from ...infrastructure.observability.redaction import outward_error
-
 from typing import Any
 
+from ...application.access import ChatAccessDenied
+from ...infrastructure.observability.redaction import outward_error
 from ..chat.texts import build_style_reply_lines, build_style_text
 
 
@@ -66,6 +66,8 @@ class StyleCommandMixin:
                 platform_name=platform,
                 notify_start=True,
             )
+        except ChatAccessDenied:
+            raise
         except Exception as exc:
             self.ctx.logger.error("/绘图 风格命令启动失败: %s", exc, exc_info=True)
             await self._send_draw_failure_notice(

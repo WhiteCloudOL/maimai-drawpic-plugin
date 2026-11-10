@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 import asyncio
 
 from ..domain.task_errors import TaskRequestError
+from .access import require_chat_access, require_integration_api
 from .drawing.admission import wait_for_admission
 
 
@@ -35,6 +36,8 @@ class RequestMixin:
 
         draw_service = self._require_draw_service()
         with draw_service.submission_scope():
+            if submission and submission.get("origin") == "plugin":
+                require_integration_api(self.config.general, self.ctx.logger, "submit_chat")
             live_context = await draw_service.stream_service.resolve_live_stream_context(
                 stream_id=stream_id,
                 user_id=user_id,
@@ -53,6 +56,7 @@ class RequestMixin:
             resolved_user_id = runtime_context["user_id"]
             resolved_group_id = runtime_context["group_id"]
             resolved_platform = runtime_context["platform"]
+            require_chat_access(self.config.general, live_context, self.ctx.logger)
             normalized_source_images = source_image_bytes_list or []
             normalized_source_urls = source_image_urls or [""] * len(normalized_source_images)
             if len(normalized_source_urls) != len(normalized_source_images):
@@ -179,6 +183,9 @@ class RequestMixin:
                     await settle_quota(self._commit_draw_quota, reservation)
 
             try:
+                require_chat_access(self.config.general, live_context, self.ctx.logger)
+                if submission and submission.get("origin") == "plugin":
+                    require_integration_api(self.config.general, self.ctx.logger, "submit_chat")
                 return await draw_service.start_background_image_request(
                     prompt=prompt,
                     stream_id=resolved_stream_id,

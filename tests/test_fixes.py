@@ -26,7 +26,7 @@ if _PKG_NAME not in sys.modules:
     _pkg.__path__ = [str(_PLUGIN_DIR)]
     sys.modules[_PKG_NAME] = _pkg
 
-from maimai_drawpic_pkg.src.maimai_drawpic.domain.configuration.models import DrawpicConfig, NovelAIModelConfig, StyleConfig, StylePresetConfig  # noqa: E402
+from maimai_drawpic_pkg.src.maimai_drawpic.domain.configuration.models import DrawpicConfig, GeneralConfig, NovelAIModelConfig, StyleConfig, StylePresetConfig  # noqa: E402
 from maimai_drawpic_pkg.src.maimai_drawpic.infrastructure.http import read_response_bytes, read_response_json  # noqa: E402
 from maimai_drawpic_pkg.src.maimai_drawpic.infrastructure.media.images import detect_image_dimensions, detect_image_format, detect_mime_type  # noqa: E402
 from maimai_drawpic_pkg.src.maimai_drawpic.interfaces.chat.message_images import _SOURCE_IMAGE_CACHE, _SOURCE_IMAGE_CACHE_ORDER, _normalize_stream_ids, _remember_source_image, SourceImageInput, cache_source_image_from_message, collect_command_source_image_inputs, extract_all_image_base64_from_message, extract_source_images_from_message, find_all_cached_source_images, find_all_cached_source_image_inputs, find_source_image_inputs  # noqa: E402
@@ -486,7 +486,7 @@ def test_style_descriptions_are_structured_and_backward_compatible() -> None:
 
     legacy_preset = StylePresetConfig(name="旧风格")
     assert legacy_preset.description == ""
-    assert DrawpicConfig().plugin.config_version == "2.43.0"
+    assert DrawpicConfig().plugin.config_version == "2.44.0"
 
     resolver = StylePromptResolver(
         StyleConfig(
@@ -1472,7 +1472,7 @@ def _build_context_test_plugin():
     plugin = object.__new__(_ContextTestPlugin)
     plugin._test_ctx = types.SimpleNamespace(logger=_FakeLogger())
     plugin._test_config = types.SimpleNamespace(
-        general=types.SimpleNamespace(
+        general=GeneralConfig(
             failure_reason_enabled=True,
             permission_enabled=False,
             group_quota_enabled=False,

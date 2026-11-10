@@ -227,18 +227,18 @@ test('platform: a completed deletion cannot rerender a newer settings draft', as
 });
 async function settings() {
   let h;
-  const tabs = ['general', 'review', 'style'].map(section => node({ dataset: { section } }));
+  const tabs = ['general', 'review', 'access', 'style'].map(section => node({ dataset: { section } }));
   h = harness('settings', {
     forms: { html: () => '', bind: (panel, fields, values) => {
-      panel.values = structuredClone(values); return () => structuredClone(panel.values);
+      panel.fields = fields; panel.values = structuredClone(values); return () => structuredClone(panel.values);
     } },
     bootstrap: async () => {}, render: async () => {},
     submitForm: form => form.onsubmit(event),
   });
   h.U.state.data = { revision: 7,
-    schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {} } }, style: { fields: { presets: {} } } } },
-    settings: { general: { timeout: 150, prompt_review_enabled: false }, style: { presets: [] } },
-    defaults: { general: { timeout: 150, prompt_review_enabled: false }, style: { presets: [] } } };
+    schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {}, integration_api_enabled: {}, group_access_ids: {}, private_access_mode: {} } }, style: { fields: { presets: {} } } } },
+    settings: { general: { timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist' }, style: { presets: [] } },
+    defaults: { general: { timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist' }, style: { presets: [] } } };
   const form = h.get('#settings-form');
   form.querySelector = () => null;
   form.append = panel => form.children.push(panel);
@@ -250,19 +250,27 @@ async function settings() {
   await h.U.views.settings();
   return { ...h, form, tabs };
 }
-test('settings: all three category drafts survive switching and submit in one snapshot', async () => {
+test('settings: all four category drafts survive switching and submit in one snapshot', async () => {
   const h = await settings();
   h.form.children[0].values.timeout = 231;
   h.form.children[1].values.prompt_review_enabled = true;
-  h.form.children[2].values.presets.push({ name: 'draft', positive_prompt_template: '{prompt}' });
+  h.form.children[0].values.integration_api_enabled = false;
+  h.form.children[2].values.group_access_ids = ['123456'];
+  h.form.children[2].values.private_access_mode = 'whitelist';
+  h.form.children[3].values.presets.push({ name: 'draft', positive_prompt_template: '{prompt}' });
+  assert.deepEqual(Object.keys(h.form.children[0].fields), ['timeout', 'integration_api_enabled']);
+  assert.deepEqual(Object.keys(h.form.children[2].fields), ['group_access_ids', 'private_access_mode']);
   h.U.state.dirty = true;
-  h.tabs[1].onclick(); h.tabs[2].onclick(); h.tabs[0].onclick();
+  h.tabs[1].onclick(); h.tabs[2].onclick(); h.tabs[3].onclick(); h.tabs[0].onclick();
   assert.equal(h.form.children[0].values.timeout, 231);
   h.form.onsubmit(event); h.form.onsubmit(event);
   assert.equal(h.calls.length, 1); assert.equal(h.form.inert, true);
   const submitted = JSON.parse(h.calls[0].args.config_json);
   assert.equal(submitted.general.timeout, 231);
   assert.equal(submitted.general.prompt_review_enabled, true);
+  assert.equal(submitted.general.integration_api_enabled, false);
+  assert.deepEqual(submitted.general.group_access_ids, ['123456']);
+  assert.equal(submitted.general.private_access_mode, 'whitelist');
   assert.equal(submitted.style.presets[0].name, 'draft');
   h.calls[0].resolve({ saved: true }); await flush();
   assert.equal(h.U.state.dirty, false);
@@ -270,10 +278,10 @@ test('settings: all three category drafts survive switching and submit in one sn
 test('settings: failed saves retain both category drafts and allow editing', async () => {
   const h = await settings();
   h.form.children[0].values.timeout = 245;
-  h.form.children[2].values.presets.push({ name: 'keep' }); h.U.state.dirty = true;
+  h.form.children[3].values.presets.push({ name: 'keep' }); h.U.state.dirty = true;
   h.form.onsubmit(event); h.calls[0].reject(Error('revision conflict')); await flush();
   assert.equal(h.form.children[0].values.timeout, 245);
-  assert.equal(h.form.children[2].values.presets[0].name, 'keep');
+  assert.equal(h.form.children[3].values.presets[0].name, 'keep');
   assert.equal(h.U.state.dirty, true); assert.equal(h.form.inert, false);
   assert.equal(h.get('#reset-settings').disabled, false);
 });

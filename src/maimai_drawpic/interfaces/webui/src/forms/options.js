@@ -31,6 +31,8 @@
     weekly: "每周",
     monthly: "每月",
     once: "一次性",
+    blacklist: "黑名单",
+    whitelist: "白名单",
     base64: "直接传入图片数据",
     image_url: "使用原图链接",
     replyer: "回复任务组",
@@ -90,7 +92,7 @@
   };
   function label(value) {
     if (value === "") return labels[""];
-    if (["daily", "weekly", "monthly", "once"].includes(value)) return labels[value];
+    if (["daily", "weekly", "monthly", "once", "blacklist", "whitelist"].includes(value)) return labels[value];
     if (Object.hasOwn(labels, value)) return `${labels[value]} · ${value}`;
     const size = String(value).match(/^(\d+)[x*](\d+)$/);
     if (size)

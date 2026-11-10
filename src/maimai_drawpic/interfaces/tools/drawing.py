@@ -1,10 +1,11 @@
 """tools/drawing.py 的插件组件。"""
 
-from ...infrastructure.observability.redaction import outward_error
-
 from maibot_sdk import Tool
 from typing import Any
 
+from ...application.access import ChatAccessDenied
+from ...infrastructure.observability.redaction import outward_error
+from ..chat.access import chat_access_endpoint
 from ..chat.message_images import decode_image_base64, find_source_image_inputs
 from .schemas import DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA
 
@@ -20,6 +21,7 @@ class DrawingToolMixin:
         ),
         parameters=DRAW_TOOL_PARAMETERS_SCHEMA,
     )
+    @chat_access_endpoint
     async def handle_draw(
         self,
         prompt: str,
@@ -50,6 +52,8 @@ class DrawingToolMixin:
                 group_id=context["group_id"],
                 platform_name=context["platform"],
             )
+        except ChatAccessDenied:
+            raise
         except PermissionError as exc:
             reason = outward_error(self, exc)
             await self._send_invocation_failure_notice(reason=reason, kwargs=kwargs, user_id=user_id)
@@ -73,6 +77,7 @@ class DrawingToolMixin:
         ),
         parameters=EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA,
     )
+    @chat_access_endpoint
     async def handle_edit_image(
         self,
         prompt: str,
@@ -210,6 +215,8 @@ class DrawingToolMixin:
                 platform_name=platform_name,
                 notify_start=True,
             )
+        except ChatAccessDenied:
+            raise
         except PermissionError as exc:
             reason = outward_error(self, exc)
             await self._send_invocation_failure_notice(reason=reason, kwargs=kwargs, user_id=user_id)

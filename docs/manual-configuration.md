@@ -126,12 +126,17 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
   "revision": 1,
   "settings": {
     "general": {
+      "integration_api_enabled": true,
+      "group_access_mode": "blacklist",
+      "group_access_ids": [],
+      "private_access_mode": "blacklist",
+      "private_access_ids": [],
       "default_model": "",
       "fallback_models": [],
       "request_retry_count": 1,
       "request_timeout_seconds": 150,
       "skip_image_url_ip_check": false,
-        "sync_generated_images_to_history": false,
+      "sync_generated_images_to_history": false,
       "admin_user_ids": [],
       "prompt_review_enabled": false,
       "prompt_review_model": "vlm",
@@ -159,6 +164,10 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 ```
 
 常用字段：
+
+- `integration_api_enabled`：默认 `true`，关闭后拒绝所有公开插件联动 API，工作台和聊天入口仍可使用；已受理任务继续执行。
+- `group_access_mode`、`private_access_mode`：分别填 `blacklist`（默认）或 `whitelist`。空黑名单允许全部，空白名单禁止对应的群聊或私聊。
+- `group_access_ids`、`private_access_ids`：分别填写群号和 QQ 号的字符串列表，如 `["123456789"]`；QQ 官方适配器填写对应群/用户 OpenID。无需会话哈希，私聊名单不影响群内成员。[完整规则](configuration.md#插件联动与黑白名单)。
 
 - `sync_generated_images_to_history`：默认 `false`。开启后，成功投递到聊天的生成图通过 Host 同步到当前 MaiSaka 历史，视觉 Planner 可查看图片，文本 Planner 使用图片描述；可能增加视觉上下文与后台识图开销。未投递任务和命令回复卡片不请求同步，回执未知不重发。详见[同步范围与日志](configuration.md#生成图片与会话历史)。
 

@@ -1,11 +1,11 @@
 """commands/images.py 的插件组件。"""
 
-from ...infrastructure.observability.redaction import outward_error
-
 from typing import Any
 import asyncio
 import re
 
+from ...application.access import ChatAccessDenied
+from ...infrastructure.observability.redaction import outward_error
 from ..chat.message_images import SourceImageInput, collect_command_source_image_inputs, decode_image_base64
 
 
@@ -160,6 +160,8 @@ class ImageCommandMixin:
                 platform_name=platform,
                 notify_start=True,
             )
+        except ChatAccessDenied:
+            raise
         except PermissionError as exc:
             await self._send_command_reply(
                 title="绘图次数不足",

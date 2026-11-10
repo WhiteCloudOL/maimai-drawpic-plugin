@@ -2,9 +2,12 @@
   "use strict";
   const U = window.DrawpicUI,
     { state, $, call, buttonAction, toast } = U;
-  const sections = { general: "通用配置", review: "审核配置", style: "风格预设" };
-  const sourceSection = (name) => name === "review" ? "general" : name;
+  const sections = { general: "通用配置", review: "审核配置", access: "黑白名单", style: "风格预设" };
+  const sourceSection = (name) => ["review", "access"].includes(name) ? "general" : name;
   const reviewField = (key) => /^(prompt|image)_review_/.test(key);
+  const accessField = (key) => /^(group|private)_access_/.test(key);
+  const belongsToSection = (name, key) => name === "style" ||
+    (name === "review" ? reviewField(key) : name === "access" ? accessField(key) : !reviewField(key) && !accessField(key));
   U.views.settings = async () => {
     let selected = Object.hasOwn(sections, state.settingsSection)
       ? state.settingsSection
@@ -34,14 +37,14 @@
       panel.hidden = name !== selected;
       const fields = Object.fromEntries(
         Object.entries(state.data.schema.sections[sourceSection(name)].fields)
-          .filter(([key]) => name === "style" || reviewField(key) === (name === "review")),
+          .filter(([key]) => belongsToSection(name, key)),
       );
       panel.innerHTML = U.forms.html(fields, values);
       const old = $(`#${panel.id}`, form);
       if (old) old.replaceWith(panel);
       else form.append(panel);
       const read = U.forms.bind(panel, fields, values);
-      // 通用与审核共享持久化配置，只读取当前分类的字段，避免互相覆盖草稿。
+      // 通用、审核和黑白名单共享持久化配置，只读取当前分类的字段，避免覆盖其他分类草稿。
       readers[name] = () => {
         const result = read();
         return Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
@@ -54,9 +57,11 @@
       $("#settings-heading").textContent = sections[name];
       $("#settings-description").textContent =
         name === "style"
-          ? "把常用风格保存为提示词模板，三个分类的修改可一起保存。"
+          ? "把常用风格保存为提示词模板，各分类的修改可一起保存。"
           : name === "review"
             ? "分别设置提示词审核和生成图片审核，使用 MaiBot 配置的审核模型。切换分类保留草稿。"
+          : name === "access"
+            ? "分别设置群聊和私聊的访问规则。填写群号、QQ 号或 QQ 官方 OpenID，无需会话哈希；保存后对新的命令、AI 工具和指定会话的任务生效。"
           : "切换分类会保留草稿，点击右上角“保存全部设置”统一保存。";
       for (const tab of document.querySelectorAll("[data-section]")) {
         const active = tab.dataset.section === name;
@@ -119,7 +124,7 @@
       if (form.inert || requiresRefresh) return;
       buttonAction(save, async () => {
         const all = {
-          general: { ...state.data.settings.general, ...readers.general(), ...readers.review() },
+          general: { ...state.data.settings.general, ...readers.general(), ...readers.review(), ...readers.access() },
           style: readers.style(),
         };
         form.inert = true;

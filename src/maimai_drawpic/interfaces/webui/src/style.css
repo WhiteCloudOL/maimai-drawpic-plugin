@@ -1625,11 +1625,14 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
   .settings-tabs {
-    flex-direction: row;
-    overflow: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    overflow: visible;
   }
   .settings-tab {
     white-space: nowrap;
+    min-height: 44px;
+    text-align: center;
     padding: 9px 12px;
   }
   .catalog-grid {

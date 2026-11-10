@@ -3,6 +3,7 @@
 from maibot_sdk import Tool
 from typing import Any
 
+from ..chat.access import chat_access_endpoint
 from .schemas import DRAW_STATUS_TOOL_PARAMETERS_SCHEMA
 
 
@@ -14,6 +15,7 @@ class StatusToolMixin:
         description="查询最近一个绘图后台任务，或查询指定 task_id 的绘图任务状态",
         parameters=DRAW_STATUS_TOOL_PARAMETERS_SCHEMA,
     )
+    @chat_access_endpoint
     async def handle_draw_status(
         self,
         user_id: str = "",

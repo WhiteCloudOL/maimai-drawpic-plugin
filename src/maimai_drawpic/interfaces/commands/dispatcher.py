@@ -1,11 +1,12 @@
 """commands/dispatcher.py 的插件组件。"""
 
-from ...infrastructure.observability.redaction import outward_error
-
 from maibot_sdk import Command
 from typing import Any
 import asyncio
 
+from ...application.access import ChatAccessDenied
+from ...infrastructure.observability.redaction import outward_error
+from ..chat.access import chat_access_endpoint
 from ..chat.texts import (
     build_command_usage_text,
     build_compatible_mode_text,
@@ -65,6 +66,7 @@ class CommandMixin:
         return command_map.get(command_name.strip(), "")
 
     @Command("draw_command", description="绘图命令", pattern=r"^/(?:绘图|drawpic)(?:\s+(?P<content>[\s\S]+))?$")
+    @chat_access_endpoint
     async def handle_draw_command(
         self,
         stream_id: str = "",
@@ -370,6 +372,8 @@ class CommandMixin:
                     group_id=normalized_group_id,
                     platform_name=normalized_platform,
                 )
+            except ChatAccessDenied:
+                raise
             except Exception as exc:
                 self.ctx.logger.error("/绘图 文生图命令启动失败: %s", exc, exc_info=True)
                 await self._send_command_reply(

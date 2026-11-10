@@ -123,6 +123,11 @@ _SECTION_TEXTS: Dict[str, Tuple[Tuple[str, str, str], Tuple[str, str, str]]] = {
 }
 
 _FIELD_LABELS: Dict[str, Tuple[str, str, str]] = {
+    "integration_api_enabled": ("Plugin Integration API", "プラグイン連携 API", "플러그인 연동 API"),
+    "group_access_mode": ("Group List Mode", "グループ一覧モード", "그룹 목록 모드"),
+    "group_access_ids": ("Group Access List", "グループアクセス一覧", "그룹 접근 목록"),
+    "private_access_mode": ("Private Chat List Mode", "個人チャット一覧モード", "개인 대화 목록 모드"),
+    "private_access_ids": ("Private Chat Access List", "個人チャットアクセス一覧", "개인 대화 접근 목록"),
     "prompt_review_retry_count": ("Prompt Review Retries", "プロンプト審査の再試行回数", "프롬프트 검토 재시도 횟수"),
     "image_review_retry_count": ("Image Review Retries", "画像審査の再試行回数", "이미지 검토 재시도 횟수"),
     "prompt_review_model": ("Prompt Review Model", "プロンプト審査モデル", "프롬프트 검토 모델"),
@@ -448,6 +453,31 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "GeneralConfig.integration_api_enabled": (
+        "On by default. Disable all public plugin integration APIs. Workspace, chat commands and AI tools remain available. Accepted tasks continue.",
+        "既定は有効です。無効にすると公開連携 API を拒否します。ワークスペース、コマンド、AI ツールは使用可能で、受理済みタスクは継続します。",
+        "기본적으로 켜져 있습니다. 끄면 모든 공개 연동 API를 거부합니다. 작업 공간, 명령, AI 도구는 계속 사용할 수 있으며 접수된 작업도 계속 실행됩니다.",
+    ),
+    "GeneralConfig.group_access_mode": (
+        "Blacklist by default: an empty list allows all groups. An empty whitelist denies all groups. Administrators follow the same rules.",
+        "既定はブラックリストで、空欄なら全グループを許可します。空のホワイトリストは全グループを拒否します。管理者も対象です。",
+        "기본은 차단 목록이며 빈 목록은 모든 그룹을 허용합니다. 빈 허용 목록은 모든 그룹을 거부합니다. 관리자에게도 적용됩니다.",
+    ),
+    "GeneralConfig.group_access_ids": (
+        "One group number per entry; use group OpenID for the official QQ adapter. Do not enter stream IDs, session hashes or member QQ numbers.",
+        "各項目にグループ番号を入力します。QQ 公式アダプターはグループ OpenID を使用します。stream ID、会話ハッシュ、メンバー番号は不要です。",
+        "항목마다 그룹 번호를 입력합니다. QQ 공식 어댑터는 그룹 OpenID를 사용합니다. 스트림 ID, 대화 해시, 멤버 QQ 번호는 입력하지 마세요.",
+    ),
+    "GeneralConfig.private_access_mode": (
+        "Blacklist by default: an empty list allows all private chats. An empty whitelist denies all private chats. Does not restrict users inside groups.",
+        "既定はブラックリストで、空欄なら全個人チャットを許可します。空のホワイトリストは全個人チャットを拒否します。グループ内での利用には影響しません。",
+        "기본은 차단 목록이며 빈 목록은 모든 개인 대화를 허용합니다. 빈 허용 목록은 모든 개인 대화를 거부합니다. 그룹 내 사용에는 영향을 주지 않습니다.",
+    ),
+    "GeneralConfig.private_access_ids": (
+        "One QQ number per entry; use user OpenID for the official QQ adapter. No stream ID or session hash is needed. OpenIDs are matched exactly.",
+        "各項目に QQ 番号を入力します。QQ 公式アダプターはユーザー OpenID を使用します。stream ID や会話ハッシュは不要です。OpenID は完全一致で照合します。",
+        "항목마다 QQ 번호를 입력합니다. QQ 공식 어댑터는 사용자 OpenID를 사용합니다. 스트림 ID나 대화 해시는 필요하지 않습니다. OpenID는 정확히 일치해야 합니다.",
+    ),
     "GeneralConfig.sync_generated_images_to_history": (
         "Off by default. After successful delivery, let a visual Planner view generated images; a text Planner uses image descriptions. May increase visual context and background recognition costs. Tasks without chat delivery and command reply cards are unaffected.",
         "既定は無効です。送信成功後、視覚 Planner は生成画像を参照でき、テキスト Planner は画像説明を使用します。視覚コンテキストとバックグラウンド画像認識のコストが増える場合があります。会話に送信しないタスクとコマンド応答カードには適用しません。",

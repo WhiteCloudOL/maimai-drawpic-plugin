@@ -234,6 +234,18 @@ class WorkspaceService:
                 "生成图片历史同步设置已保存: revision=%s runtime_refresh_pending=%s enabled=%s",
                 self.store.revision, self.runtime_refresh_pending, review["sync_generated_images_to_history"],
             )
+        access_fields = (
+            "integration_api_enabled", "group_access_mode", "group_access_ids",
+            "private_access_mode", "private_access_ids",
+        )
+        if any(current["general"][key] != review[key] for key in access_fields):
+            self.ctx.logger.info(
+                "联动与会话访问设置已保存: revision=%s runtime_refresh_pending=%s api_enabled=%s "
+                "group_mode=%s group_count=%s private_mode=%s private_count=%s",
+                self.store.revision, self.runtime_refresh_pending, review["integration_api_enabled"],
+                review["group_access_mode"], len(review["group_access_ids"]),
+                review["private_access_mode"], len(review["private_access_ids"]),
+            )
         return status
 
     async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
