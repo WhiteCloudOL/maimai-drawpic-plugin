@@ -66,10 +66,12 @@
 
 - `providers` 是平台实例列表；同一种 `kind` 可以出现多次，但名称须不区分大小写唯一，支持中英文且不能含空格。最多 40 个实例。
 - `id` 是 32 位小写十六进制字符串。已有实例不要改；新建实例优先通过工作台生成 ID，再在文件中编辑。
-- `kind` 支持 `openai`、`agnes`、`google`、`zhipu`、`aliyun`、`volcengine`、`siliconflow`、`novelai`、`comfyui`。
+- `kind` 支持 `openai`、`agnes`、`google`、`zhipu`、`minimax`、`aliyun`、`volcengine`、`siliconflow`、`novelai`、`comfyui`。
 - `config` 是该平台类型的字段，不能把另一种平台的参数混入。省略的已知字段会使用该平台默认值；已有文件通常已写出完整字段。
 - 每个实例的 `negative_prompt_enabled` 控制本次输入与默认反向词；开启后，`negative_prompt` 作为默认词追加并去重。NovelAI 默认开启，其余平台默认关闭。关闭时忽略调用方与默认反向词，风格预设自己的模板仍保留。启用 `rewrite_prompt_to_english` 的平台会在合并默认词和风格后改写最终反向词。
 - ComfyUI 旧 `t2i_negative_prompt`、`i2i_negative_prompt` 继续按任务类型追加，与新的通用 `negative_prompt` 一起受实例开关控制。
+
+ComfyUI 工作流文件默认放在 `MaiBot\data\plugins\maimai-drawpic-plugin\workflows`（`MaiBot` 为主程序根目录）。将文生图文件命名为 `t2i.json` 后，`t2i_workflow_path` 填写 `data/workflows/t2i.json`；图生图文件 `i2i.json` 对应 `i2i_workflow_path` 的 `data/workflows/i2i.json`。路径与文件位置对照见 [ComfyUI 平台说明](platforms.md#comfyui-本地工作流)。
 - 模型列表仅填写真实模型 ID，不再使用 `别名=模型ID`；分辨率覆盖也使用真实模型 ID。
 - NovelAI 同样只维护一个 `models` 列表，可混合官方预设与兼容服务自定义 ID；旧 `custom_models` 加载时合并去重，保存后移除此旧字段。
 - 要在通用配置中指定模型，应使用工作台显示的完整名称，例如 `日常创作/gpt-image-2.5`。

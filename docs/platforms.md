@@ -297,7 +297,7 @@ MaiBot 所在机器可访问的 ComfyUI；导出 **API 格式 JSON** 工作流�
 
 ### 必填字段
 
-平台名称、启用 ComfyUI、ComfyUI 地址、工作流路径、实际提示词节点 ID；图生图另填源图节点。ComfyUI 默认停用，需要显式启用此平台实例。
+平台名称、启用 ComfyUI、ComfyUI 地址、工作流路径、实际提示词节点 ID；图生图另填源图节点。工作台按“连接与通用”“文生图工作流”“图生图工作流（可选）”“节点字段与采样”分组，节点 ID 使用单行输入；提示词模式只展示对应的节点设置，切换时保留其他模式的草稿。ComfyUI 默认停用，在工作台新增实例时会启用，也可通过卡片开关停用。
 
 ### 最小配置示例
 
@@ -310,7 +310,7 @@ MaiBot 所在机器可访问的 ComfyUI；导出 **API 格式 JSON** 工作流�
 提示词节点 ID：替换为实际工作流节点
 ```
 
-保存后确认卡片开关显示“已启用”，并在创作页看到“本地插画/comfyui”；没有模型时先检查启用开关，再排查工作流配置。
+保存后确认卡片开关已开启，并在创作页看到“本地插画/comfyui”；没有模型时先检查启用开关，再排查工作流配置。
 
 ### 模型与图生图限制
 
@@ -318,10 +318,25 @@ MaiBot 所在机器可访问的 ComfyUI；导出 **API 格式 JSON** 工作流�
 
 ### 高级配置
 
-标准目录为 `data/plugins/maimai-drawpic-plugin/workflows/`，默认 `t2i.json`、`i2i.json`。`data/` 前缀映射到标准数据目录，旧插件 data 绝对路径也映射；其他相对路径以插件源码目录为基准，允许显式绝对路径，如 `D:/ComfyUI/workflow.json`。`positive_negative` 分别写正反向节点，`single_prompt` 写单一节点；标准文本输入名 `text`、LoadImage 输入名 `image`，种子节点要明确填写。
+工作流默认放在 **MaiBot 主程序根目录下的** `MaiBot\data\plugins\maimai-drawpic-plugin\workflows` 文件夹，目录不存在时自行创建。这里的 `MaiBot` 代表主程序根目录。
+
+| 用途 | 默认文件位置 | 设置中填写 |
+| --- | --- | --- |
+| 文生图 | `MaiBot\data\plugins\maimai-drawpic-plugin\workflows\t2i.json` | `data/workflows/t2i.json` |
+| 图生图 | `MaiBot\data\plugins\maimai-drawpic-plugin\workflows\i2i.json` | `data/workflows/i2i.json` |
+
+配置中的 `data/` 前缀映射到插件标准数据目录 `MaiBot\data\plugins\maimai-drawpic-plugin`。例如，主程序安装在 `D:\Apps\MaiBot` 时，`data/workflows/t2i.json` 对应 `D:\Apps\MaiBot\data\plugins\maimai-drawpic-plugin\workflows\t2i.json`。
+
+其他不以 `data/` 开头的相对路径仍以插件源码目录为基准；旧插件 data 绝对路径继续兼容映射，也支持显式绝对路径，如 `D:/ComfyUI/workflow.json` 或 Linux 下的 `/opt/comfy/workflow.json`。容器部署时使用 MaiBot 容器内可读的路径。
+
+`positive_negative` 分别写正反向节点，两者不能填写同一 ID；`single_prompt` 写单一节点。标准文本输入名 `text`、LoadImage 输入名 `image`；填写实际接收文本、图片文件名或种子的节点，不覆盖 `[节点ID, 输出序号]` 形式的连线。API JSON 的每个节点必须包含 `class_type` 和 `inputs`。
+
+种子为 `-1` 时每次随机，`0` 是有效固定种子，支持至 `18446744073709551615`，WebUI 使用精确十进制输入保存，避免浏览器数字精度损失。种子节点留空时只自动识别唯一的 `seed` 输入；RandomNoise 等节点使用 `noise_seed` 时，请修改种子字段名并填写节点 ID。
+
+本地 API 使用 `POST /prompt` 提交、`GET /history/{prompt_id}` 查询以及 `GET /view` 下载；图生图先通过 `POST /upload/image` 上传到 `input`，保留服务端返回的文件名和子目录。轮询请求与短暂断线查询共同受通用请求超时限制；取得 `prompt_id` 后不再次排队。这里只接入自托管 ComfyUI API，不使用 Comfy Cloud 的 API Key 协议。[官方 API 路由](https://docs.comfy.org/development/comfyui-server/comms_routes) · [官方 API 工作流示例](https://github.com/Comfy-Org/ComfyUI/blob/master/script_examples/basic_api_example.py)
 
 ### 常见错误
 
-找不到节点/字段：检查 API JSON 的节点 ID 和 inputs，不要填画布标题。连不上本地服务：检查所在机器、端口与网络。排队成功后查询断线只查询原 prompt_id，不重复排队。
+找不到节点/字段：检查 API JSON 的节点 ID 和 inputs，不要填画布标题。HTTP 400 会显示服务端的节点 ID、节点类型及校验原因；运行失败保留异常原因与远端任务编号。连不上本地服务：检查所在机器、端口与网络。地址不能带账号、查询参数或片段。排队成功后查询断线只查询原 prompt_id，不重复排队。
 
 相关文档：[使用指南](usage.md) · [缓存与迁移](configuration.md) · [开发者接入](integration.md) · [返回首页](../README.md)。

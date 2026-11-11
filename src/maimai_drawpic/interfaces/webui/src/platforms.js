@@ -27,12 +27,14 @@
     // 启用状态由卡片独立管理，恢复参数默认也不能改变已有平台的状态。
     values.enabled = record ? record.config.enabled : true;
     delete values.instances;
+    const fieldsHTML = kind === "comfyui" ? U.comfyuiForm.html(fields, values) : U.forms.html(fields, values, { platform: true, kind });
     const node = modal(
       record ? "编辑绘图平台" : "添加绘图平台",
-      `<form id="provider-form"><div class="provider-form-body"><p class="hint" style="margin:0 0 20px">${e(catalog.name)} · 先填写连接信息和模型，其他选项可按需调整。保存后应用到新任务。</p><div class="field"><label for="provider-name">平台名称</label><input id="provider-name" maxlength="80" required pattern="[^\\s]+" aria-describedby="provider-name-hint" value="${e(record?.name || defaultName)}" placeholder="例如 OpenAI_Compatible、日常绘图、备用_API"><p class="hint" id="provider-name-hint">支持中文、英文，名称不能包含空格，可使用下划线 _。</p></div>${U.forms.html(fields, values, { platform: true, kind })}</div><div class="modal-footer provider-footer"><div class="provider-footer-reset"><button type="button" id="reset-provider" class="button secondary">${icon("refresh")}恢复默认参数</button><span data-unsaved class="unsaved" hidden>有未保存的修改</span></div><div class="provider-footer-actions"><button type="button" id="provider-back" class="button secondary">取消</button><button type="submit" class="button">${icon("check")}保存平台</button></div></div></form>`,
+      `<form id="provider-form"><div class="provider-form-body"><p class="hint" style="margin:0 0 20px">${e(catalog.name)} · 先填写连接信息和模型，其他选项可按需调整。保存后应用到新任务。</p><div class="field"><label for="provider-name">平台名称</label><input id="provider-name" maxlength="80" required pattern="[^\\s]+" aria-describedby="provider-name-hint" value="${e(record?.name || defaultName)}" placeholder="例如 OpenAI_Compatible、日常绘图、备用_API"><p class="hint" id="provider-name-hint">支持中文、英文，名称不能包含空格，可使用下划线 _。</p></div>${fieldsHTML}</div><div class="modal-footer provider-footer"><div class="provider-footer-reset"><button type="button" id="reset-provider" class="button secondary">${icon("refresh")}恢复默认参数</button><span data-unsaved class="unsaved" hidden>有未保存的修改</span></div><div class="provider-footer-actions"><button type="button" id="provider-back" class="button secondary">取消</button><button type="submit" class="button">${icon("check")}保存平台</button></div></div></form>`,
     );
     const form = $("#provider-form", node),
       read = U.forms.bind(form, fields, values, { platform: true, kind });
+    if (kind === "comfyui") U.comfyuiForm.bind(form);
     const keyControls = U.platformModels.bind(form, { kind, record, catalog });
     const nameInput = $("#provider-name", form);
     const nameControls = document.createElement("div");

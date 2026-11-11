@@ -1500,6 +1500,35 @@ dialog::backdrop {
   scroll-padding-block: 16px;
   padding: 24px;
 }
+.form-section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 16px;
+  margin-top: 16px;
+}
+.form-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 0;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.form-section > summary::-webkit-details-marker {
+  display: none;
+}
+.form-section[open] > summary svg {
+  transform: rotate(180deg);
+}
+.form-section > .hint {
+  margin: 0 0 16px;
+}
+.form-section > .form-grid {
+  padding-bottom: 16px;
+}
 #provider-form > .provider-footer {
   flex-shrink: 0;
   margin-top: 0;
@@ -3359,6 +3388,10 @@ dialog::backdrop {
   function defaultValue(key, meta) {
     return key === "api_key" || key === "password" ? "" : structuredClone(meta.default);
   }
+  function multiline(key, meta) {
+    return meta.input_type === "textarea" ||
+      (/prompt|description|artist|extra_parameters/.test(key) && !/(node_id|input_name)$/.test(key));
+  }
   function scalar(key, meta, value, id, values = {}) {
     const type = meta.type;
     if (key === "default_style") {
@@ -3388,11 +3421,12 @@ dialog::backdrop {
       const selected = meta.multiple ? new Set(value || []) : new Set([value]);
       return `<select id="${id}" data-input="${e(key)}">${!meta.choices?.includes(value) ? `<option value="${e(value)}">${e(value) || "使用默认值"}</option>` : ""}${(meta.choices || []).map((item) => `<option value="${e(item)}" ${selected.has(item) ? "selected" : ""}>${e(U.formOptions.label(item))}</option>`).join("")}</select>`;
     }
+    if (type === "integer" && (Number(meta.max) > Number.MAX_SAFE_INTEGER || Number(meta.min) < Number.MIN_SAFE_INTEGER || !Number.isSafeInteger(Number(value))))
+      return `<input id="${id}" type="text" inputmode="numeric" pattern="-?[0-9]+" data-exact-integer data-input="${e(key)}" value="${e(value)}" required autocomplete="off">`;
     if (type === "integer" || type === "number")
       return `<input id="${id}" type="number" data-input="${e(key)}" value="${e(value)}" step="${meta.step || (type === "integer" ? 1 : "any")}" ${meta.min != null ? `min="${e(meta.min)}"` : ""} ${meta.max != null ? `max="${e(meta.max)}"` : ""}>`;
     const secret = key === "api_key" || key === "password";
-    const multiline = /prompt|description|artist|extra_parameters/.test(key);
-    if (multiline && !secret)
+    if (multiline(key, meta) && !secret)
       return `<textarea id="${id}" rows="${meta.rows || 3}" data-input="${e(key)}" maxlength="16000">${e(value)}</textarea>`;
     const models = /^(default_model|fallback_model)$/.test(key);
     return `<input id="${id}" type="${secret ? "password" : "text"}" data-input="${e(key)}" value="${e(value)}" autocomplete="${secret ? "new-password" : "off"}" ${models ? 'list="workspace-models"' : ""} placeholder="${secret ? "留空保留已配置的密钥" : e(localized(meta, "placeholder"))}">`;
@@ -3453,7 +3487,7 @@ dialog::backdrop {
             meta.type === "array" ||
             meta.type === "boolean" ||
             meta.multiple ||
-            /prompt|description/.test(key);
+            multiline(key, meta);
           const array = meta.type === "array",
             tag = array || meta.multiple ? "fieldset" : "div",
             label = e(localized(meta, "label") || key);
@@ -3471,13 +3505,15 @@ dialog::backdrop {
   }
   function read(fields, values, root, options = {}) {
     const result = structuredClone(values);
+    // 布局容器不影响字段归属；嵌套对象的字段由对应对象递归读取。
+    const ownedFields = new Map([...root.querySelectorAll("[data-field]")]
+      .filter(field => !root.contains(field.parentElement.closest("[data-field]")))
+      .map(field => [field.dataset.field, field]));
     for (const [key, meta] of Object.entries(fields)) {
-      if (key === "config_version" || (options.platform && key === "instances"))
+      if (meta.hidden || key === "config_version" || (options.platform && key === "instances"))
         continue;
-      const field = Array.from(
-        root.querySelectorAll(":scope > .form-grid > [data-field]"),
-      ).find((n) => n.dataset.field === key);
-      if (!field) continue;
+      const field = ownedFields.get(key);
+      if (!field) throw new Error(`未找到「${localized(meta, "label") || key}」设置项，请刷新页面后重试`);
       const controls = $(":scope > .field-controls > .field-control-value", field);
       const multiple = $(":scope > [data-multiple]", controls),
         control = $(":scope > [data-control]", controls);
@@ -3511,7 +3547,14 @@ dialog::backdrop {
         else if (meta.type === "integer" || meta.type === "number") {
           if (!input.value.trim())
             throw new Error(`${localized(meta, "label")}不能为空`);
-          result[key] = Number(input.value);
+          if (input.hasAttribute("data-exact-integer")) {
+            const text = input.value.trim();
+            if (!/^-?[0-9]+$/.test(text)) throw new Error(`${localized(meta, "label")}必须是十进制整数`);
+            const value = BigInt(text);
+            if ((meta.min != null && value < BigInt(meta.min)) || (meta.max != null && value > BigInt(meta.max)))
+              throw new Error(`${localized(meta, "label")}超出允许范围`);
+            result[key] = value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString();
+          } else result[key] = Number(input.value);
         } else if (meta.multiple)
           result[key] = Array.from(input.selectedOptions, (n) => n.value);
         else result[key] = input.value;
@@ -3709,7 +3752,13 @@ dialog::backdrop {
     U.formCollections.refresh(root);
     array.dispatchEvent(new Event("input", { bubbles: true }));
   }
-  U.forms = { html: fieldsHTML, bind, read, appendArray };
+  function sections(groups, fields, values, options = {}) {
+    return groups.map(group => {
+      const selected = Object.fromEntries(Object.entries(fields).filter(([key]) => group.includes(key)));
+      return `<details class="form-section" ${group.open ? "open" : ""}><summary>${e(group.title)}${icon("chevron")}</summary><p class="hint">${e(group.hint)}</p>${fieldsHTML(selected, values, options)}</details>`;
+    }).join("");
+  }
+  U.forms = { html: fieldsHTML, sections, bind, read, appendArray };
 })();
 
 (() => {
@@ -3920,6 +3969,36 @@ dialog::backdrop {
 
 (() => {
   "use strict";
+  const U = window.DrawpicUI;
+  function html(fields, values) {
+    return U.forms.sections([
+      { title: "连接与通用", hint: "地址从 MaiBot 所在机器访问；工作流文件也需放在该机器上。", open: true,
+        includes: key => ["base_url", "negative_prompt_enabled", "negative_prompt", "rewrite_prompt_to_english"].includes(key) },
+      { title: "文生图工作流", hint: "使用 ComfyUI 导出的 API 格式 JSON；节点 ID 填 JSON 中的键，不填节点标题。", open: true,
+        includes: key => key.startsWith("t2i_") },
+      { title: "图生图工作流（可选）", hint: "只使用文生图时无需配置。图生图支持一个 LoadImage 源图节点。", open: Boolean(values.i2i_image_node_id),
+        includes: key => key.startsWith("i2i_") || key === "image_input_name" },
+      { title: "节点字段与采样", hint: "标准文本字段为 text，种子字段为 seed；noise_seed 等自定义字段请按工作流填写。", open: false,
+        includes: key => ["prompt_input_name", "seed", "seed_input_name", "poll_interval_seconds"].includes(key) },
+    ], fields, values, { platform: true, kind: "comfyui" });
+  }
+  function bind(form) {
+    const refresh = () => {
+      for (const task of ["t2i", "i2i"]) {
+        const single = U.$(`[data-input="${task}_prompt_mode"]`, form).value === "single_prompt";
+        for (const suffix of ["prompt_node_id", "positive_prompt_node_id", "negative_prompt_node_id", "negative_prompt"])
+          U.$(`[data-field="${task}_${suffix}"]`, form).hidden = suffix === "prompt_node_id" ? !single : single;
+      }
+    };
+    form.addEventListener("change", refresh);
+    form.addEventListener("fieldreset", refresh);
+    refresh();
+  }
+  U.comfyuiForm = { html, bind };
+})();
+
+(() => {
+  "use strict";
   const U = window.DrawpicUI,
     { state, $, e, icon, call, modal, closeModal, buttonAction, toast } = U;
   async function editor(kind, record = null, reset = false) {
@@ -3947,12 +4026,14 @@ dialog::backdrop {
     // 启用状态由卡片独立管理，恢复参数默认也不能改变已有平台的状态。
     values.enabled = record ? record.config.enabled : true;
     delete values.instances;
+    const fieldsHTML = kind === "comfyui" ? U.comfyuiForm.html(fields, values) : U.forms.html(fields, values, { platform: true, kind });
     const node = modal(
       record ? "编辑绘图平台" : "添加绘图平台",
-      `<form id="provider-form"><div class="provider-form-body"><p class="hint" style="margin:0 0 20px">${e(catalog.name)} · 先填写连接信息和模型，其他选项可按需调整。保存后应用到新任务。</p><div class="field"><label for="provider-name">平台名称</label><input id="provider-name" maxlength="80" required pattern="[^\\s]+" aria-describedby="provider-name-hint" value="${e(record?.name || defaultName)}" placeholder="例如 OpenAI_Compatible、日常绘图、备用_API"><p class="hint" id="provider-name-hint">支持中文、英文，名称不能包含空格，可使用下划线 _。</p></div>${U.forms.html(fields, values, { platform: true, kind })}</div><div class="modal-footer provider-footer"><div class="provider-footer-reset"><button type="button" id="reset-provider" class="button secondary">${icon("refresh")}恢复默认参数</button><span data-unsaved class="unsaved" hidden>有未保存的修改</span></div><div class="provider-footer-actions"><button type="button" id="provider-back" class="button secondary">取消</button><button type="submit" class="button">${icon("check")}保存平台</button></div></div></form>`,
+      `<form id="provider-form"><div class="provider-form-body"><p class="hint" style="margin:0 0 20px">${e(catalog.name)} · 先填写连接信息和模型，其他选项可按需调整。保存后应用到新任务。</p><div class="field"><label for="provider-name">平台名称</label><input id="provider-name" maxlength="80" required pattern="[^\\s]+" aria-describedby="provider-name-hint" value="${e(record?.name || defaultName)}" placeholder="例如 OpenAI_Compatible、日常绘图、备用_API"><p class="hint" id="provider-name-hint">支持中文、英文，名称不能包含空格，可使用下划线 _。</p></div>${fieldsHTML}</div><div class="modal-footer provider-footer"><div class="provider-footer-reset"><button type="button" id="reset-provider" class="button secondary">${icon("refresh")}恢复默认参数</button><span data-unsaved class="unsaved" hidden>有未保存的修改</span></div><div class="provider-footer-actions"><button type="button" id="provider-back" class="button secondary">取消</button><button type="submit" class="button">${icon("check")}保存平台</button></div></div></form>`,
     );
     const form = $("#provider-form", node),
       read = U.forms.bind(form, fields, values, { platform: true, kind });
+    if (kind === "comfyui") U.comfyuiForm.bind(form);
     const keyControls = U.platformModels.bind(form, { kind, record, catalog });
     const nameInput = $("#provider-name", form);
     const nameControls = document.createElement("div");

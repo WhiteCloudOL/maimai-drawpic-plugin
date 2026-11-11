@@ -343,6 +343,42 @@ test('forms: credential defaults stay blank instead of inserting configuration p
   assert.doesNotMatch(html, /your-placeholder-/);
 });
 
+test('forms: wrapped platform fields read edited values and exclude nested object names', () => {
+  const h = harness('forms');
+  const arrayField = node({ dataset: { field: 'presets' } });
+  const nested = node({ dataset: { field: 'name' }, parentElement: { closest: () => arrayField } });
+  const outer = node({ dataset: { field: 'name' }, parentElement: { closest: () => null } });
+  const input = node({ value: 'changed-after-opening' });
+  const root = node({ contains: n => n === arrayField,
+    querySelectorAll: selector => selector === '[data-field]' ? [nested, outer] : [] });
+  h.U.$ = selector => selector === '[data-input]' ? input : null;
+  h.run('forms');
+  const result = h.U.forms.read({ name: { type: 'string', label: 'Name' } }, { name: 'original' }, root);
+  assert.equal(result.name, 'changed-after-opening');
+  root.querySelectorAll = () => [];
+  assert.throws(() => h.U.forms.read({ name: { type: 'string', label: 'Name' } }, {}, root), /未找到.*Name/);
+});
+
+test('forms: node IDs use single-line controls and uint64 seeds round-trip without Number rounding', () => {
+  const h = harness('forms');
+  const meta = { type: 'integer', label: 'Seed', default: -1, min: -1, max: '18446744073709551615' };
+  const html = h.U.forms.html({ seed: meta, t2i_prompt_node_id: { type: 'string', label: 'Node' },
+    prompt_input_name: { type: 'string', label: 'Field' } }, { seed: '18446744073709551615' });
+  assert.match(html, /type="text" inputmode="numeric"[^>]*data-exact-integer/);
+  assert.match(html, /<input[^>]*data-input="t2i_prompt_node_id"/);
+  assert.match(html, /<input[^>]*data-input="prompt_input_name"/);
+  const field = node({ dataset: { field: 'seed' }, parentElement: { closest: () => null } });
+  const input = node({ value: '18446744073709551615', hasAttribute: name => name === 'data-exact-integer' });
+  const root = node({ contains: () => false, querySelectorAll: () => [field] });
+  h.U.$ = selector => selector === '[data-input]' ? input : null;
+  h.run('forms');
+  assert.equal(h.U.forms.read({ seed: meta }, {}, root).seed, '18446744073709551615');
+  input.value = '18446744073709551616';
+  assert.throws(() => h.U.forms.read({ seed: meta }, {}, root), /超出允许范围/);
+  input.value = '0';
+  assert.equal(h.U.forms.read({ seed: meta }, {}, root).seed, 0);
+});
+
 test('invalid default model: diagnostics remain linked to the configuration control', () => {
   const h = harness('forms');
   h.U.state.data = { models: [], default_model: '', default_model_error: 'Ambiguous model',

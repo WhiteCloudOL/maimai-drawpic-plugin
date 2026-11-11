@@ -1493,6 +1493,35 @@ dialog::backdrop {
   scroll-padding-block: 16px;
   padding: 24px;
 }
+.form-section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 16px;
+  margin-top: 16px;
+}
+.form-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 0;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.form-section > summary::-webkit-details-marker {
+  display: none;
+}
+.form-section[open] > summary svg {
+  transform: rotate(180deg);
+}
+.form-section > .hint {
+  margin: 0 0 16px;
+}
+.form-section > .form-grid {
+  padding-bottom: 16px;
+}
 #provider-form > .provider-footer {
   flex-shrink: 0;
   margin-top: 0;

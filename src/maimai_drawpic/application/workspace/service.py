@@ -19,6 +19,17 @@ from ...infrastructure.storage.settings import workspace_config
 from ...infrastructure.providers.model_discovery import DISCOVERY_HINTS, DISCOVERY_KINDS, fetch_models
 
 
+def _browser_integers(value: Any) -> Any:
+    """通过十进制字符串传递超出 JavaScript 安全范围的配置整数。"""
+    if type(value) is int and abs(value) > 9007199254740991:
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _browser_integers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_browser_integers(item) for item in value]
+    return value
+
+
 class WorkspaceService:
     def __init__(
         self,
@@ -117,7 +128,7 @@ class WorkspaceService:
         schema = self.store.schema()
         schema["sections"].pop("plugin", None)
         schema["sections"].pop("proxy", None)
-        return {
+        return _browser_integers({
             **snapshot,
             "config_update_pending": self._transaction is not None,
             "runtime_refresh_pending": self.runtime_refresh_pending or self._transaction is not None,
@@ -140,7 +151,7 @@ class WorkspaceService:
             **self.models(),
             "presets": config["style"]["presets"],
             "proxy_password_set": bool(self.get_config().proxy.password),
-        }
+        })
 
     async def _refresh_committed(self, values: Dict[str, Any] | None = None) -> Dict[str, Any]:
         status = {"saved": True, "revision": self.store.revision, "recovery_pending": self.store.recovery_pending}

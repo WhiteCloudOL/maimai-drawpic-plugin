@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
-from urllib.parse import urlencode
+from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import quote, urlencode, urlsplit
 import aiohttp
 import asyncio
 import copy
@@ -11,12 +11,12 @@ import secrets
 import time
 import uuid
 
+from ...domain.errors import ProviderOutcomeUnknown, ProviderRequestError, ProviderResultError
+from ..http import HttpProxySettings, read_response_text, sanitize_provider_text, sanitized_log_args
 from ..media.collection import bounded_results
-from ..http import sanitized_log_args
-from ..storage.migration import resolve_workflow_path
 from ..media.downloads import download_image
-from ..http import HttpProxySettings, read_response_text, sanitize_provider_text
 from ..media.images import detect_mime_type
+from ..storage.migration import resolve_workflow_path
 from .requests import generation_submission, query_submitted_task, submitted_task
 
 
@@ -32,7 +32,7 @@ class ComfyUIImage:
         base_url: str,
         plugin_dir: Path,
         data_dir: Path,
-        logger: Any | None = None,
+        logger: Optional[Any] = None,
         request_timeout_seconds: int = 150,
         poll_interval_seconds: float = 1.0,
         t2i_workflow_path: str,
@@ -54,14 +54,18 @@ class ComfyUIImage:
         seed_input_name: str,
         t2i_seed_node_id: str,
         i2i_seed_node_id: str,
-        proxy_settings: HttpProxySettings | None = None,
+        proxy_settings: Optional[HttpProxySettings] = None,
         skip_image_url_ip_check: bool = False,
     ) -> None:
         normalized_base_url = base_url.strip().rstrip("/")
         if not normalized_base_url:
             raise ValueError("ComfyUI 地址为空，请在 comfyui.base_url 中填写")
-        if not normalized_base_url.startswith(("http://", "https://")):
+        if "://" not in normalized_base_url:
             normalized_base_url = f"http://{normalized_base_url}"
+        parsed_url = urlsplit(normalized_base_url)
+        if (parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname or
+                parsed_url.username or parsed_url.password or parsed_url.query or parsed_url.fragment):
+            raise ValueError("ComfyUI 地址必须是无账号、查询参数和片段的 HTTP(S) 基础地址")
         self.base_url = normalized_base_url
         self.plugin_dir = plugin_dir
         self.data_dir = data_dir
@@ -90,7 +94,7 @@ class ComfyUIImage:
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
         self.skip_image_url_ip_check = skip_image_url_ip_check
 
-    async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
+    async def generate_images(self, prompt: str, model: str, n: int = 1) -> List[bytes]:
         """使用配置的文生图工作流生成图片。"""
 
         del model, n
@@ -108,7 +112,7 @@ class ComfyUIImage:
         self._inject_seed(workflow, self.t2i_seed_node_id, "文生图")
         return await self._execute_workflow(workflow, "文生图")
 
-    async def edit_images(self, prompt: str, model: str, image_bytes_list: list[bytes], n: int = 1) -> list[bytes]:
+    async def edit_images(self, prompt: str, model: str, image_bytes_list: List[bytes], n: int = 1) -> List[bytes]:
         """使用配置的图生图工作流编辑图片。"""
 
         del model, n
@@ -129,6 +133,7 @@ class ComfyUIImage:
             task_name="图生图",
         )
         self._inject_seed(workflow, self.i2i_seed_node_id, "图生图")
+        self._get_node_inputs(workflow, self.i2i_image_node_id, self.image_input_name, "图生图源图片")
         uploaded_filename = await self._upload_image(image_bytes_list[0])
         self._set_node_input(
             workflow,
@@ -175,7 +180,7 @@ class ComfyUIImage:
 
         raise ValueError(f"不支持的 ComfyUI 任务类型：{task_type}")
 
-    def _load_workflow(self, configured_path: str, task_name: str) -> dict[str, Any]:
+    def _load_workflow(self, configured_path: str, task_name: str) -> Dict[str, Any]:
         """加载并验证 ComfyUI API 格式工作流。"""
 
         if not configured_path.strip():
@@ -199,6 +204,9 @@ class ComfyUIImage:
             )
         if not all(isinstance(node_id, str) and isinstance(node, dict) for node_id, node in workflow.items()):
             raise ValueError(f"ComfyUI {task_name}工作流节点必须使用字符串 ID 和对象定义：{workflow_path}")
+        for node_id, node in workflow.items():
+            if not isinstance(node.get("class_type"), str) or not node["class_type"].strip() or not isinstance(node.get("inputs"), dict):
+                raise ValueError(f"ComfyUI {task_name}工作流节点 {node_id} 缺少有效的 class_type 或 inputs，请使用 API 格式导出")
 
         self._log_info("已加载 ComfyUI %s工作流: path=%s node_count=%s", task_name, workflow_path, len(workflow))
         return copy.deepcopy(workflow)
@@ -206,7 +214,7 @@ class ComfyUIImage:
     def _inject_prompt(
         self,
         *,
-        workflow: dict[str, Any],
+        workflow: Dict[str, Any],
         prompt: str,
         mode: PromptMode,
         prompt_node_id: str,
@@ -221,6 +229,8 @@ class ComfyUIImage:
             self._set_node_input(workflow, prompt_node_id, self.prompt_input_name, prompt, f"{task_name}提示词")
             return
         if mode == "positive_negative":
+            if positive_prompt_node_id.strip() == negative_prompt_node_id.strip():
+                raise ValueError(f"ComfyUI {task_name}正向和反向提示词必须使用不同节点")
             self._set_node_input(
                 workflow,
                 positive_prompt_node_id,
@@ -238,7 +248,7 @@ class ComfyUIImage:
             return
         raise ValueError(f"ComfyUI {task_name}提示词模式无效：{mode}")
 
-    def _inject_seed(self, workflow: dict[str, Any], configured_node_id: str, task_name: str) -> None:
+    def _inject_seed(self, workflow: Dict[str, Any], configured_node_id: str, task_name: str) -> None:
         """将固定或随机种子写入工作流的采样节点。"""
 
         node_id = self._validate_seed_target(workflow, configured_node_id, task_name)
@@ -247,7 +257,7 @@ class ComfyUIImage:
         seed_mode = "固定" if self.seed >= 0 else "随机"
         self._log_info("ComfyUI %s种子已写入: mode=%s seed=%s node_id=%s", task_name, seed_mode, seed, node_id)
 
-    def _validate_seed_target(self, workflow: dict[str, Any], configured_node_id: str, task_name: str) -> str:
+    def _validate_seed_target(self, workflow: Dict[str, Any], configured_node_id: str, task_name: str) -> str:
         """解析并验证种子节点；未配置时自动识别唯一的 seed 输入节点。"""
 
         node_id = configured_node_id.strip()
@@ -277,7 +287,7 @@ class ComfyUIImage:
     @classmethod
     def _set_node_input(
         cls,
-        workflow: dict[str, Any],
+        workflow: Dict[str, Any],
         node_id: str,
         input_name: str,
         value: Any,
@@ -290,11 +300,11 @@ class ComfyUIImage:
 
     @staticmethod
     def _get_node_inputs(
-        workflow: dict[str, Any],
+        workflow: Dict[str, Any],
         node_id: str,
         input_name: str,
         field_name: str,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """获取并校验指定节点输入。"""
 
         normalized_node_id = node_id.strip()
@@ -313,10 +323,12 @@ class ComfyUIImage:
             raise ValueError(
                 f"ComfyUI 工作流节点 {normalized_node_id} 不包含 {field_name}输入：{normalized_input_name}"
             )
+        if isinstance(inputs[normalized_input_name], list):
+            raise ValueError(f"ComfyUI 节点 {normalized_node_id} 的 {normalized_input_name} 是节点连线；请配置实际接收{field_name}值的节点，不能覆盖连线")
         return inputs
 
     @bounded_results
-    async def _execute_workflow(self, workflow: dict[str, Any], task_name: str) -> list[bytes]:
+    async def _execute_workflow(self, workflow: Dict[str, Any], task_name: str) -> List[bytes]:
         """提交工作流、轮询执行结果并下载输出图片。"""
 
         client_id = str(uuid.uuid4())
@@ -335,19 +347,21 @@ class ComfyUIImage:
         )
         return images
 
-    async def _queue_prompt(self, workflow: dict[str, Any], client_id: str, task_name: str) -> str:
+    async def _queue_prompt(self, workflow: Dict[str, Any], client_id: str, task_name: str) -> str:
         """向 ComfyUI 队列提交 API 格式工作流。"""
 
         response = await self._post_json("/prompt", {"prompt": workflow, "client_id": client_id})
         prompt_id = response.get("prompt_id")
         if not isinstance(prompt_id, str) or not prompt_id:
-            error = response.get("error") or response.get("node_errors") or response
-            self._log_error("ComfyUI %s提交失败: response=%s", task_name, str(error)[:2000])
-            raise RuntimeError(f"ComfyUI {task_name}工作流提交失败：{error}")
+            detail = self._error_details(response)
+            self._log_error("ComfyUI %s提交未确认: response=%s", task_name, detail)
+            raise ProviderOutcomeUnknown(f"ComfyUI {task_name}响应缺少 prompt_id，远端受理状态未确认，未重新提交：{detail}")
+        if response.get("node_errors"):
+            self._log_warning("ComfyUI %s部分输出未通过校验: prompt_id=%s detail=%s", task_name, prompt_id, self._error_details(response))
         self._log_info("ComfyUI %s工作流已提交: prompt_id=%s", task_name, prompt_id)
         return prompt_id
 
-    async def _wait_for_history(self, prompt_id: str, start_time: float, task_name: str) -> dict[str, Any]:
+    async def _wait_for_history(self, prompt_id: str, start_time: float, task_name: str) -> Dict[str, Any]:
         """轮询指定任务历史，直到生成完成或超时。"""
 
         while True:
@@ -356,17 +370,22 @@ class ComfyUIImage:
                 raise TimeoutError(
                     f"ComfyUI {task_name}执行超时：prompt_id={prompt_id}，耗时已超过 {self.request_timeout_seconds} 秒"
                 )
-            history = await query_submitted_task(
-                lambda: self._get_json(f"/history/{prompt_id}"),
-                poll_interval=self.poll_interval_seconds,
+            history = await asyncio.wait_for(
+                query_submitted_task(
+                    lambda: self._get_json(f"/history/{quote(prompt_id, safe='')}"),
+                    poll_interval=self.poll_interval_seconds,
+                ),
+                timeout=self.request_timeout_seconds - elapsed,
             )
             task_history = history.get(prompt_id)
             if isinstance(task_history, dict):
                 status = task_history.get("status")
                 if isinstance(status, dict) and status.get("status_str") == "error":
-                    messages = status.get("messages")
-                    self._log_error("ComfyUI %s执行失败: prompt_id=%s messages=%s", task_name, prompt_id, messages)
-                    raise RuntimeError(f"ComfyUI {task_name}执行失败：{sanitize_provider_text(messages)}")
+                    detail = self._execution_error(status)
+                    self._log_error("ComfyUI %s执行失败: prompt_id=%s detail=%s", task_name, prompt_id, detail)
+                    raise ProviderResultError(f"ComfyUI {task_name}执行失败：{detail}")
+                if isinstance(status, dict) and status.get("completed") is False:
+                    raise ProviderResultError(f"ComfyUI {task_name}未完成：prompt_id={prompt_id}，不会读取未完成输出")
                 outputs = task_history.get("outputs")
                 if isinstance(outputs, dict):
                     return task_history
@@ -380,15 +399,15 @@ class ComfyUIImage:
             await asyncio.sleep(min(self.poll_interval_seconds, remaining))
 
     @staticmethod
-    def _extract_image_descriptors(history: dict[str, Any], prompt_id: str) -> list[dict[str, str]]:
+    def _extract_image_descriptors(history: Dict[str, Any], prompt_id: str) -> List[Dict[str, str]]:
         """从 ComfyUI 历史输出中提取可下载图片描述。"""
 
         outputs = history.get("outputs")
         if not isinstance(outputs, dict):
             raise RuntimeError(f"ComfyUI 任务未返回 outputs：prompt_id={prompt_id}")
 
-        output_image_descriptors: list[dict[str, str]] = []
-        other_image_descriptors: list[dict[str, str]] = []
+        output_image_descriptors: List[Dict[str, str]] = []
+        other_image_descriptors: List[Dict[str, str]] = []
         for output in outputs.values():
             if not isinstance(output, dict):
                 continue
@@ -425,17 +444,20 @@ class ComfyUIImage:
             raise ValueError(f"ComfyUI 源图片格式不支持：{mime_type}")
         filename = f"maibot_{uuid.uuid4().hex}.{extension}"
         form.add_field("image", image_bytes, filename=filename, content_type=mime_type)
+        form.add_field("type", "input")
         response = await self._post_form("/upload/image", form)
         uploaded_name = response.get("name")
         if not isinstance(uploaded_name, str) or not uploaded_name:
             raise RuntimeError(f"ComfyUI 上传图生图源图片失败：{sanitize_provider_text(response)}")
+        if response.get("type") != "input":
+            raise ProviderResultError("ComfyUI 上传响应的 type 不是 input，无法交给 LoadImage 节点")
         subfolder = response.get("subfolder")
         if isinstance(subfolder, str) and subfolder:
             uploaded_name = f"{subfolder.rstrip('/')}/{uploaded_name}"
         self._log_info("ComfyUI 图生图源图片上传成功: filename=%s size=%s", uploaded_name, len(image_bytes))
         return uploaded_name
 
-    async def _download_image(self, descriptor: dict[str, str]) -> bytes:
+    async def _download_image(self, descriptor: Dict[str, str]) -> bytes:
         """下载 ComfyUI 输出图片。"""
 
         url = f"{self.base_url}/view?{urlencode(descriptor)}"
@@ -448,26 +470,28 @@ class ComfyUIImage:
         )
 
     @generation_submission
-    async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _post_json(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """向 ComfyUI 发送 JSON 请求。"""
 
-        return await self._request_json("POST", path, json=payload)
+        encoded = await asyncio.to_thread(lambda: json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        return await self._request_json("POST", path, data=encoded, headers={"Content-Type": "application/json"})
 
     @generation_submission
-    async def _post_form(self, path: str, form: aiohttp.FormData) -> dict[str, Any]:
+    async def _post_form(self, path: str, form: aiohttp.FormData) -> Dict[str, Any]:
         """向 ComfyUI 发送 multipart 表单请求。"""
 
         return await self._request_json("POST", path, data=form)
 
-    async def _get_json(self, path: str) -> dict[str, Any]:
+    async def _get_json(self, path: str) -> Dict[str, Any]:
         """从 ComfyUI 获取 JSON 响应。"""
 
         return await self._request_json("GET", path)
 
-    async def _request_json(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    async def _request_json(self, method: str, path: str, **kwargs: Any) -> Dict[str, Any]:
         """执行 ComfyUI JSON HTTP 请求并记录精确错误。"""
 
         url = f"{self.base_url}{path}"
+        started = time.monotonic()
         timeout = aiohttp.ClientTimeout(total=self.request_timeout_seconds)
         async with aiohttp.ClientSession(timeout=timeout, **self.proxy_settings.aiohttp_session_kwargs()) as session:
             async with session.request(
@@ -477,21 +501,68 @@ class ComfyUIImage:
                 try:
                     response_json = await asyncio.to_thread(json.loads, response_text)
                 except json.JSONDecodeError as exc:
-                    raise RuntimeError(
+                    if response.status not in {200, 201}:
+                        raise self._http_error(method, url, response.status, response_text) from None
+                    raise ProviderOutcomeUnknown(
                         f"ComfyUI 接口返回非 JSON 数据 ({response.status})：{sanitize_provider_text(response_text)}"
                     ) from exc
                 if response.status not in {200, 201}:
-                    self._log_error(
-                        "ComfyUI 接口请求失败: method=%s status=%s url=%s response=%s",
-                        method,
-                        response.status,
-                        url,
-                        response_text[:2000],
-                    )
-                    raise RuntimeError(f"ComfyUI 接口错误 ({response.status})：{sanitize_provider_text(response_json)}")
+                    raise self._http_error(method, url, response.status, response_json)
                 if not isinstance(response_json, dict):
-                    raise RuntimeError(f"ComfyUI 接口响应格式错误：{sanitize_provider_text(response_json)}")
+                    raise ProviderOutcomeUnknown(f"ComfyUI 接口响应不是 JSON 对象：{sanitize_provider_text(response_json)}")
+                self._log_debug("ComfyUI 接口响应: method=%s status=%s url=%s elapsed=%.2fs", method, response.status, url, time.monotonic() - started)
                 return response_json
+
+    def _http_error(self, method: str, url: str, status: int, data: Any) -> ProviderRequestError:
+        detail = self._error_details(data)
+        error = data.get("error") if isinstance(data, dict) else None
+        code = sanitize_provider_text(error.get("type", "http_error"), max_chars=100) if isinstance(error, dict) else "http_error"
+        failure = ProviderRequestError(status, code, f"ComfyUI 接口错误 HTTP {status}：{detail}")
+        failure.retryable = failure.allow_fallback = False
+        self._log_error("ComfyUI 接口请求失败: method=%s status=%s url=%s detail=%s", method, status, url, detail)
+        return failure
+
+    @staticmethod
+    def _error_details(data: Any) -> str:
+        """保留校验原因与节点位置，不输出完整工作流和节点输入。"""
+        parts: List[str] = []
+        if isinstance(data, dict):
+            error = data.get("error")
+            if isinstance(error, dict):
+                parts.append(str({key: error[key] for key in ("type", "message", "details") if key in error}))
+            elif isinstance(error, str):
+                parts.append(error)
+            for key in ("message", "detail", "error_msg"):
+                if isinstance(data.get(key), str):
+                    parts.append(f"{key}={data[key]}")
+            node_errors = data.get("node_errors")
+            if isinstance(node_errors, dict):
+                for node_id, info in list(node_errors.items())[:8]:
+                    if not isinstance(info, dict):
+                        continue
+                    errors = info.get("errors", [])
+                    if not isinstance(errors, list):
+                        continue
+                    for item in errors[:4]:
+                        if isinstance(item, dict):
+                            parts.append(f"node={node_id} class={info.get('class_type', '')} " + str({key: item[key] for key in ("type", "message", "details") if key in item}))
+        unrecognized = {"response_keys": list(data)[:20]} if isinstance(data, dict) else data
+        return sanitize_provider_text("；".join(parts) if parts else unrecognized, max_chars=1800)
+
+    @staticmethod
+    def _execution_error(status: Dict[str, Any]) -> str:
+        messages = status.get("messages")
+        details: List[str] = []
+        if isinstance(messages, list):
+            for message in messages:
+                if isinstance(message, list) and len(message) == 2 and message[0] in {"execution_error", "execution_interrupted"} and isinstance(message[1], dict):
+                    details.append(str({key: message[1][key] for key in ("node_id", "node_type", "exception_type", "exception_message") if key in message[1]}))
+        return sanitize_provider_text("；".join(details) if details else {"status_str": status.get("status_str"), "completed": status.get("completed")}, max_chars=1800)
+
+    def _log_debug(self, message: str, *args: Any) -> None:
+        """轮询请求仅记录调试日志，避免刷屏。"""
+        if self.logger is not None:
+            self.logger.debug(message, *sanitized_log_args(args, ""))
 
     def _log_info(self, message: str, *args: Any) -> None:
         """记录信息日志。"""

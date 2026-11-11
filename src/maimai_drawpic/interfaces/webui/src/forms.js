@@ -10,6 +10,10 @@
   function defaultValue(key, meta) {
     return key === "api_key" || key === "password" ? "" : structuredClone(meta.default);
   }
+  function multiline(key, meta) {
+    return meta.input_type === "textarea" ||
+      (/prompt|description|artist|extra_parameters/.test(key) && !/(node_id|input_name)$/.test(key));
+  }
   function scalar(key, meta, value, id, values = {}) {
     const type = meta.type;
     if (key === "default_style") {
@@ -39,11 +43,12 @@
       const selected = meta.multiple ? new Set(value || []) : new Set([value]);
       return `<select id="${id}" data-input="${e(key)}">${!meta.choices?.includes(value) ? `<option value="${e(value)}">${e(value) || "使用默认值"}</option>` : ""}${(meta.choices || []).map((item) => `<option value="${e(item)}" ${selected.has(item) ? "selected" : ""}>${e(U.formOptions.label(item))}</option>`).join("")}</select>`;
     }
+    if (type === "integer" && (Number(meta.max) > Number.MAX_SAFE_INTEGER || Number(meta.min) < Number.MIN_SAFE_INTEGER || !Number.isSafeInteger(Number(value))))
+      return `<input id="${id}" type="text" inputmode="numeric" pattern="-?[0-9]+" data-exact-integer data-input="${e(key)}" value="${e(value)}" required autocomplete="off">`;
     if (type === "integer" || type === "number")
       return `<input id="${id}" type="number" data-input="${e(key)}" value="${e(value)}" step="${meta.step || (type === "integer" ? 1 : "any")}" ${meta.min != null ? `min="${e(meta.min)}"` : ""} ${meta.max != null ? `max="${e(meta.max)}"` : ""}>`;
     const secret = key === "api_key" || key === "password";
-    const multiline = /prompt|description|artist|extra_parameters/.test(key);
-    if (multiline && !secret)
+    if (multiline(key, meta) && !secret)
       return `<textarea id="${id}" rows="${meta.rows || 3}" data-input="${e(key)}" maxlength="16000">${e(value)}</textarea>`;
     const models = /^(default_model|fallback_model)$/.test(key);
     return `<input id="${id}" type="${secret ? "password" : "text"}" data-input="${e(key)}" value="${e(value)}" autocomplete="${secret ? "new-password" : "off"}" ${models ? 'list="workspace-models"' : ""} placeholder="${secret ? "留空保留已配置的密钥" : e(localized(meta, "placeholder"))}">`;
@@ -104,7 +109,7 @@
             meta.type === "array" ||
             meta.type === "boolean" ||
             meta.multiple ||
-            /prompt|description/.test(key);
+            multiline(key, meta);
           const array = meta.type === "array",
             tag = array || meta.multiple ? "fieldset" : "div",
             label = e(localized(meta, "label") || key);
@@ -122,13 +127,15 @@
   }
   function read(fields, values, root, options = {}) {
     const result = structuredClone(values);
+    // 布局容器不影响字段归属；嵌套对象的字段由对应对象递归读取。
+    const ownedFields = new Map([...root.querySelectorAll("[data-field]")]
+      .filter(field => !root.contains(field.parentElement.closest("[data-field]")))
+      .map(field => [field.dataset.field, field]));
     for (const [key, meta] of Object.entries(fields)) {
-      if (key === "config_version" || (options.platform && key === "instances"))
+      if (meta.hidden || key === "config_version" || (options.platform && key === "instances"))
         continue;
-      const field = Array.from(
-        root.querySelectorAll(":scope > .form-grid > [data-field]"),
-      ).find((n) => n.dataset.field === key);
-      if (!field) continue;
+      const field = ownedFields.get(key);
+      if (!field) throw new Error(`未找到「${localized(meta, "label") || key}」设置项，请刷新页面后重试`);
       const controls = $(":scope > .field-controls > .field-control-value", field);
       const multiple = $(":scope > [data-multiple]", controls),
         control = $(":scope > [data-control]", controls);
@@ -162,7 +169,14 @@
         else if (meta.type === "integer" || meta.type === "number") {
           if (!input.value.trim())
             throw new Error(`${localized(meta, "label")}不能为空`);
-          result[key] = Number(input.value);
+          if (input.hasAttribute("data-exact-integer")) {
+            const text = input.value.trim();
+            if (!/^-?[0-9]+$/.test(text)) throw new Error(`${localized(meta, "label")}必须是十进制整数`);
+            const value = BigInt(text);
+            if ((meta.min != null && value < BigInt(meta.min)) || (meta.max != null && value > BigInt(meta.max)))
+              throw new Error(`${localized(meta, "label")}超出允许范围`);
+            result[key] = value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString();
+          } else result[key] = Number(input.value);
         } else if (meta.multiple)
           result[key] = Array.from(input.selectedOptions, (n) => n.value);
         else result[key] = input.value;
@@ -360,5 +374,11 @@
     U.formCollections.refresh(root);
     array.dispatchEvent(new Event("input", { bubbles: true }));
   }
-  U.forms = { html: fieldsHTML, bind, read, appendArray };
+  function sections(groups, fields, values, options = {}) {
+    return groups.map(group => {
+      const selected = Object.fromEntries(Object.entries(fields).filter(([key]) => group.includes(key)));
+      return `<details class="form-section" ${group.open ? "open" : ""}><summary>${e(group.title)}${icon("chevron")}</summary><p class="hint">${e(group.hint)}</p>${fieldsHTML(selected, values, options)}</details>`;
+    }).join("");
+  }
+  U.forms = { html: fieldsHTML, sections, bind, read, appendArray };
 })();

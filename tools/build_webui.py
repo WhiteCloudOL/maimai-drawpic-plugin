@@ -19,6 +19,7 @@ def build() -> Path:
         "forms/collections",
         "forms",
         "platform-models",
+        "platform-comfyui",
         "platforms",
         "studio",
         "tasks",

@@ -664,14 +664,14 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "기본 추가 재시도 1회, 0~5회로 설정합니다. 연결 전 실패나 명시적 속도 제한 등 안전한 실패만 재시도합니다. 심사 거부, 결과 다운로드 실패, 원격 처리 상태 불명 시 재생성하지 않습니다.",
     ),
     "ComfyUIModelConfig.t2i_workflow_path": (
-        "The data/ prefix maps to the plugin data directory; default: data/workflows/t2i.json. Other relative paths remain relative to the plugin source directory. Absolute paths are supported. Export an API-format workflow from ComfyUI.",
-        "data/ 接頭辞はプラグインの標準データディレクトリに対応します。既定値は data/workflows/t2i.json。その他の相対パスはプラグインのソースディレクトリが基準です。絶対パスも使用できます。ComfyUI の API 形式でエクスポートしてください。",
-        "data/ 접두사는 플러그인 표준 데이터 디렉터리에 매핑됩니다. 기본값: data/workflows/t2i.json. 다른 상대 경로는 플러그인 소스 디렉터리 기준이며 절대 경로도 지원합니다. ComfyUI API 형식으로 내보내세요.",
+        "Default file: MaiBot/data/plugins/maimai-drawpic-plugin/workflows/t2i.json, under the MaiBot application root. Enter data/workflows/t2i.json here to use that file. This is not the plugin source directory's data folder. Export an API-format workflow from ComfyUI. Absolute paths are also supported.",
+        "既定のファイル：MaiBot 本体のルート配下の MaiBot/data/plugins/maimai-drawpic-plugin/workflows/t2i.json。この欄に data/workflows/t2i.json と入力すると、そのファイルを使用します。プラグインのソースディレクトリ内の data フォルダーではありません。ComfyUI の API 形式でエクスポートしてください。絶対パスも使用できます。",
+        "기본 파일: MaiBot 프로그램 루트 아래의 MaiBot/data/plugins/maimai-drawpic-plugin/workflows/t2i.json. 여기에 data/workflows/t2i.json을 입력하면 해당 파일을 사용합니다. 플러그인 소스 디렉터리의 data 폴더가 아닙니다. ComfyUI API 형식으로 내보내세요. 절대 경로도 지원합니다.",
     ),
     "ComfyUIModelConfig.i2i_workflow_path": (
-        "The data/ prefix maps to the plugin data directory; default: data/workflows/i2i.json. Other relative paths remain relative to the plugin source directory. Absolute paths are supported. Include a node that reads the uploaded image.",
-        "data/ 接頭辞はプラグインの標準データディレクトリに対応します。既定値は data/workflows/i2i.json。その他の相対パスはプラグインのソースディレクトリが基準です。絶対パスも使用できます。アップロード画像を読み込むノードが必要です。",
-        "data/ 접두사는 플러그인 표준 데이터 디렉터리에 매핑됩니다. 기본값: data/workflows/i2i.json. 다른 상대 경로는 플러그인 소스 디렉터리 기준이며 절대 경로도 지원합니다. 업로드 이미지를 읽는 노드가 필요합니다.",
+        "Default file: MaiBot/data/plugins/maimai-drawpic-plugin/workflows/i2i.json, under the MaiBot application root. Enter data/workflows/i2i.json here to use that file. This is not the plugin source directory's data folder. Use API-format JSON with a source-image node. Absolute paths are also supported.",
+        "既定のファイル：MaiBot 本体のルート配下の MaiBot/data/plugins/maimai-drawpic-plugin/workflows/i2i.json。この欄に data/workflows/i2i.json と入力すると、そのファイルを使用します。プラグインのソースディレクトリ内の data フォルダーではありません。元画像を読み込むノードを含む API 形式 JSON を使用してください。絶対パスも使用できます。",
+        "기본 파일: MaiBot 프로그램 루트 아래의 MaiBot/data/plugins/maimai-drawpic-plugin/workflows/i2i.json. 여기에 data/workflows/i2i.json을 입력하면 해당 파일을 사용합니다. 플러그인 소스 디렉터리의 data 폴더가 아닙니다. 원본 이미지 노드를 포함한 API 형식 JSON을 사용하세요. 절대 경로도 지원합니다.",
     ),
     "GoogleModelConfig.image_size": (
         "1K / 2K / 4K; Gemini 3.1 Flash also supports 512. Use uppercase K; leave blank for the model default.",

@@ -36,7 +36,7 @@ class ComfyUIModelConfig(NegativePromptConfig):
         description="ComfyUI 文生图 API 工作流 JSON 路径",
         json_schema_extra={
             "label": "文生图工作流 JSON",
-            "hint": "data/ 前缀映射到插件标准数据目录，默认 data/workflows/t2i.json；其他相对路径仍以插件目录为基准，也可填写绝对路径。必须是 ComfyUI 导出的 API 格式 JSON",
+            "hint": r"将 API 格式的 t2i.json 放入 MaiBot\data\plugins\maimai-drawpic-plugin\workflows（MaiBot 为主程序根目录），此处填写 data/workflows/t2i.json。也支持绝对路径。",
             "order": 1,
         },
     )
@@ -45,7 +45,7 @@ class ComfyUIModelConfig(NegativePromptConfig):
         description="ComfyUI 图生图 API 工作流 JSON 路径",
         json_schema_extra={
             "label": "图生图工作流 JSON",
-            "hint": "data/ 前缀映射到插件标准数据目录，默认 data/workflows/i2i.json；其他相对路径仍以插件目录为基准，也可填写绝对路径。必须含可读取上传图片的节点",
+            "hint": r"将含源图读取节点的 API 格式 i2i.json 放入 MaiBot\data\plugins\maimai-drawpic-plugin\workflows（MaiBot 为主程序根目录），此处填写 data/workflows/i2i.json。也支持绝对路径。",
             "order": 2,
         },
     )
