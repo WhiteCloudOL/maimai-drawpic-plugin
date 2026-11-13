@@ -232,7 +232,7 @@ def test_comfy_upload_uses_actual_jpeg_mime_and_extension() -> None:
         del path
         field = form._fields[0]
         fields.update({"filename": field[0]["filename"], "mime": field[1]["Content-Type"]})
-        return {"name": field[0]["filename"]}
+        return {"name": field[0]["filename"], "type": "input", "subfolder": ""}
 
     provider._post_form = post_form
     jpeg = BytesIO()

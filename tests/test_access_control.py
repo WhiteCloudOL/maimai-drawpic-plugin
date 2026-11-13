@@ -84,7 +84,7 @@ def test_switch_blocks_every_public_api_and_preserves_private_workspace(make_plu
                     with pytest.raises(PermissionError, match="联动 API 已关闭"):
                         await handler(**values)
                 tested.append(name)
-            assert len(tested) == 16
+            assert len(tested) == 17
             assert (await plugin.workspace_bootstrap())["settings"]["general"]["integration_api_enabled"] is False
             assert (await plugin.handle_draw_styles())["success"]
             result = await plugin.workspace_settings_save(

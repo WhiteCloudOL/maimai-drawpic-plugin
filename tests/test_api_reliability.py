@@ -35,7 +35,7 @@ class ReplyAPI:
 
     async def call(self, api_name, **kwargs):
         self.calls.append((api_name, kwargs))
-        return {"success": True, "result": deepcopy(self.reply)}
+        return deepcopy(self.reply)
 
 
 @pytest.mark.parametrize("limit", ["total", "single"])
