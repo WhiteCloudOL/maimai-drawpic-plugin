@@ -2,8 +2,9 @@
 
 from io import BytesIO
 from threading import get_ident
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from aiohttp import web
 from google.genai import models as google_models
 from google.genai import types as google_types
 from PIL import Image
@@ -146,6 +147,46 @@ def test_siliconflow_three_references_are_submitted_once() -> None:
     assert asyncio.run(provider.edit_images("edit", "Qwen/Qwen-Image-Edit-2509", [PNG] * 3)) == [PNG]
     assert len(provider.calls) == 1
     assert {"image", "image2", "image3"} <= provider.calls[0].keys()
+
+
+@pytest.mark.parametrize("watermark_enabled", [None, True, False])
+def test_siliconflow_watermark_reaches_generation_and_edit_headers(
+    unused_tcp_port: int, monkeypatch: pytest.MonkeyPatch, watermark_enabled: Optional[bool],
+) -> None:
+    """经过配置与路由构造后，在隔离 HTTP 服务核对两个模式的真实请求头。"""
+
+    async def run() -> None:
+        requests: List[Dict[str, Any]] = []
+
+        async def receive(request: web.Request) -> web.Response:
+            requests.append({"headers": request.headers, "body": await request.json()})
+            return web.json_response({"images": [{"b64_json": base64.b64encode(PNG).decode("ascii")}]})
+
+        app = web.Application()
+        app.router.add_post("/v1/images/generations", receive)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        try:
+            await web.TCPSite(runner, "127.0.0.1", unused_tcp_port).start()
+            monkeypatch.setattr(SiliconFlowImage, "_BASE_URL", f"http://127.0.0.1:{unused_tcp_port}")
+            values: Dict[str, Any] = {"api_key": "fixture-siliconflow-key"}
+            if watermark_enabled is not None:
+                values["watermark_enabled"] = watermark_enabled
+            config = DrawpicConfig.model_validate({"siliconflow": values})
+            provider = ProviderRouter(config).create_siliconflow_provider()
+            assert await provider.generate_images("a cat", "Kwai-Kolors/Kolors") == [PNG]
+            assert await provider.edit_images("keep the subject", "Qwen/Qwen-Image-Edit-2509", [PNG]) == [PNG]
+            assert len(requests) == 2
+            for request in requests:
+                assert request["headers"].get("X-Enable-Watermark") == ("0" if watermark_enabled is False else None)
+                assert request["headers"]["Authorization"] == "Bearer fixture-siliconflow-key"
+                assert request["headers"]["Content-Type"] == "application/json"
+                assert not {"watermark_enabled", "X-Enable-Watermark"} & request["body"].keys()
+            assert "image" not in requests[0]["body"] and requests[1]["body"]["image"].startswith("data:image/png;base64,")
+        finally:
+            await runner.cleanup()
+
+    asyncio.run(run())
 
 
 def test_novelai_auth_failure_is_not_retried_with_another_size() -> None:

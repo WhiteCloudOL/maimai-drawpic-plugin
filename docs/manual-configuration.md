@@ -119,6 +119,18 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 
 文件里的 `api_key` 是真实值：手动改成空字符串就会清空密钥。它不同于 WebUI 密钥框“留空保留”的交互规则。
 
+### 硅基流动显式水印
+
+硅基流动实例的 `config` 可填写以下**字段片段**，关闭 API 生成图上的显式「AI 生成」水印：
+
+```json
+{
+  "watermark_enabled": false
+}
+```
+
+默认是 `true`，已有配置未填写该字段时保持平台的默认水印行为。设置为 `false` 后，文生图和图生图均发送 HTTP 请求头 `X-Enable-Watermark: 0`；不是请求体参数，不能用 `extra_parameters` 代替。隐式水印仍保留；适用场景及最终输出标识要求见[硅基流动平台说明](platforms.md#硅基流动)。
+
 ### MiniMax 实例示例
 
 在 `platforms.json` 的 `providers` 中添加平台时沿用已有记录的 ID 格式，实际操作推荐先通过工作台创建再编辑。以下仅展示 `config` 字段，密钥请自行填写，不使用任何共享测试密钥：

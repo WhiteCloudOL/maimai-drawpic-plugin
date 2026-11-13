@@ -347,6 +347,11 @@ _FIELD_LABELS: Dict[str, Tuple[str, str, str]] = {
 }
 
 _FIELD_LABEL_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "SiliconFlowModelConfig.watermark_enabled": (
+        "Enable Visible AI-generated Watermark",
+        "AI 生成の可視透かしを有効化",
+        "AI 생성 표시 워터마크 활성화",
+    ),
     "MiniMaxModelConfig.enabled": ("Enabled", "有効", "활성화"),
     "MiniMaxModelConfig.api_key": ("API Key", "API キー", "API 키"),
     "MiniMaxModelConfig.base_url": ("API Base URL", "API 基本 URL", "API 기본 URL"),
@@ -476,6 +481,11 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "SiliconFlowModelConfig.watermark_enabled": (
+        "Enabled by default. Disable to send X-Enable-Watermark: 0; the implicit watermark remains. The provider permits this for downstream processing and requires a visible label on the final output.",
+        "既定は有効。無効にすると X-Enable-Watermark: 0 を送信し、不可視透かしは残ります。提供元は後処理時のみ無効化を認め、最終出力への可視表示を求めています。",
+        "기본적으로 켜져 있습니다. 끄면 X-Enable-Watermark: 0을 보내며 비표시 워터마크는 유지됩니다. 제공자는 후처리 시에만 해제를 허용하며 최종 출력에 표시 라벨을 요구합니다.",
+    ),
     "MiniMaxModelConfig.enabled": ("Enabled. See the MiniMax model-specific limits in the platform guide.", "有効。モデルごとの制約はプラットフォームガイドを参照してください。", "활성화. 모델별 제한은 플랫폼 가이드를 참조하세요."),
     "MiniMaxModelConfig.api_key": ("API Key. See the MiniMax model-specific limits in the platform guide.", "API キー。モデルごとの制約はプラットフォームガイドを参照してください。", "API 키. 모델별 제한은 플랫폼 가이드를 참조하세요."),
     "MiniMaxModelConfig.base_url": ("API Base URL. See the MiniMax model-specific limits in the platform guide.", "API 基本 URL。モデルごとの制約はプラットフォームガイドを参照してください。", "API 기본 URL. 모델별 제한은 플랫폼 가이드를 참조하세요."),

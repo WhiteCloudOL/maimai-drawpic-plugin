@@ -98,6 +98,15 @@ class SiliconFlowModelConfig(NegativePromptConfig):
             "order": 7.5,
         },
     )
+    watermark_enabled: bool = Field(
+        default=True,
+        description="是否启用硅基流动生成图片的显式 AI 生成水印。",
+        json_schema_extra={
+            "label": "启用「AI 生成」显式水印",
+            "hint": "默认开启。关闭时发送请求头 X-Enable-Watermark: 0，隐式水印仍保留。官方要求仅在继续处理生成图时关闭，并为最终输出补充显式标识。",
+            "order": 8,
+        },
+    )
     extra_parameters: list[str] = Field(
         default=[],
         description="硅基流动图片生成额外 JSON 参数。每项格式为 key=value",
