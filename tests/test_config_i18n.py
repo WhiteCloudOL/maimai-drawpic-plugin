@@ -147,5 +147,5 @@ def test_manifest_requires_current_maibot_and_sdk() -> None:
 
     manifest = json.loads((_PLUGIN_DIR / "_manifest.json").read_text(encoding="utf-8"))
 
-    assert manifest["host_application"]["min_version"] == "1.3.6"
-    assert manifest["sdk"]["min_version"] == "2.12.0"
+    assert manifest["host_application"]["min_version"] == "1.3.19"
+    assert manifest["sdk"]["min_version"] == "2.20.0"

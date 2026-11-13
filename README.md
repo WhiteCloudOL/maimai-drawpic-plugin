@@ -4,7 +4,7 @@
 
 # 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-2.2.1-informational.svg) ![MaiBot](https://img.shields.io/badge/MaiBot-1.3.6%E2%80%931.4.99-blue.svg) ![MaiBot Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-2.12.0%E2%80%932.22.1-blueviolet.svg) ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-2.2.1-informational.svg) ![MaiBot](https://img.shields.io/badge/MaiBot-1.3.19%E2%80%931.4.99-blue.svg) ![MaiBot Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-2.20.0%E2%80%932.22.1-blueviolet.svg) ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
 **❤️为 MaiBot 提供多平台聚合绘图能力，内置现代化 WebUI 工作台与聊天指令支持❤️**
 
@@ -43,6 +43,8 @@
 ---
 
 ## 📦 安装
+
+最低运行环境：**MaiBot 1.3.19、插件 SDK 2.20.0、Python 3.12**；可用版本范围以 [_manifest.json](_manifest.json) 为准。
 
 > [!TIP]
 > 无论哪种方式，升级旧版本前均建议先备份原插件目录与数据配置。详见 [升级与恢复指南](docs/configuration.md#升级迁移与冲突恢复)

@@ -20,7 +20,7 @@
 {"capabilities": ["api.call"]}
 ```
 
-还需要发现接口时再声明 `api.list` 或 `api.get`。绘图服务当前分支要求 MaiBot ≥1.3.6、SDK ≥2.12.0、Python ≥3.12 和配套 Dashboard。
+还需要发现接口时再声明 `api.list` 或 `api.get`。绘图服务当前分支要求 MaiBot ≥1.3.19、SDK ≥2.20.0、Python ≥3.12 和配套 Dashboard；可用版本范围以插件清单为准。[MaiBot 1.3.19](https://github.com/Mai-with-u/MaiBot/blob/v1.3.19/pyproject.toml) 是首个将 SDK 依赖提升至 2.20.0 的正式版本。
 
 管理员可在工作台通用配置中开启默认关闭的 `general.sync_generated_images_to_history`。开启后，仅成功投递到真实 `stream_id` 的生成图会由 Host 同步到当前 MaiSaka 历史；不指定会话的任务只生成结果。此选项可能增加视觉上下文和后台识图开销，且依赖对应会话的活动 MaiSaka 运行时。API 的 `delivery.status="sent"` 仅确认投递，不确认 Planner 已读取图片；同步失败或投递回执未知都不能成为重复发送的依据。详见[配置说明](configuration.md#生成图片与会话历史)。
 
@@ -62,18 +62,17 @@ async def submit_drawing(ctx, prompt, request_id):
 
 受理成功只表示任务与幂等信息已落盘，不表示生成、缓存或发送成功。`task_id=None/status=submission_unknown` 表示未取得可信提交响应，应保留请求键，不能换键重画。
 
-直接使用底层 API 时需处理 Host 包装：
+直接使用底层 API 时，SDK 已处理 Host 包装，`ctx.api.call` 直接返回目标 API 的业务结果；调用异常仍需保留原请求键，不能据此认定未受理：
 
 ```python
 async def call_v2(ctx, operation, **args):
-    response = await ctx.api.call(
+    return await ctx.api.call(
         f"maimai-drawpic-plugin.drawpic_{operation}_v2",
         version="2", **args,
     )
-    if response["success"] is not True:
-        raise RuntimeError(response["error"])  # RPC 失败不证明业务未受理。
-    return response["result"]                 # 再检查业务 error/accepted/status。
 ```
+
+返回后继续检查业务 `error/accepted/status`，不再读取额外的 `success/result` 层。
 
 ## 两条接入路径
 
@@ -352,15 +351,12 @@ import asyncio
 
 async def call_drawpic(plugin, name, **args):
     async with asyncio.timeout(8):
-        response = await plugin.ctx.api.call(
+        return await plugin.ctx.api.call(
             f"maimai-drawpic-plugin.{name}", version="1", **args
         )
-    if response["success"] is not True:
-        raise RuntimeError(response["error"])
-    return response["result"]
 ```
 
-v1 错误仍通过原异常/Host 包装返回，不具有 v2 的结构化错误保证。修改预设属于管理操作，调用前应验证用户权限；超时后先读取预设确认结果，不能假定写入没有发生。
+SDK 同样直接返回 v1 业务结果；v1 错误沿用原有异常处理，不具有 v2 的结构化错误保证。修改预设属于管理操作，调用前应验证用户权限；超时后先读取预设确认结果，不能假定写入没有发生。
 
 | 名称 | 参数 | 主要返回 |
 | --- | --- | --- |
@@ -436,7 +432,7 @@ ComfyUI、阿里云异步任务受理后的查询连接失败只重试原远端 
 ## 常见接入错误
 
 - **找不到 v2 API**：确认绘图插件已更新至 2.0.0，名称带 `_v2` 且 version 为 `"2"`；客户端不静默降级。
-- **RPC success=True 却未出图**：它只表示这次 API 调用返回；继续检查 accepted/status/error、results_readable 与 delivery。
+- **API 调用返回却未出图**：继续检查 accepted/status/error、results_readable 与 delivery；SDK 已解开 Host 包装，不应再读取 RPC success/result。
 - **工具一直超时**：改为 submit 后返回 task_id，不把整次等待塞进工具/RPC；生命周期后台协程再用 generate/wait。
 - **重复图片或重复发送**：持久保存 request_id 和完整参数，恢复不换键；只有一方负责发送。
 - **读取失败后直接重画**：先检查 RESULT_NOT_READY、RESULT_EXPIRED、容量和提供商记录，读取故障不证明需要重新生成。
