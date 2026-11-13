@@ -12,6 +12,8 @@ from .common import (
     ProxyConfig as ProxyConfig,
 )
 from .styles import StyleConfig as StyleConfig, StylePresetConfig as StylePresetConfig
+from .styles import ReferenceBindingConfig
+from .references import ReferenceConfig
 from .platforms.openai import (
     OpenAICompatibleInstanceConfig as OpenAICompatibleInstanceConfig,
     OpenAIModelConfig as OpenAIModelConfig,
@@ -68,6 +70,8 @@ apply_config_i18n(
         GeneralConfig,
         StylePresetConfig,
         StyleConfig,
+        ReferenceBindingConfig,
+        ReferenceConfig,
         ProxyConfig,
         OpenAICompatibleInstanceConfig,
         OpenAIModelConfig,

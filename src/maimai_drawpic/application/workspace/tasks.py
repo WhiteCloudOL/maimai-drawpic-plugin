@@ -14,6 +14,7 @@ from ...interfaces.chat.message_images import decode_image_base64
 from ...infrastructure.storage.results import ImageResultStore
 from ...infrastructure.storage.atomic import write_json_atomically
 from ...domain.styles import StylePromptResolver
+from ...infrastructure.storage.reference_assets import ReferenceAssetStore
 from ...infrastructure.storage.tasks import DrawTaskStore
 from ...domain.task_errors import TaskRequestError, task_error
 from ..drawing.admission import update_task_owned
@@ -48,6 +49,7 @@ class WorkspaceTaskService:
         self.lock = asyncio.Lock()
         self.metadata_path = data_dir / "workspace_tasks.json"
         self.metadata: Dict[str, Dict[str, Any]] = {}
+        self.references = ReferenceAssetStore(data_dir)
 
     def initialize(self) -> None:
         if self.metadata_path.exists():

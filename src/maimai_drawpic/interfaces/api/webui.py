@@ -3,12 +3,52 @@
 from maibot_sdk import API
 from typing import Any, Dict
 import asyncio
+import base64
 
 from .base import WorkspaceAPIBase, workspace_endpoint
 from ...infrastructure.storage.platforms import parse_json_object
 
 
 class WebUIAPIMixin(WorkspaceAPIBase):
+    @API("workspace_references", version="1")
+    @workspace_endpoint
+    async def workspace_references(self) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._workspace().tasks.references.snapshot)
+
+    @API("workspace_reference_image", version="1")
+    @workspace_endpoint
+    async def workspace_reference_image(self, asset_id: str) -> Dict[str, Any]:
+        from ...infrastructure.storage.results import ImageResultStore
+
+        def preview() -> Dict[str, str]:
+            store = self._workspace().tasks.references
+            item = next((item for item in store.snapshot()["assets"] if item["id"] == asset_id), None)
+            if item is None:
+                raise ValueError("参考图片不存在")
+            image = store.read(asset_id, kind=item["kind"])
+            raw = ImageResultStore._preview(image.raw, 480, 40000)
+            return {"preview": "data:image/webp;base64," + base64.b64encode(raw).decode("ascii")}
+
+        return await asyncio.to_thread(preview)
+
+    @API("workspace_reference_update", version="1")
+    @workspace_endpoint
+    async def workspace_reference_update(self, operation: str, revision: int, asset_json: str = "{}", source_id: str = "") -> Dict[str, Any]:
+        workspace = self._workspace()
+        values = parse_json_object(asset_json)
+        if values.keys() - {"asset_id", "name", "tags", "kind", "position"}:
+            raise ValueError("参考图片包含未知字段")
+
+        async def update() -> Dict[str, Any]:
+            config = workspace.get_config()
+            referenced = list(config.general.references.self_reference_ids)
+            referenced.extend(binding.asset_id for preset in config.style.presets for binding in preset.reference_bindings)
+            raw = (await workspace.tasks._sources([source_id], []))[0] if source_id else None
+            return await asyncio.to_thread(workspace.tasks.references.update, operation=operation, revision=revision,
+                                           raw=raw, referenced_ids=referenced, **values)
+
+        return await workspace._run_transaction(update)
+
     @API("workspace_provider_models", version="1")
     @workspace_endpoint
     async def workspace_provider_models(self, provider_json: str) -> Dict[str, Any]:

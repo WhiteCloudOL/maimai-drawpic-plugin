@@ -1,11 +1,35 @@
 """configuration/styles.py 的强类型配置定义。"""
 
 from maibot_sdk import Field, PluginConfigBase
-from typing import List
+from pydantic import model_validator
+from typing import List, Literal
+
+
+class ReferenceBindingConfig(PluginConfigBase):
+    asset_id: str = Field(default="", description="已上传的预设图片 ID", json_schema_extra={"label": "图片 ID"})
+    role: Literal["identity", "clothing", "scene", "lighting", "composition", "base"] = Field(default="scene", description="图片仅承担指定用途", json_schema_extra={"label": "图片用途"})
+    subject_id: str = Field(default="", description="人物或物件标识，身份参考应标明对应主体", json_schema_extra={"label": "对应主体"})
+    note: str = Field(default="", max_length=500, description="需要继承的具体特征", json_schema_extra={"label": "用途说明"})
 
 
 class StylePresetConfig(PluginConfigBase):
     """单个全平台绘图风格的提示词模板。"""
+
+    preset_type: Literal["text_to_image", "image_to_image"] = Field(default="text_to_image", description="文生图或图生图预设", json_schema_extra={"label": "预设类型"})
+    tags: List[str] = Field(default=[], max_length=32, description="用于固定匹配的 tag", json_schema_extra={"label": "预设 tag"})
+    apply_to_image_edit: bool = Field(default=False, description="允许文生图文字预设同时用于图生图", json_schema_extra={"label": "同时应用到图生图"})
+    reference_bindings: List[ReferenceBindingConfig] = Field(default=[], max_length=8, description="图生图预设的真实图片和用途", json_schema_extra={"label": "预设参考图片"})
+    multi_reference_confirmed: bool = Field(default=False, description="已在 dialog 中核实当前预设多图配置", json_schema_extra={"label": "已确认多图参考"})
+
+    @model_validator(mode="after")
+    def validate_mode(self) -> "StylePresetConfig":
+        if self.preset_type == "text_to_image" and self.reference_bindings:
+            raise ValueError("文生图预设不能绑定图片")
+        if self.preset_type == "image_to_image" and self.apply_to_image_edit:
+            raise ValueError("图生图预设不使用跨模式勾选")
+        if len(self.reference_bindings) > 1 and not self.multi_reference_confirmed:
+            raise ValueError("请先确认服务商及模型支持多图参考")
+        return self
 
     enabled: bool = Field(
         default=True,
@@ -67,6 +91,9 @@ class StyleConfig(PluginConfigBase):
 
     __ui_label__ = "绘图风格配置"
     __ui_order__ = 2
+
+    image_edit_presets_enabled: bool = Field(default=False, description="允许图生图任务使用预设，包括兼容的文生图预设", json_schema_extra={"label": "启用图生图预设"})
+    default_image_edit_preset: str = Field(default="", description="图生图默认预设；留空时仅在默认文生图预设已勾选兼容时使用它", json_schema_extra={"label": "默认图生图预设"})
 
     default_style: str = Field(
         default="",
