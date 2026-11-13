@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 import re
 import unicodedata
 
@@ -106,9 +106,13 @@ class StylePromptResolver:
         style_name: str,
         user_prompt: str,
         user_negative_prompt: str = "",
+        task_type: Optional[str] = None,
     ) -> ResolvedStylePrompt:
         """未指定时使用默认风格；显式选择无风格时保持原始描述。"""
 
+        selected = self.select_for_task(style_name, task_type, user_prompt) if task_type is not None else None
+        if task_type is not None:
+            style_name = selected.name if selected is not None else "none"
         normalized_style_name = style_name.strip()
         if normalized_style_name.casefold() in self.NO_STYLE_ALIASES:
             return ResolvedStylePrompt(
@@ -125,7 +129,7 @@ class StylePromptResolver:
                     negative_prompt=user_negative_prompt.strip(),
                 )
 
-        preset = self._find_preset(normalized_style_name)
+        preset = selected if selected is not None else self._find_preset(normalized_style_name)
         if preset is None:
             available_styles = "、".join(self.get_style_names()) or "未配置"
             raise ValueError(f"未找到绘图风格：{normalized_style_name}。可用风格：{available_styles}")
@@ -147,10 +151,51 @@ class StylePromptResolver:
             negative_prompt_template=preset.negative_prompt_template,
         )
 
+    def select_for_task(self, style_name: str, task_type: str, text: str = "") -> Optional[StylePresetConfig]:
+        """新入口按实际模式只选择一条预设；未传模式的历史 API 保持原文字风格语义。"""
+        from .references import normalize_tag
+
+        if task_type not in {"draw", "edit_image"}:
+            raise ValueError("绘图预设任务模式无效")
+        name = style_name.strip()
+        if name.casefold() in self.NO_STYLE_ALIASES:
+            return None
+        explicit = bool(name and name.casefold() not in self.DEFAULT_STYLE_ALIASES)
+        if task_type == "edit_image" and not self.config.image_edit_presets_enabled:
+            if explicit:
+                raise ValueError("图生图预设未启用")
+            return None
+
+        def allowed(preset: StylePresetConfig) -> bool:
+            return preset.enabled and (preset.preset_type == "text_to_image" if task_type == "draw" else
+                                       preset.preset_type == "image_to_image" or preset.apply_to_image_edit)
+
+        if not explicit:
+            matching = [(sum(normalize_tag(tag) in normalize_tag(text) for tag in preset.tags if tag.strip()), index, preset)
+                        for index, preset in enumerate(self.config.presets) if allowed(preset)]
+            matching.sort(key=lambda item: (-item[0], item[1], item[2].name))
+            if matching and matching[0][0]:
+                return matching[0][2]
+            name = self.config.default_style if task_type == "draw" else self.config.default_image_edit_preset
+            if task_type == "edit_image" and not name:
+                name = self.config.default_style
+                if name:
+                    defaults = [item for item in self.config.presets if item.name.casefold() == name.casefold()]
+                    if len(defaults) != 1 or not defaults[0].enabled:
+                        raise ValueError("默认文生图预设无效")
+                    if not defaults[0].apply_to_image_edit:
+                        return None
+            if not name:
+                return None
+        matches = [item for item in self.config.presets if item.name.strip().casefold() == name.strip().casefold()]
+        if len(matches) != 1 or not allowed(matches[0]):
+            raise ValueError(f"预设不存在、已停用或与当前模式不兼容：{name}")
+        return matches[0]
+
     def _find_preset(self, style_name: str) -> StylePresetConfig | None:
         lookup_name = style_name.strip().casefold()
         matches = [
-            preset for preset in self.config.presets if preset.enabled and preset.name.strip().casefold() == lookup_name
+            preset for preset in self.config.presets if preset.enabled and preset.preset_type == "text_to_image" and preset.name.strip().casefold() == lookup_name
         ]
         if len(matches) > 1:
             raise ValueError(f"绘图风格名称重复：{style_name}，请在插件配置中保留一个同名风格")

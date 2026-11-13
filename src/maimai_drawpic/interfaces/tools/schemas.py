@@ -1,6 +1,7 @@
 """绘图工具的参数声明。"""
 
 from typing import Any
+from ...domain.references import ReferenceOptions
 
 DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -52,6 +53,14 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
 }
 
 
+for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
+    schema["properties"]["style"] = {"type": "string", "description": "可选，已配置的绘图预设名称；none 表示不使用预设"}
+    schema["properties"]["reference_options"] = {
+        **ReferenceOptions.model_json_schema(),
+        "description": "已启用参考或素材搜索时，user_request 必须原样复制用户原始请求，不能用改写的绘图提示词代替。自我图只用于机器人；素材来源只能使用工作台已开启的 chat/web。省略各项时遵循聊天入口已开启的功能。",
+    }
+
+
 DRAW_STATUS_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -100,3 +109,5 @@ DRAW_STYLES_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "properties": {},
     "required": [],
 }
+
+STYLED_DRAW_TOOL_PARAMETERS_SCHEMA["properties"]["reference_options"] = DRAW_TOOL_PARAMETERS_SCHEMA["properties"]["reference_options"]

@@ -209,6 +209,7 @@ def test_component_bindings_are_private_and_public_api_is_limited():
         "drawpic_image_v2",
         "drawpic_cancel_v2",
         "drawpic_tasks_v2",
+        "drawpic_references_v2",
     }
     assert (Path(__file__).parents[1] / page["entry"]).is_file()
 

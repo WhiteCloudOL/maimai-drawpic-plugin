@@ -129,13 +129,13 @@ def test_terminal_retry_never_regenerates_or_resends(make_plugin, monkeypatch, f
                 assert detail['persistence_pending'] and detail['status'] == 'completed'
                 assert detail['delivery']['status'] == 'sent'
                 assert '终态尚未落盘' in detail['message']
-                assert json.loads(store.path.read_text())['tasks'][record.task_id]['status'] == 'running'
+                assert json.loads(store.path.read_text(encoding="utf-8"))['tasks'][record.task_id]['status'] == 'running'
                 monkeypatch.setattr(store, 'save', original_save)
                 detail = await plugin.drawpic_task_v2(receipt['task_id'])
                 assert not detail['persistence_pending']
             else:
                 assert len(writes) == failures + 1 and not record.persistence_pending
-            assert json.loads(store.path.read_text())['tasks'][record.task_id]['status'] == 'completed'
+            assert json.loads(store.path.read_text(encoding="utf-8"))['tasks'][record.task_id]['status'] == 'completed'
             reused = await plugin.drawpic_submit_v2('cat', stream_id='mock-stream', request_id='terminal-retry-key')
             assert reused['reused'] and calls == sends == [1]
         finally:
@@ -171,7 +171,7 @@ def test_unload_keeps_pending_terminal_and_logs_until_storage_recovers(make_plug
             monkeypatch.setattr(store, 'save', original_save)
             await plugin.on_unload()
             assert not store.get_task(receipt['task_id']).persistence_pending
-            assert json.loads(store.path.read_text())['tasks'][receipt['task_id']]['status'] == 'completed'
+            assert json.loads(store.path.read_text(encoding="utf-8"))['tasks'][receipt['task_id']]['status'] == 'completed'
         finally:
             monkeypatch.setattr(store, 'save', original_save)
             await plugin.on_unload()

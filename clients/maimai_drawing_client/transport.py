@@ -25,12 +25,6 @@ class DrawingRPC:
             raise DrawingTransportError("RPC 等待结束，远端响应未确认", **handles) from exc
         except Exception as exc:
             raise DrawingTransportError("SDK 调用失败，远端响应未确认", **handles) from exc
-        if not isinstance(response, dict) or response.get("success") is not True:
-            message = (
-                str(response.get("error", "RPC 返回无效包装")) if isinstance(response, dict) else "RPC 返回无效包装"
-            )
-            raise DrawingTransportError(message, **handles)
-        result = response.get("result")
-        if not isinstance(result, dict):
-            raise DrawingTransportError("RPC result 必须是对象", **handles)
-        return result
+        if not isinstance(response, dict):
+            raise DrawingTransportError("API 返回值必须是对象", **handles)
+        return response

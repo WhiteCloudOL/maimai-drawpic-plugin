@@ -3,7 +3,7 @@
 from typing import List, Optional, Tuple
 import aiohttp
 
-from ...domain.errors import ProviderError, ProviderOutcomeUnknown, ProviderResultError, ProviderSubmittedError
+from ...domain.errors import ProviderError, ProviderOutcomeUnknown, ProviderRequestError, ProviderResultError, ProviderSubmittedError
 from .types import ImageRequestAttempt
 from .admission import update_task_owned
 from ...domain.task_errors import provider_task_error
@@ -26,6 +26,7 @@ class RequestAttemptRunnerMixin:
         matched_message_id: str,
         request_negative_prompt: str,
         style_negative_prompt_template: str = "",
+        strict_reference_inputs: bool = False,
     ) -> Tuple[List[bytes], Optional[ImageRequestAttempt], List[str]]:
         # 模式参数只携带调用方/会话的显式覆盖；空值由每个备选实例自行解析默认值。
         errors: List[str] = []
@@ -119,7 +120,8 @@ class RequestAttemptRunnerMixin:
                 )
                 if not failure.retryable:
                     break
-            if not failure.allow_fallback:
+            input_rejected = strict_reference_inputs and isinstance(failure, ProviderRequestError) and 400 <= failure.status < 500 and not failure.retryable
+            if not failure.allow_fallback or input_rejected:
                 await update_task_owned(
                     self.task_store,
                     task_id,

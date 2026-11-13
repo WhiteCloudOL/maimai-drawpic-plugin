@@ -4,7 +4,7 @@
 
 # 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-2.2.1-informational.svg) ![MaiBot](https://img.shields.io/badge/MaiBot-1.3.6%E2%80%931.4.99-blue.svg) ![MaiBot Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-2.12.0%E2%80%932.22.1-blueviolet.svg) ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-2.2.1-informational.svg) ![MaiBot](https://img.shields.io/badge/MaiBot-1.3.19%E2%80%931.4.99-blue.svg) ![MaiBot Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-2.20.0%E2%80%932.22.1-blueviolet.svg) ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
 **❤️为 MaiBot 提供多平台聚合绘图能力，内置现代化 WebUI 工作台与聊天指令支持❤️**
 
@@ -13,7 +13,8 @@
 - **双端交互支持**：支持聊天指令与可视化 WebUI 双向操作，自由输入提示词、上传参考图并切换画风预设
 - **多平台灵活管理**：支持多平台及同平台多实例配置，密钥、地址、参数完全独立，支持首选模型与按序备用切换
 - **任务看板与排查**：后台异步执行，支持随时切页查询进度、浏览原图与失败日志，大图生成无需死守页面
-- **精细化控制与模板**：可视化配置群聊／私聊额度、内容审查规则与黑白名单，内置风格模板支持一键复用
+- **精细化控制与模板**：可视化配置群聊／私聊额度、内容审查规则与黑白名单；统一管理文生图、图生图预设，文字模板可逐条勾选跨模式应用
+- **自我参考与素材**：默认关闭的 tag 自我图库、指定默认图、用途明确的多图配置，以及独立开关的聊天／网络素材搜索识别
 - **开箱即用的联动 API**：提供统一的任务调用接口与独立 `DrawingClient` 实现，方便第三方插件快速接入，详见[插件联动](./docs/integration.md)
 
 ## 🩷 问题反馈&功能建议
@@ -42,7 +43,11 @@
 
 ---
 
+> 当前主线已加入参考与素材、两类预设和对应 API；原 2.2.1 release 不包含这些新增功能。尚未发布新的 release。
+
 ## 📦 安装
+
+最低运行环境：**MaiBot 1.3.19、插件 SDK 2.20.0、Python 3.12**；可用版本范围以 [_manifest.json](_manifest.json) 为准。
 
 > [!TIP]
 > 无论哪种方式，升级旧版本前均建议先备份原插件目录与数据配置。详见 [升级与恢复指南](docs/configuration.md#升级迁移与冲突恢复)

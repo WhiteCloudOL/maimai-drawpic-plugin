@@ -172,7 +172,7 @@ def test_atomic_failures_cleanup_and_preserve_destination(tmp_path, monkeypatch,
         monkeypatch.setattr(Path, "replace", fail)
     with pytest.raises(OSError, match="original write error"):
         atomic.write_json_atomically(target, {"value": "x" * 1000})
-    assert target.read_text() == '{"old": true}'
+    assert target.read_text(encoding="utf-8") == '{"old": true}'
     assert list(tmp_path.iterdir()) == [target]
 
 

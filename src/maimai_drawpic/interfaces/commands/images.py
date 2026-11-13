@@ -147,6 +147,9 @@ class ImageCommandMixin:
             )
             start_result = await self._start_background_image_request(
                 defer_prompt_review=True,
+                use_reference_features=True,
+                reference_options={"user_request": "/绘图 图生图 " + rest_payload},
+                reference_task_type="edit_image",
                 prompt=prompt,
                 stream_id=stream_id,
                 requested_model=resolved_model,

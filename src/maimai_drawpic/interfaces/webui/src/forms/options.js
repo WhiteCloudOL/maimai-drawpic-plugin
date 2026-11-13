@@ -2,6 +2,9 @@
   "use strict";
   const U = window.DrawpicUI;
   const labels = {
+    text_to_image: "文生图预设", image_to_image: "图生图预设",
+    identity: "人物身份", clothing: "服装", scene: "场景", lighting: "光线", composition: "构图", base: "待改底图",
+
     "": "使用平台默认（不传此参数）",
     auto: "自动",
     low: "低",
@@ -97,7 +100,7 @@
   };
   function label(value) {
     if (value === "") return labels[""];
-    if (["daily", "weekly", "monthly", "once", "blacklist", "whitelist"].includes(value)) return labels[value];
+    if (["daily", "weekly", "monthly", "once", "blacklist", "whitelist", "text_to_image", "image_to_image", "identity", "clothing", "scene", "lighting", "composition", "base"].includes(value)) return labels[value];
     if (Object.hasOwn(labels, value)) return `${labels[value]} · ${value}`;
     const size = String(value).match(/^(\d+)[x*](\d+)$/);
     if (size)

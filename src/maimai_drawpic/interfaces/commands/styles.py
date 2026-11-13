@@ -38,11 +38,6 @@ class StyleCommandMixin:
 
         positive_prompt, negative_prompt = self._split_negative_prompt(prompt_payload)
         try:
-            resolved_prompt = self._require_style_prompt_resolver().resolve(
-                style_name=style_name,
-                user_prompt=positive_prompt,
-                user_negative_prompt=negative_prompt,
-            )
             source_images, source_image_urls, matched_message_id = await self._collect_optional_command_source_images(
                 message=message,
                 stream_id=stream_id,
@@ -50,13 +45,17 @@ class StyleCommandMixin:
                 group_id=group_id,
                 platform=platform,
             )
-            if not resolved_prompt.positive_prompt and not source_images:
+            preset = next((item for item in self.config.style.presets if item.name.casefold() == style_name.casefold()), None)
+            template_text = preset.positive_prompt_template.replace("{prompt}", "").strip() if preset is not None else ""
+            if not positive_prompt and not source_images and not template_text:
                 raise ValueError("请提供正向提示词，或在同一条消息中附带/引用图片")
             result = await self._start_background_image_request(
                 defer_prompt_review=True,
-                prompt=resolved_prompt.positive_prompt,
+                prompt=positive_prompt,
+                drawing_style=style_name,
+                use_reference_features=True,
+                reference_options={"user_request": "/绘图 风格 " + rest_payload},
                 request_negative_prompt=negative_prompt,
-                style_negative_prompt_template=resolved_prompt.negative_prompt_template,
                 stream_id=stream_id,
                 source_image_bytes_list=source_images,
                 source_image_urls=source_image_urls,

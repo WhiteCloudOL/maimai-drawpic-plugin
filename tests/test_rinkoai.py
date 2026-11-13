@@ -198,7 +198,7 @@ def test_legacy_config_and_session_preferences_are_normalized(tmp_path: Path) ->
     store.load()
     assert store.get_preference("stream", group_id="1")["openai_compatibility_mode"] == "rinkoai"
     store.set_preference("stream", group_id="1", openai_compatibility_mode="RinkoAI兼容")
-    assert "novelai_images_api" not in path.read_text()
+    assert "novelai_images_api" not in path.read_text(encoding="utf-8")
     assert "RinkoAI 兼容" in _texts.build_compatible_mode_text("novelai_images_api")
     store.set_preference("stream", group_id="1", openai_compatibility_mode="chat_completions")
     assert store.get_preference("stream", group_id="1")["openai_compatibility_mode"] == "chat_completions"

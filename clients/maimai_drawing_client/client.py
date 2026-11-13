@@ -57,6 +57,11 @@ class DrawingClient:
             raise ValueError("未知绘图参数：" + ", ".join(sorted(unknown)))
         if kwargs.get("source_images") is not None:
             kwargs["source_images"] = await asyncio.to_thread(encode_sources, kwargs["source_images"])
+        if "reference_options" in kwargs:
+            reference_options = kwargs.pop("reference_options")
+            if not isinstance(reference_options, dict):
+                raise ValueError("reference_options 必须为对象")
+            kwargs["reference_options_json"] = json.dumps(reference_options, ensure_ascii=False, allow_nan=False)
         task_id = None
         try:
             result = await self.rpc.call("submit", prompt=prompt, request_id=request_id, **kwargs)
@@ -113,6 +118,16 @@ class DrawingClient:
 
     async def presets(self) -> Dict[str, Any]:
         return await self._presets("list")
+
+    async def references(self, *, page: int = 1) -> Dict[str, Any]:
+        """只读参考目录，不读取图片或修改全局设置。"""
+        if type(page) is not int or not 1 <= page <= 10:
+            raise ValueError("参考目录页码必须为 1～10")
+        result = await self.rpc.call("references", page=page)
+        self._resource_error(result)
+        if not isinstance(result.get("assets"), list):
+            raise DrawingTransportError("参考目录响应格式无效")
+        return result
 
     async def preferences(self, stream_id: str) -> Dict[str, Any]:
         """读取已存在会话的绘图覆盖值；空值表示使用默认配置。"""

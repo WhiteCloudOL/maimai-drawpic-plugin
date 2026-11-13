@@ -309,6 +309,7 @@ class DrawTaskStore:
         generated_count: Optional[int] = None,
         expected_delivery_count: Optional[int] = None,
         delivery_unconfirmed: Optional[bool] = None,
+        task_type: Optional[str] = None,
     ) -> DrawTaskRecord | None:
         """更新任务状态；任务不存在时返回 None 而非抛出 KeyError。"""
 
@@ -323,6 +324,10 @@ class DrawTaskStore:
         record = replace(record)
         record.status = status
         record.message = self.sanitize_message(message)
+        if task_type is not None:
+            if task_type not in {"draw", "edit_image"} or record.generated_count and task_type != record.task_type:
+                raise ValueError("任务模式只能在生成前确定")
+            record.task_type = task_type
         if error is not None:
             record.error = {**error, "message": self.sanitize_message(error["message"])}
         if result_count is not None:

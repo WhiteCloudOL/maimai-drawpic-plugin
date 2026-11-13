@@ -79,6 +79,10 @@ class _StubGeneralConfig:
 
 
 class _StubConfig:
+    class minimax:
+        enabled = False
+        models = []
+
     class agnes:
         enabled = False
         models = []

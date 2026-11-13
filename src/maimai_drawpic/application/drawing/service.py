@@ -16,6 +16,7 @@ from .execution import ImageExecutionMixin
 from .queries import TaskQueryMixin
 from .admission import persist_submission, tracked_submission, wait_for_admission
 from ...domain.task_errors import task_error
+from ..references.service import ReferencePreparation
 
 
 class DrawService(
@@ -288,6 +289,7 @@ class DrawService(
         on_task_unsuccessful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
         on_task_successful: Callable[[str, str, str], Awaitable[None] | None] | None = None,
         submission: Optional[Dict[str, Any]] = None,
+        reference_preparation: Optional[ReferencePreparation] = None,
     ) -> dict[str, Any]:
         """启动后台绘图任务，源图为空时文生图，存在源图时图生图。"""
 
@@ -297,6 +299,10 @@ class DrawService(
             raise ValueError("源图 URL 数量必须与源图数量一致")
         is_image_edit = bool(normalized_source_images)
         task_type = "edit_image" if is_image_edit else "draw"
+        if reference_preparation is not None:
+            task_type = reference_preparation.expected_mode or task_type
+            if not reference_preparation.expected_mode and not self.router.evaluate_model_task_capability(resolved_model, task_type).allowed:
+                task_type = "edit_image"
 
         primary_attempt = self._build_image_request_attempt(
             model=resolved_model,
@@ -371,6 +377,7 @@ class DrawService(
                 platform_name=platform_name,
                 on_task_unsuccessful=on_task_unsuccessful,
                 on_task_successful=on_task_successful,
+                reference_preparation=reference_preparation,
             ),
             name=f"maimai-drawpic:{task_record.task_id}",
         )

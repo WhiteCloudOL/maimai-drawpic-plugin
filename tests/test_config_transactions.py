@@ -106,7 +106,7 @@ def test_settings_save_needs_no_second_platform_write(make_plugin, monkeypatch):
             values = initial["settings"]
             values["general"]["request_retry_count"] = 2
             result = await plugin.workspace_settings_save(json.dumps(values), initial["revision"])
-            payload = json.loads(store.settings.path.read_text())
+            payload = json.loads(store.settings.path.read_text(encoding="utf-8"))
             assert result["saved"] and result["revision"] == initial["revision"] + 1
             assert payload["revision"] == result["revision"]
             assert payload["settings"]["general"]["request_retry_count"] == 2
@@ -178,8 +178,8 @@ def test_rename_updates_all_model_references_in_one_revision(tmp_path):
     assert result["saved"] and not result["recovery_pending"]
     assert not store.transaction_path.exists()
     assert_renamed(store, revision)
-    assert json.loads(store.path.read_text())["revision"] == revision
-    assert json.loads(store.settings.path.read_text())["revision"] == revision
+    assert json.loads(store.path.read_text(encoding="utf-8"))["revision"] == revision
+    assert json.loads(store.settings.path.read_text(encoding="utf-8"))["revision"] == revision
     restarted = storage.WorkspaceConfigStore(store.path.parent, store.config_path)
     restarted.initialize({})
     assert_renamed(restarted, revision)
@@ -275,7 +275,7 @@ def pending_transaction(tmp_path, monkeypatch):
 @pytest.mark.parametrize("damage", ["truncated", "unknown_field", "missing_settings"])
 def test_invalid_transaction_is_preserved_without_touching_sources(tmp_path, monkeypatch, damage):
     store = pending_transaction(tmp_path, monkeypatch)
-    transaction = json.loads(store.transaction_path.read_text())
+    transaction = json.loads(store.transaction_path.read_text(encoding="utf-8"))
     if damage == "unknown_field":
         transaction["unrecognized"] = "keep this original"
     elif damage == "missing_settings":
@@ -306,7 +306,7 @@ def test_legacy_settings_upgrade_backs_up_original_bytes(tmp_path):
     platforms_before = store.path.read_bytes()
     restarted = storage.WorkspaceConfigStore(store.path.parent, store.config_path)
     restarted.initialize({})
-    upgraded = json.loads(restarted.settings.path.read_text())
+    upgraded = json.loads(restarted.settings.path.read_text(encoding="utf-8"))
     assert upgraded["schema_version"] == 2 and upgraded["revision"] == 0
     assert upgraded["settings"] == legacy["settings"]
     assert restarted.revision == store.revision
@@ -319,7 +319,7 @@ def test_legacy_settings_upgrade_backs_up_original_bytes(tmp_path):
 @pytest.mark.parametrize("damage", ["unknown_field", "missing_section", "bad_revision"])
 def test_invalid_settings_not_overwritten_during_migration(tmp_path, damage):
     store = new_store(tmp_path)
-    payload = json.loads(store.settings.path.read_text())
+    payload = json.loads(store.settings.path.read_text(encoding="utf-8"))
     if damage == "unknown_field":
         payload["settings"]["general"]["unrecognized"] = "keep this data"
     elif damage == "missing_section":
@@ -346,14 +346,14 @@ def test_migration_resumes_after_settings_write_interruption(tmp_path, monkeypat
     monkeypatch.setattr(store.settings, "_save", fail)
     with pytest.raises(OSError):
         store.initialize(tomlkit.parse(original.decode()))
-    assert "openai" not in tomlkit.parse(path.read_text())
-    assert "general" in tomlkit.parse(path.read_text())
+    assert "openai" not in tomlkit.parse(path.read_text(encoding="utf-8"))
+    assert "general" in tomlkit.parse(path.read_text(encoding="utf-8"))
     assert any(p.read_bytes() == original for p in (tmp_path / "data/migration_backups").glob("*.toml"))
     restarted = storage.WorkspaceConfigStore(tmp_path / "data", path)
-    restarted.initialize(tomlkit.parse(path.read_text()))
+    restarted.initialize(tomlkit.parse(path.read_text(encoding="utf-8")))
     assert restarted.settings.values["general"]["request_retry_count"] == 1
     assert restarted.providers[0]["config"]["api_key"] == "fixture-migration-key"
-    assert set(tomlkit.parse(path.read_text())) == {"plugin"}
+    assert set(tomlkit.parse(path.read_text(encoding="utf-8"))) == {"plugin"}
 
 
 def test_settings_conflict_aborts_before_platform_migration(tmp_path):
@@ -363,7 +363,7 @@ def test_settings_conflict_aborts_before_platform_migration(tmp_path):
     before = snapshot_bytes(store)
     with pytest.raises(ValueError, match="存在冲突"):
         storage.WorkspaceConfigStore(store.path.parent, store.config_path).initialize(tomlkit.parse(legacy))
-    assert snapshot_bytes(store) == before and store.config_path.read_text() == legacy
+    assert snapshot_bytes(store) == before and store.config_path.read_text(encoding="utf-8") == legacy
     assert not (store.path.parent / "migration_backups").exists()
 
 
@@ -450,7 +450,7 @@ def test_concurrent_pages_cannot_commit_the_same_revision(make_plugin):
             )
             assert sum(isinstance(result, dict) and result["saved"] for result in results) == 1
             assert sum(isinstance(result, ValueError) for result in results) == 1
-            saved = json.loads(plugin._platform_store.settings.path.read_text())
+            saved = json.loads(plugin._platform_store.settings.path.read_text(encoding="utf-8"))
             assert saved["revision"] == initial["revision"] + 1
             assert saved["settings"]["general"]["request_retry_count"] == 1
         finally:
@@ -511,13 +511,13 @@ def test_pending_recovery_checks_legacy_conflicts_before_writes(tmp_path, monkey
     with pytest.raises(ValueError, match="冲突"):
         storage.WorkspaceConfigStore(store.path.parent, store.config_path).initialize(tomlkit.parse(legacy))
     assert snapshot_bytes(store) == before
-    assert store.config_path.read_text() == legacy
+    assert store.config_path.read_text(encoding="utf-8") == legacy
     assert not (store.path.parent / "migration_backups").exists()
 
 
 def test_valid_external_settings_edit_is_preserved(tmp_path):
     store, rename = renamed_fixture(tmp_path)
-    payload = json.loads(store.settings.path.read_text())
+    payload = json.loads(store.settings.path.read_text(encoding="utf-8"))
     payload["settings"]["general"]["request_retry_count"] = 2
     store.settings.path.write_text(json.dumps(payload))
     before = snapshot_bytes(store)

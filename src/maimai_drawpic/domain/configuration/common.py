@@ -5,6 +5,7 @@ from pydantic import field_validator
 from typing import List
 
 from .types import AccessListMode, CommandReplyMode, ProxyScheme, QuotaPeriodMode, ReviewModelTask
+from .references import ReferenceConfig
 
 
 class PluginSectionConfig(PluginConfigBase):
@@ -22,7 +23,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.45.0",
+        default="2.46.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -63,6 +64,8 @@ class PluginSectionConfig(PluginConfigBase):
 
 class GeneralConfig(PluginConfigBase):
     """通用配置。"""
+
+    references: ReferenceConfig = Field(default_factory=ReferenceConfig, description="自我参考与素材来源", json_schema_extra={"label": "参考与素材"})
 
     __ui_label__ = "通用配置"
     __ui_order__ = 1

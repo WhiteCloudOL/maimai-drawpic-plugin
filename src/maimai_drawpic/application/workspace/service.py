@@ -1,9 +1,12 @@
 """绘图工作台的配置、模型、会话和预设业务边界。"""
 
+from maibot_sdk.config import generate_plugin_config_schema
 from typing import Any, Awaitable, Callable, Dict
 import asyncio
 
 from ...domain.configuration.models import DrawpicConfig, StylePresetConfig
+from ...domain.task_errors import TaskRequestError
+from ...domain.configuration.references import ReferenceWorkspaceSchema
 from ...domain.models.novelai_catalog import NOVELAI_PRESET_HINT, NOVELAI_PRESET_MODELS
 from ...domain.models.minimax_profiles import MINIMAX_MODELS, MINIMAX_PRESET_HINT
 from ...infrastructure.storage.platforms import (
@@ -128,6 +131,11 @@ class WorkspaceService:
         schema = self.store.schema()
         schema["sections"].pop("plugin", None)
         schema["sections"].pop("proxy", None)
+        reference_schema = generate_plugin_config_schema(ReferenceWorkspaceSchema)["sections"]
+        bindings = reference_schema["bindings"]["fields"]["reference_bindings"]
+        schema["sections"]["style"]["fields"]["presets"]["item_fields"]["reference_bindings"].update(
+            item_type="object", item_fields=bindings["item_fields"],
+        )
         return _browser_integers({
             **snapshot,
             "config_update_pending": self._transaction is not None,
@@ -135,6 +143,8 @@ class WorkspaceService:
             "settings": _mask_secrets(config),
             "defaults": _mask_secrets(defaults),
             "schema": schema,
+            "reference_fields": reference_schema["references"]["fields"],
+            "reference_assets": await asyncio.to_thread(self.tasks.references.snapshot),
             "catalog": [
                 {
                     "kind": key,
@@ -194,11 +204,11 @@ class WorkspaceService:
     async def save_settings(self, config_json: str, revision: int) -> Dict[str, Any]:
         return await self._run_transaction(lambda: self._save_settings(config_json, revision))
 
-    async def presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
+    async def presets(self, operation: str = "list", name: str = "", preset_json: str = "", *, legacy: bool = False) -> Dict[str, Any]:
         if operation in {"list", "get"}:
             async with self.lock:
-                return await self._presets(operation, name, preset_json)
-        return await self._run_transaction(lambda: self._presets(operation, name, preset_json))
+                return await self._presets(operation, name, preset_json, legacy=legacy)
+        return await self._run_transaction(lambda: self._presets(operation, name, preset_json, legacy=legacy))
 
     async def _save_provider(self, provider_json: str, revision: int) -> Dict[str, Any]:
         payload = parse_json_object(provider_json)
@@ -228,6 +238,8 @@ class WorkspaceService:
         if revision != self.store.revision:
             raise ValueError("配置已更新，请刷新后保存")
         current = self.get_config().model_dump(mode="json")
+        checked = DrawpicConfig.model_validate({**current, **values})
+        await self._validate_reference_assets(checked)
         updated = await asyncio.to_thread(self.store.save_common, values, current, revision)
         status = await self._refresh_committed(updated)
         review = self.store.settings.values["general"]
@@ -260,27 +272,72 @@ class WorkspaceService:
             )
         return status
 
-    async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
+    async def _validate_reference_assets(self, config: DrawpicConfig) -> None:
+        refs = config.general.references
+        names = [preset.name.strip().casefold() for preset in config.style.presets]
+        if len(names) != len(set(names)) or any(not name or len(name) > 80 for name in names) or len(names) > 100:
+            raise ValueError("预设名称必须非空、唯一且不超过 80 字符，最多 100 条")
+        for name, kind in ((config.style.default_style, "text_to_image"),
+                           (config.style.default_image_edit_preset, "image_to_image")):
+            if name:
+                preset = next((preset for preset in config.style.presets if preset.name.casefold() == name.casefold()), None)
+                if preset is None or not preset.enabled or preset.preset_type != kind:
+                    raise ValueError("默认预设不存在、已停用或类型不符，请重新选择")
+        if len(refs.self_reference_ids) > 8:
+            raise ValueError("自我参考最多选择 8 张图片")
+        if len(refs.self_reference_ids) > 1 and not refs.multi_reference_confirmed:
+            raise ValueError("请通过 dialog 确认自我多图配置")
+        for identifier in refs.self_reference_ids:
+            await asyncio.to_thread(self.tasks.references.read, identifier, kind="self")
+        for preset in config.style.presets:
+            for binding in preset.reference_bindings:
+                await asyncio.to_thread(self.tasks.references.read, binding.asset_id, kind="preset")
+
+    async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "", *, legacy: bool = False) -> Dict[str, Any]:
         if operation not in {"list", "get", "save", "delete"} or len(name) > 80:
             raise ValueError("预设操作或名称无效")
         snapshot = await asyncio.to_thread(self.store.public_snapshot)
         current = snapshot["settings"]
         presets = current["style"]["presets"]
         target = next((item for item in presets if item["name"].casefold() == name.casefold()), None)
+        legacy_fields = {"name", "description", "enabled", "positive_prompt_template", "negative_prompt_template"}
+
+        def listed() -> Dict[str, Any]:
+            items = [{key: value for key, value in item.items() if key in legacy_fields} for item in presets
+                     if item["preset_type"] == "text_to_image"] if legacy else presets
+            result = {"presets": items, "default_style": current["style"]["default_style"]}
+            if not legacy:
+                result.update(image_edit_presets_enabled=current["style"]["image_edit_presets_enabled"],
+                              default_image_edit_preset=current["style"]["default_image_edit_preset"])
+            return result
+
         if operation == "list":
-            return {"presets": presets, "default_style": current["style"]["default_style"]}
+            return listed()
+        if legacy and target is not None and target["preset_type"] != "text_to_image":
+            raise ValueError("旧接口不能读取或修改图生图预设")
         if operation == "get":
             if target is None:
                 raise ValueError("预设不存在")
-            return {"preset": target}
+            return {"preset": {key: value for key, value in target.items() if key in legacy_fields} if legacy else target}
         if operation == "delete":
             if target is None:
                 raise ValueError("预设不存在")
             presets.remove(target)
             if current["style"]["default_style"].casefold() == name.casefold():
                 current["style"]["default_style"] = ""
+            if current["style"]["default_image_edit_preset"].casefold() == name.casefold():
+                current["style"]["default_image_edit_preset"] = ""
         else:
-            preset = _validate_fields(StylePresetConfig, parse_json_object(preset_json))
+            incoming = parse_json_object(preset_json)
+            if legacy and incoming.keys() - legacy_fields:
+                raise ValueError("旧接口仅支持文字风格字段")
+            combined = {**(target or {}), **incoming}
+            old_bindings = target["reference_bindings"] if target else []
+            new_bindings = combined.get("reference_bindings", [])
+            confirmed = combined.get("multi_reference_confirmed", False)
+            if (confirmed and (not target or not target["multi_reference_confirmed"])) or new_bindings != old_bindings and (len(new_bindings) > 1 or confirmed):
+                raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "多图配置需要在工作台通过 dialog 确认")
+            preset = _validate_fields(StylePresetConfig, combined)
             if not preset["name"].strip() or len(preset["name"]) > 80 or len(presets) >= 100 and target is None:
                 raise ValueError("预设名称必须为 1～80 个字符，最多保存 100 个预设")
             if target is not None:
@@ -290,14 +347,17 @@ class WorkspaceService:
                     raise ValueError("已有同名预设")
                 if current["style"]["default_style"].casefold() == target["name"].casefold():
                     current["style"]["default_style"] = preset["name"]
+                if current["style"]["default_image_edit_preset"].casefold() == target["name"].casefold():
+                    current["style"]["default_image_edit_preset"] = preset["name"]
                 presets[presets.index(target)] = preset
             else:
                 if any(item["name"].casefold() == preset["name"].casefold() for item in presets):
                     raise ValueError("已有同名预设")
                 presets.append(preset)
+        await self._validate_reference_assets(DrawpicConfig.model_validate(current))
         updated = await asyncio.to_thread(self.store.save_common, workspace_config(current), current, snapshot["revision"])
         status = await self._refresh_committed(updated)
-        return {"presets": presets, **status}
+        return {**listed(), **status}
 
     async def streams(self, platform: str = "qq") -> Dict[str, Any]:
         if not platform or len(platform) > 80:

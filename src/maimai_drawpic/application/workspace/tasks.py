@@ -14,6 +14,9 @@ from ...interfaces.chat.message_images import decode_image_base64
 from ...infrastructure.storage.results import ImageResultStore
 from ...infrastructure.storage.atomic import write_json_atomically
 from ...domain.styles import StylePromptResolver
+from ...domain.references import ReferenceOptions
+from ..references.service import freeze_reference_request
+from ...infrastructure.storage.reference_assets import ReferenceAssetStore
 from ...infrastructure.storage.tasks import DrawTaskStore
 from ...domain.task_errors import TaskRequestError, task_error
 from ..drawing.admission import update_task_owned
@@ -48,8 +51,10 @@ class WorkspaceTaskService:
         self.lock = asyncio.Lock()
         self.metadata_path = data_dir / "workspace_tasks.json"
         self.metadata: Dict[str, Dict[str, Any]] = {}
+        self.references = ReferenceAssetStore(data_dir)
 
     def initialize(self) -> None:
+        self.references.snapshot()
         if self.metadata_path.exists():
             self.metadata = json.loads(self.metadata_path.read_text(encoding="utf-8"))
             if not isinstance(self.metadata, dict):
@@ -141,6 +146,8 @@ class WorkspaceTaskService:
         novelai_mode: str = "",
         novelai_artist_tags: str | None = None,
         require_existing_stream: bool = False,
+        reference_options_json: str = "",
+        legacy_style: bool = False,
     ) -> Dict[str, Any]:
         if origin == "plugin":
             require_integration_api(self.get_config().general, self.ctx.logger, "submit")
@@ -152,6 +159,10 @@ class WorkspaceTaskService:
             raise ValueError("绘图文本参数必须为字符串")
         if task_type not in {"draw", "edit_image"}:
             raise ValueError("任务类型只能是 draw 或 edit_image")
+        if not isinstance(reference_options_json, str) or len(reference_options_json.encode("utf-8")) > 60 * 1024:
+            raise ValueError("参考选项必须是 60 KiB 以内的 JSON 文本")
+        reference_options = ReferenceOptions.model_validate_json(reference_options_json) if reference_options_json.strip() else ReferenceOptions()
+        reference_values = reference_options.model_dump(exclude_defaults=True)
         if len(negative_prompt) > 16000 or len(model) > 200 or len(style) > 80 or len(stream_id) > 200:
             raise ValueError("绘图参数超过长度限制")
         if request_id and not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request_id):
@@ -179,6 +190,8 @@ class WorkspaceTaskService:
         # 保留旧请求的签名；只有显式覆盖新参数时才扩展签名，不能让升级破坏幂等恢复。
         if any(options.values()) or novelai_artist_tags is not None:
             signature_values.append(options)
+        if reference_values:
+            signature_values.append({"reference_options": reference_values})
         signature = await asyncio.to_thread(
             lambda: sha256(
                 json.dumps(
@@ -214,7 +227,7 @@ class WorkspaceTaskService:
             images = await self._sources(source_ids or [], source_images or [])
             if task_type == "draw" and images:
                 raise ValueError("文生图不能附带源图，请选择图生图")
-            if task_type == "edit_image" and not images:
+            if legacy_style and task_type == "edit_image" and not images:
                 raise ValueError("图生图需要真实源图片")
             service = self.get_service()
             router = service.router
@@ -226,8 +239,27 @@ class WorkspaceTaskService:
             await asyncio.to_thread(router.validate_forced_command_task, resolved_model, task_type)
             if images:
                 router.validate_local_source_images(resolved_model)
+            preparation = None
+            if not legacy_style:
+                preparation = await freeze_reference_request(
+                    ctx=self.ctx, config=self.get_config(), store=self.references, streams=service.stream_service,
+                    prompt=prompt, style=style, negative=negative_prompt, stream_id=stream_id,
+                    options=reference_options, images=images, urls=[""] * len(images), required_mode=task_type,
+                    get_config=self.get_config,
+                )
+                if task_type == "edit_image" and not images and not preparation.self_ids and not reference_options.material_sources and not preparation.frozen:
+                    raise TaskRequestError("SOURCE_IMAGE_REQUIRED", "图生图需要真实源图片，请提供图片或选择已开启的参考来源")
+                known = list(images)
+                if reference_options.self_reference == "required":
+                    known.extend(preparation.frozen[key].raw for key in preparation.self_ids)
+                explicit_preset = next((item for item in self.get_config().style.presets if item.name.casefold() == style.casefold()), None)
+                if explicit_preset is not None:
+                    known.extend(preparation.frozen[binding.asset_id].raw for binding in explicit_preset.reference_bindings)
+                router.validate_source_image_count(resolved_model, len(known))
+                if known:
+                    router.validate_local_source_images(resolved_model)
             resolved_style = StylePromptResolver(self.get_config().style).resolve(
-                style_name=style, user_prompt=prompt, user_negative_prompt=negative_prompt
+                style_name=style if legacy_style else "none", user_prompt=prompt, user_negative_prompt=negative_prompt
             )
             submission = {
                 "origin": origin,
@@ -236,6 +268,9 @@ class WorkspaceTaskService:
                 "prompt": prompt,
                 "style": style,
             }
+            if preparation is not None:
+                submission["reference_options"] = reference_values
+                submission["reference_versions"] = {key: image.version for key, image in preparation.frozen.items()}
             if origin == "plugin":
                 require_integration_api(self.get_config().general, self.ctx.logger, "submit")
             if context:
@@ -261,6 +296,7 @@ class WorkspaceTaskService:
                     notify_start=False,
                     defer_prompt_review=True,
                     submission=submission,
+                    reference_preparation=preparation,
                 )
             else:
                 result = await service.start_background_image_request(
@@ -276,6 +312,7 @@ class WorkspaceTaskService:
                     source_image_bytes_list=images,
                     prompt_reviewed=False,
                     submission=submission,
+                    reference_preparation=preparation,
                 )
             task_id = result["task_id"]
             self.metadata[task_id] = submission

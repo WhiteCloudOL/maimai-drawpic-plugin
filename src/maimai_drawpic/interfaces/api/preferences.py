@@ -2,6 +2,7 @@
 
 from maibot_sdk import API
 from typing import Any, Dict
+import asyncio
 
 from ...application.workspace.preferences import IntegrationPreferenceService
 from ...infrastructure.storage.platforms import parse_json_object
@@ -9,6 +10,24 @@ from .base import WorkspaceAPIBase, integration_api_endpoint, integration_endpoi
 
 
 class PreferenceAPIMixin(WorkspaceAPIBase):
+    @API("drawpic_references_v2", version="2", public=True, description="只读查询自我参考目录与素材来源状态，不返回图片内容")
+    @integration_api_endpoint
+    @integration_endpoint
+    async def drawpic_references_v2(self, page: int = 1) -> Dict[str, Any]:
+        if type(page) is not int or not 1 <= page <= 10:
+            raise ValueError("参考目录分页无效")
+        workspace = self._workspace()
+        snapshot = await asyncio.to_thread(workspace.tasks.references.snapshot)
+        assets = [item for item in snapshot["assets"] if item["kind"] == "self"]
+        config = workspace.get_config().general.references
+        return {"page": page, "page_size": 12, "total": len(assets),
+                "assets": [{"id": item["id"], "name": item["name"], "tags": item["tags"],
+                            "default": item["id"] == snapshot["default_reference_id"]} for item in assets[(page - 1) * 12:page * 12]],
+                "self_reference_enabled": config.self_reference_enabled,
+                "allow_chat_material_search": config.allow_chat_material_search,
+                "allow_web_material_search": config.allow_web_material_search,
+                "multi_reference_confirmed": config.multi_reference_confirmed}
+
     def _preference_api(self) -> IntegrationPreferenceService:
         return IntegrationPreferenceService(self._workspace().tasks.get_service().stream_service, self._require_session_store)
 

@@ -29,7 +29,7 @@ def test_url_diagnostics_redacted_at_host_log_and_task_disk(tmp_path, diagnostic
     logger.error('%s', error)
     store = module('infrastructure.storage.tasks').DrawTaskStore(tmp_path/'tasks.json', sanitize=redactor.redact)
     task = store.create_task(session_key='mock', stream_id='', task_type='draw', prompt='', model='mock', provider='mock', message=str(error))
-    for text in [str(error), task.message, store.path.read_text(), output.getvalue()]:
+    for text in [str(error), task.message, store.path.read_text(encoding="utf-8"), output.getvalue()]:
         assert 'FAKE_SIGNATURE' not in text
         assert 'example.invalid/object' in text
         assert 'HTTP 400' in text
@@ -135,8 +135,8 @@ def test_bounded_queue_drops_nonblocking_and_stops_when_full(tmp_path):
         assert store.listener._thread is None
         assert store.dropped_records >= 44
         assert store.query()['dropped_records'] == store.dropped_records
-        assert 'FAKE_CONFIGURED_CREDENTIAL' not in store.path.read_text()
-        assert '已丢弃' in store.path.read_text()
+        assert 'FAKE_CONFIGURED_CREDENTIAL' not in store.path.read_text(encoding="utf-8")
+        assert '已丢弃' in store.path.read_text(encoding="utf-8")
     finally:
         release.set()
         if closer:

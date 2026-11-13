@@ -1,10 +1,9 @@
-"""正式客户端通过实际 SDK 组件声明连接隔离插件；不调用真实模型或聊天。"""
+"""正式客户端通过实际 SDK 能力代理和组件声明连接隔离插件；不调用真实模型或聊天。"""
 
-from pathlib import Path
 from functools import partial
+from pathlib import Path
 from threading import Event
-from maibot_sdk.components import collect_components
-from test_workspace import _PACKAGE, image_bytes, make_plugin as make_plugin
+from typing import Any, Dict
 import asyncio
 import ast
 import base64
@@ -14,7 +13,12 @@ import re
 import shutil
 import subprocess
 import sys
+
+from maibot_sdk import PluginContext
+from maibot_sdk.components import collect_components
 import pytest
+
+from test_workspace import _PACKAGE, image_bytes, make_plugin as make_plugin
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "clients"))
 from maimai_drawing_client import DrawingClient, DrawingError, DrawingTransportError  # noqa: E402
@@ -25,15 +29,25 @@ def module(name):
 
 
 class LocalAPI:
-    def __init__(self, plugin):
+    def __init__(self, plugin: Any) -> None:
         self.plugin, self.calls = plugin, []
+        self.api = PluginContext("drawpic-client-test", rpc_call=self._call_host).api
         self.handlers = {
             (item["name"], item["metadata"]["version"]): item["metadata"]["handler_name"]
             for item in collect_components(plugin)
             if item["type"] == "API"
         }
 
-    async def call(self, api_name, version="1", **kwargs):
+    async def call(self, api_name: str, version: str = "1", **kwargs: Any) -> Dict[str, Any]:
+        return await self.api.call(api_name, version=version, **kwargs)
+
+    async def _call_host(self, method: str, plugin_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """模拟 Host 边界，业务响应经过实际 SDK 的规范化路径。"""
+
+        assert method == "cap.call" and plugin_id == "drawpic-client-test"
+        assert payload["capability"] == "api.call"
+        arguments = payload["args"]
+        api_name, version, kwargs = arguments["api_name"], arguments["version"], arguments["args"]
         self.calls.append((api_name, version, kwargs))
         handler = self.handlers[(api_name.rsplit(".", 1)[1], version)]
         result = await getattr(self.plugin, handler)(**kwargs)
@@ -50,7 +64,7 @@ def test_incomplete_submission_receipt_preserves_key_and_rejects_invalid_key():
 
             async def call(self, *args, **kwargs):
                 self.calls += 1
-                return {"success": True, "result": {"accepted": True}}
+                return {"accepted": True}
 
         api = IncompleteAPI()
         client = DrawingClient(api)
@@ -90,6 +104,7 @@ def test_documented_background_llm_edit_and_recovery_examples(make_plugin, monke
 
             monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
             plugin.ctx.api = LocalAPI(plugin)
+            assert (await namespace["call_drawpic"](plugin, "drawpic_models"))["models"]
             output = tmp_path / "result.png"
             background = await namespace["background_draw"](plugin.ctx, "cat", "docs-background-01", output)
             assert background.status == "completed" and output.read_bytes() == image_bytes()
@@ -97,6 +112,8 @@ def test_documented_background_llm_edit_and_recovery_examples(make_plugin, monke
             await asyncio.gather(*tuple(plugin._require_draw_service().background_tasks))
             queried = await namespace["llm_query"](plugin.ctx, receipt["task_id"])
             assert queried["status"] == "completed" and "data" not in queried["images"][0]
+            snapshot = await namespace["call_v2"](plugin.ctx, "task", task_id=receipt["task_id"])
+            assert snapshot["task_id"] == receipt["task_id"]
             model = (await plugin.drawpic_models())["models"][0]["name"]
             edited = await namespace["edit_picture"](plugin.ctx, image_bytes(), model, "docs-edit-01")
             assert edited.status == "completed" and generations[-1]["task_type"] == "edit_image"
@@ -433,7 +450,7 @@ def test_client_rejects_invalid_chunk_protocol_without_looping(change):
                     "done": True,
                 }
                 data[change] = {"offset": 1, "size": 0, "done": False, "data": "!", "next_offset": 0}[change]
-                return {"success": True, "result": data}
+                return data
 
         with pytest.raises(DrawingTransportError):
             await DrawingClient(API()).read_image("abcdef123456")
