@@ -90,11 +90,6 @@ class StyleToolMixin:
             if not runtime_context["stream_id"]:
                 raise ValueError("当前聊天流不可用，无法回传图片")
 
-            resolved_prompt = self._require_style_prompt_resolver().resolve(
-                style_name=style,
-                user_prompt=prompt,
-                user_negative_prompt=negative_prompt,
-            )
             current_message = kwargs.get("message")
             lookup_stream_ids = self._build_image_lookup_stream_ids(
                 runtime_context["stream_id"],
@@ -119,15 +114,17 @@ class StyleToolMixin:
                 if source_image_inputs:
                     matched_message_id = str(current_message.get("message_id") or "").strip()
 
-            if not resolved_prompt.positive_prompt and not source_image_inputs:
+            if not prompt.strip() and not source_image_inputs:
                 raise ValueError("文生图提示词不能为空")
             source_image_bytes_list = [decode_image_base64(image.base64_data) for image in source_image_inputs]
             source_image_urls = [image.url for image in source_image_inputs]
             return await self._start_background_image_request(
                 defer_prompt_review=True,
-                prompt=resolved_prompt.positive_prompt,
+                prompt=prompt,
+                drawing_style=style,
+                use_reference_features=True,
+                reference_options=self._drawing_reference_options(kwargs, kwargs.get("reference_options")),
                 request_negative_prompt=negative_prompt,
-                style_negative_prompt_template=resolved_prompt.negative_prompt_template,
                 stream_id=runtime_context["stream_id"],
                 source_image_bytes_list=source_image_bytes_list,
                 source_image_urls=source_image_urls,

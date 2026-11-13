@@ -13,6 +13,16 @@ class DrawingPreferences(TypedDict, total=False):
     novelai_artist_tags: str
 
 
+class DrawingReferenceOptions(TypedDict, total=False):
+    """单次参考限制；不能打开服务端全局开关。"""
+
+    self_reference: Literal["off", "auto", "required"]
+    user_request: str
+    self_reference_ids: List[str]
+    self_reference_tags: List[str]
+    material_sources: List[Literal["chat", "web"]]
+
+
 class DrawingRequest(TypedDict, total=False):
     """提交选项；源图既可使用已有 Base64 文本，也可直接传入图片 bytes。"""
 
@@ -22,6 +32,7 @@ class DrawingRequest(TypedDict, total=False):
     task_type: Literal["draw", "edit_image"]
     stream_id: str
     source_images: Optional[Sequence[Union[str, bytes]]]
+    reference_options: DrawingReferenceOptions
     openai_compatibility_mode: str
     novelai_mode: str
     novelai_artist_tags: Optional[str]

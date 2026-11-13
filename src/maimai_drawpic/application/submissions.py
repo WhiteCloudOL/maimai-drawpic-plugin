@@ -31,6 +31,11 @@ class RequestMixin:
         notify_start: bool = True,
         defer_prompt_review: bool = False,
         submission: Optional[Dict[str, Any]] = None,
+        reference_preparation: Any = None,
+        use_reference_features: bool = False,
+        reference_options: Optional[Dict[str, Any]] = None,
+        drawing_style: str = "",
+        reference_task_type: str = "",
     ) -> dict[str, Any]:
         """按当前会话设置启动后台绘图，源图为空时文生图，存在源图时图生图。"""
 
@@ -62,9 +67,28 @@ class RequestMixin:
             if len(normalized_source_urls) != len(normalized_source_images):
                 raise ValueError("源图 URL 数量必须与源图数量一致")
             # 风格入口已解析的模板（含显式无风格的空串）直接沿用，普通入口只套用一次默认风格。
-            if style_negative_prompt_template is None:
+            if use_reference_features and reference_preparation is None:
+                from ..domain.references import ReferenceOptions
+                from .references.service import freeze_reference_request
+
+                refs = self.config.general.references
+                values = dict(reference_options or {})
+                values.setdefault("self_reference", "auto" if refs.self_reference_enabled else "off")
+                values.setdefault("material_sources", [name for name, enabled in (
+                    ("chat", refs.allow_chat_material_search), ("web", refs.allow_web_material_search)) if enabled])
+                reference_preparation = await freeze_reference_request(
+                    ctx=self.ctx, config=self.config, store=self._workspace().tasks.references,
+                    streams=draw_service.stream_service, prompt=prompt, style=drawing_style, negative=request_negative_prompt,
+                    stream_id=resolved_stream_id, options=ReferenceOptions.model_validate(values),
+                    images=normalized_source_images, urls=normalized_source_urls,
+                    required_mode=reference_task_type,
+                    get_config=lambda: self.config,
+                )
+                style_negative_prompt_template = ""
+            if style_negative_prompt_template is None and reference_preparation is None:
                 resolved_style = self._require_style_prompt_resolver().resolve(
                     style_name="default", user_prompt=prompt, user_negative_prompt=request_negative_prompt,
+                    task_type="edit_image" if normalized_source_images else "draw",
                 )
                 prompt = resolved_style.positive_prompt
                 style_negative_prompt_template = resolved_style.negative_prompt_template
@@ -89,6 +113,10 @@ class RequestMixin:
             if not provider_name:
                 raise ValueError(f"指定模型不可用：{resolved_model}")
             task_type = "edit_image" if normalized_source_images else "draw"
+            if reference_preparation is not None:
+                task_type = reference_preparation.expected_mode or task_type
+                if not reference_preparation.expected_mode and not draw_service.router.evaluate_model_task_capability(resolved_model, task_type).allowed:
+                    task_type = "edit_image"
             # 火山引擎使用统一模型列表，按模型名能力标记和全局黑名单提前校验。
             check_model = resolved_model
             if provider_name == "volcengine":
@@ -200,6 +228,7 @@ class RequestMixin:
                     group_id=resolved_group_id,
                     platform_name=resolved_platform,
                     source_image_bytes_list=normalized_source_images,
+                    reference_preparation=reference_preparation,
                     source_image_urls=normalized_source_urls,
                     matched_message_id=matched_message_id,
                     notify_start=notify_start,

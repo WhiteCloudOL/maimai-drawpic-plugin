@@ -1,17 +1,32 @@
 """tools/drawing.py 的插件组件。"""
 
 from maibot_sdk import Tool
-from typing import Any
+from typing import Any, Dict, Optional
 
 from ...application.access import ChatAccessDenied
 from ...infrastructure.observability.redaction import outward_error
 from ..chat.access import chat_access_endpoint
-from ..chat.message_images import decode_image_base64, find_source_image_inputs
+from ..chat.message_images import collect_command_source_image_inputs, decode_image_base64, find_source_image_inputs
 from .schemas import DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA
 
 
 class DrawingToolMixin:
     """tools/drawing.py 对应的插件行为。"""
+
+    @staticmethod
+    def _drawing_reference_options(kwargs: Dict[str, Any], reference_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """显式原话优先；否则只读取当前真实消息的文本，不使用改写后的 prompt。"""
+        values = dict(reference_options or {})
+        message = kwargs.get("message")
+        if "user_request" not in values and isinstance(message, dict):
+            text = message.get("processed_plain_text")
+            if not isinstance(text, str):
+                segments = message.get("raw_message", [])
+                text = "".join(segment["data"] for segment in segments
+                               if isinstance(segment, dict) and segment.get("type") == "text" and isinstance(segment.get("data"), str)) if isinstance(segments, list) else ""
+            if text.strip():
+                values["user_request"] = text.strip()
+        return values
 
     @Tool(
         "draw",
@@ -28,6 +43,8 @@ class DrawingToolMixin:
         user_id: str = "",
         model: str = "",
         negative_prompt: str = "",
+        style: str = "",
+        reference_options: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """创建图片。"""
@@ -44,6 +61,9 @@ class DrawingToolMixin:
             context = self._extract_invocation_context(kwargs=kwargs, llm_user_id=user_id)
             return await self._start_background_image_request(
                 defer_prompt_review=True,
+                use_reference_features=True,
+                drawing_style=style,
+                reference_options=self._drawing_reference_options(kwargs, reference_options),
                 prompt=prompt.strip(),
                 stream_id=context["stream_id"],
                 requested_model=model.strip(),
@@ -86,6 +106,8 @@ class DrawingToolMixin:
         source_image_base64: str = "",
         model: str = "",
         negative_prompt: str = "",
+        style: str = "",
+        reference_options: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """编辑图片。"""
@@ -184,13 +206,19 @@ class DrawingToolMixin:
                 normalized_stream_id,
                 message=current_message,
             )
-            source_image_inputs, matched_message_id = await find_source_image_inputs(
-                self.ctx,
-                lookup_stream_ids,
-                source_message_id=source_message_id,
-                source_image_base64=source_image_base64,
-                current_message=current_message if isinstance(current_message, dict) else None,
-            )
+            refs = self.config.general.references
+            configured_input = (refs.self_reference_enabled and (reference_options or {}).get("self_reference", "auto") != "off"
+                                or refs.allow_chat_material_search or refs.allow_web_material_search
+                                or any(preset.name.casefold() == style.casefold() and preset.reference_bindings for preset in self.config.style.presets))
+            if configured_input and not source_message_id and not source_image_base64:
+                source_image_inputs = await collect_command_source_image_inputs(self.ctx, lookup_stream_ids, current_message) if isinstance(current_message, dict) else []
+                matched_message_id = str(current_message.get("message_id", "")) if isinstance(current_message, dict) else ""
+            else:
+                source_image_inputs, matched_message_id = await find_source_image_inputs(
+                    self.ctx, lookup_stream_ids, source_message_id=source_message_id,
+                    source_image_base64=source_image_base64,
+                    current_message=current_message if isinstance(current_message, dict) else None,
+                )
             source_image_bytes_list = [decode_image_base64(image.base64_data) for image in source_image_inputs]
             source_image_urls = [image.url for image in source_image_inputs]
             self.ctx.logger.info(
@@ -202,6 +230,10 @@ class DrawingToolMixin:
             )
             return await self._start_background_image_request(
                 defer_prompt_review=True,
+                use_reference_features=True,
+                drawing_style=style,
+                reference_options=self._drawing_reference_options(kwargs, reference_options),
+                reference_task_type="edit_image",
                 prompt=prompt.strip(),
                 stream_id=normalized_stream_id,
                 requested_model=resolved_model,

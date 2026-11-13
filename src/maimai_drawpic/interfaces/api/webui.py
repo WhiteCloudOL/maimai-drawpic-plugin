@@ -108,7 +108,7 @@ class WebUIAPIMixin(WorkspaceAPIBase):
     @workspace_endpoint
     async def workspace_submit(self, request_json: str) -> Dict[str, Any]:
         values = parse_json_object(request_json)
-        allowed = {"prompt", "model", "negative_prompt", "style", "task_type", "stream_id", "source_ids", "request_id"}
+        allowed = {"prompt", "model", "negative_prompt", "style", "task_type", "stream_id", "source_ids", "request_id", "reference_options_json"}
         if values.keys() - allowed:
             raise ValueError("绘图请求包含未知参数")
         return await self._workspace().tasks.submit(**values)

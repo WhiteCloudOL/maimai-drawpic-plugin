@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 
 from ...application.workspace.service import WorkspaceService
 from ...application.access import access_restricted, require_chat_access, require_integration_api
-from ...domain.task_errors import task_error
+from ...domain.task_errors import TaskRequestError, task_error
 from ...infrastructure.observability.redaction import outward_error
 
 
@@ -71,7 +71,7 @@ def integration_endpoint(handler: Callable[..., Awaitable[Dict[str, Any]]]) -> C
             return {**await handler(*args, **kwargs), "error": None}
         except (ValueError, PermissionError) as exc:
             return {"error": {
-                "code": "PERMISSION_DENIED" if isinstance(exc, PermissionError) else "INVALID_REQUEST",
+                "code": exc.code if isinstance(exc, TaskRequestError) else "PERMISSION_DENIED" if isinstance(exc, PermissionError) else "INVALID_REQUEST",
                 "message": outward_error(args[0], exc),
                 "retry_query": False,
                 "retry_submit": False,

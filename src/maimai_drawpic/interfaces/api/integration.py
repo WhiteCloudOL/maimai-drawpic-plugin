@@ -34,6 +34,7 @@ class IntegrationAPIMixin(WorkspaceAPIBase):
             task_type=task_type,
             stream_id=stream_id,
             source_images=source_images,
+            legacy_style=True,
             request_id=request_id,
             origin="plugin",
         )
@@ -68,4 +69,4 @@ class IntegrationAPIMixin(WorkspaceAPIBase):
     @API("drawpic_presets", version="1", public=True, description="查询、保存或删除全平台风格预设")
     @integration_api_endpoint
     async def drawpic_presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
-        return await self._workspace().presets(operation, name, preset_json)
+        return await self._workspace().presets(operation, name, preset_json, legacy=True)

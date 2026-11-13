@@ -123,6 +123,7 @@ async def _download_image(
     proxy_settings: HttpProxySettings,
     timeout_seconds: int,
     skip_ip_check: bool,
+    image_content: bool = True,
 ) -> bytes:
     """逐跳选择实际代理；直连默认只访问公网或管理员配置的同源服务。"""
     current, trusted = _url(url), _url(base_url)
@@ -160,8 +161,9 @@ async def _download_image(
                             raise ProviderResultError(
                                 f"图片结果下载失败: HTTP {response.status} url={sanitize_provider_url(str(current))}"
                             )
-                        raw = await read_response_bytes(response, max_bytes=current_budget().available())
-                        await asyncio.to_thread(validate_image_bytes, raw)
+                        raw = await read_response_bytes(response, max_bytes=current_budget().available() if image_content else 512 * 1024)
+                        if image_content:
+                            await asyncio.to_thread(validate_image_bytes, raw)
                         return raw
     except ProviderResultError:
         raise

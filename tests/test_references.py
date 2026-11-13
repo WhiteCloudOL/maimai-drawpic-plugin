@@ -1,12 +1,13 @@
 """持久参考资产、实际任务模式与显式开关；不调用真实模型。"""
 
-from pathlib import Path
+from types import SimpleNamespace
+import asyncio
 import importlib
 import json
 
 import pytest
 
-from test_workspace import _PACKAGE, image_bytes
+from test_workspace import _PACKAGE, image_bytes, make_plugin as make_plugin
 
 
 def module(name):
@@ -104,3 +105,138 @@ def test_invalid_preset_configuration_is_rejected(values):
 def test_reference_options_reject_ambiguous_or_unknown_input(values):
     with pytest.raises(ValueError):
         module("domain.references").ReferenceOptions.model_validate(values)
+
+
+def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, monkeypatch):
+    from test_drawing_client import DrawingClient, LocalAPI
+
+    async def run():
+        plugin = make_plugin()
+        values = plugin.get_plugin_config_data()
+        values["general"]["references"]["self_reference_enabled"] = True
+        plugin.set_plugin_config(values)
+        await plugin.on_load()
+        try:
+            store = plugin._workspace().tasks.references
+            first = await asyncio.to_thread(store.update, revision=0, operation="save", name="默认", tags=[], raw=image_bytes())
+            selected = await asyncio.to_thread(store.update, revision=1, operation="save", name="冬装", tags=["冬装"], raw=image_bytes() + b"winter")
+            calls = []
+
+            async def no_recognition(*args, **kwargs):
+                raise AssertionError("未选择自动识别时不能调用 LLM")
+
+            async def generate(**kwargs):
+                calls.append(kwargs)
+                return [image_bytes()]
+
+            monkeypatch.setattr(plugin.ctx.llm, "generate", no_recognition)
+            monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
+            client = DrawingClient(LocalAPI(plugin), poll_interval=0.001)
+            assert (await client.generate("cat", request_id="plain-refs-001", wait_seconds=5)).status == "completed"
+            assert calls[-1]["task_type"] == "draw"
+            options = {"self_reference": "required", "self_reference_tags": ["冬装"]}
+            result = await client.generate("麦麦", task_type="edit_image", request_id="self-refs-001", reference_options=options, wait_seconds=5)
+            assert result.status == "completed" and calls[-1]["source_image_bytes_list"] == [image_bytes() + b"winter"]
+            assert "identity: bot" in calls[-1]["prompt"]
+            identifier = selected["assets"][1]["id"]
+            await asyncio.to_thread(store.update, revision=2, operation="save", asset_id=identifier, name="新版", tags=[], raw=image_bytes() + b"changed")
+            repeat = await client.submit("麦麦", task_type="edit_image", request_id="self-refs-001", reference_options=options)
+            assert repeat.task_id == result.task_id and repeat.reused and len(calls) == 2
+            directory = await client.references()
+            assert directory["total"] == 2
+            assert set(directory["assets"][0]) == {"id", "name", "tags", "default"}
+            assert directory["assets"][0]["default"]
+            conflict = await plugin.drawpic_submit_v2("麦麦", reference_options_json=json.dumps(options))
+            assert conflict["accepted"] is False and conflict["error"]["code"] == "TASK_MODE_CONFLICT"
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+def test_source_flags_and_missing_chat_do_not_create_tasks(make_plugin):
+    async def run():
+        plugin = make_plugin()
+        await plugin.on_load()
+        try:
+            result = await plugin.drawpic_submit_v2("甘雨", task_type="edit_image", reference_options_json=json.dumps(
+                {"user_request": "画甘雨", "material_sources": ["web"]}))
+            assert not result["accepted"] and result["error"]["code"] == "MATERIAL_SOURCE_DISABLED"
+            assert not plugin._task_store.snapshot()
+            result = await plugin.drawpic_submit_v2("麦麦", task_type="edit_image", reference_options_json='{"self_reference":"required"}')
+            assert not result["accepted"] and result["error"]["code"] == "SELF_REFERENCE_DISABLED"
+            assert not plugin._task_store.snapshot()
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+def test_search_verifies_each_subject_and_reuse_does_not_search_again(make_plugin, monkeypatch):
+    from test_drawing_client import DrawingClient, LocalAPI
+
+    async def run():
+        plugin = make_plugin()
+        values = plugin.get_plugin_config_data()
+        values["general"]["references"]["allow_web_material_search"] = True
+        plugin.set_plugin_config(values)
+        await plugin.on_load()
+        try:
+            counts = {"needs": 0, "web": 0, "generation": 0}
+            recognizer = module("application.references.recognition")
+            images = module("domain.references")
+
+            async def needs(self, request):
+                counts["needs"] += 1
+                return [recognizer.MaterialNeed(subject="甘雨", role="identity", query="原神 甘雨 官方")]
+
+            async def matches(self, image, need):
+                return image.raw.endswith(b"ganyu")
+
+            async def web(self, query):
+                counts["web"] += 1
+                return [images.ReferenceImage(image_bytes() + b"ganyu", "web", url="https://example.org/ganyu.png")]
+
+            async def generate(**kwargs):
+                counts["generation"] += 1
+                assert len(kwargs["source_image_bytes_list"]) == 2
+                assert kwargs["source_image_urls"] == ["", "https://example.org/ganyu.png"]
+                assert "identity: 甘雨" in kwargs["prompt"]
+                return [image_bytes()]
+
+            monkeypatch.setattr(recognizer.ReferenceRecognizer, "needs", needs)
+            monkeypatch.setattr(recognizer.ReferenceRecognizer, "matches", matches)
+            monkeypatch.setattr(module("infrastructure.references.materials").MaterialSource, "web", web)
+            monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
+            client = DrawingClient(LocalAPI(plugin), poll_interval=0.001)
+            options = {"user_request": "让图中的人物与甘雨合照", "material_sources": ["web"]}
+            result = await client.generate("人物与甘雨合照", task_type="edit_image", source_images=[image_bytes()],
+                                           reference_options=options, request_id="search-refs-001", wait_seconds=5)
+            assert result.status == "completed"
+            receipt = await client.submit("人物与甘雨合照", task_type="edit_image", source_images=[image_bytes()],
+                                          reference_options=options, request_id="search-refs-001")
+            assert receipt.reused and counts == {"needs": 1, "web": 1, "generation": 1}
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+def test_multi_preset_public_write_requires_dialog_and_legacy_preserves_fields(make_plugin):
+    async def run():
+        plugin = make_plugin()
+        await plugin.on_load()
+        try:
+            result = await plugin.drawpic_presets_v2("save", "多图", json.dumps({"name": "多图", "preset_type": "image_to_image",
+                "reference_bindings": [{"asset_id": "a"}, {"asset_id": "b"}], "multi_reference_confirmed": True}))
+            assert result["error"]["code"] == "MULTI_REFERENCE_CONFIRMATION_REQUIRED"
+            await plugin.drawpic_presets_v2("save", "水彩", json.dumps({"name": "水彩", "tags": ["海边"], "apply_to_image_edit": True}))
+            await plugin.drawpic_presets("save", "水彩", json.dumps({"name": "水彩", "description": "新版说明"}))
+            current = await plugin.drawpic_presets_v2("get", "水彩")
+            assert current["preset"]["tags"] == ["海边"] and current["preset"]["apply_to_image_edit"]
+            legacy = await plugin.drawpic_presets("get", "水彩")
+            assert "preset_type" not in legacy["preset"]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())

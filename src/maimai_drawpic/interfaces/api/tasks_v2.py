@@ -26,6 +26,7 @@ class TaskAPIV2Mixin(WorkspaceAPIBase):
         openai_compatibility_mode: str = "",
         novelai_mode: str = "",
         novelai_artist_tags: Optional[str] = None,
+        reference_options_json: str = "",
     ) -> Dict[str, Any]:
         return await self._task_api_v2().submit(
             prompt=prompt,
@@ -39,6 +40,7 @@ class TaskAPIV2Mixin(WorkspaceAPIBase):
             openai_compatibility_mode=openai_compatibility_mode,
             novelai_mode=novelai_mode,
             novelai_artist_tags=novelai_artist_tags,
+            reference_options_json=reference_options_json,
         )
 
     @API("drawpic_task_v2", version="2", public=True, description="查询状态、结构化错误和图片引用，不返回图片内容")
