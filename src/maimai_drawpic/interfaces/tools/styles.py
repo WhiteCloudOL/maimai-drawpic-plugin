@@ -23,7 +23,7 @@ class StyleToolMixin:
         description=(
             "列出插件配置中当前可用的全平台绘图风格。用户要求指定风格、询问风格列表或准备调用 styled_draw 时，"
             "必须先调用本工具，依据 style_details 中的 description 与用户需求做语义匹配，"
-            "再从 styles 中选择精确名称。"
+            "再从 styles 中选择精确名称，并检查 preset_details.available_tasks 是否支持本次模式。"
         ),
         parameters=DRAW_STYLES_TOOL_PARAMETERS_SCHEMA,
     )
@@ -47,6 +47,16 @@ class StyleToolMixin:
                 for detail in style_details
             ],
             "default_style": resolver.config.default_style.strip(),
+            "image_edit_presets_enabled": resolver.config.image_edit_presets_enabled,
+            "preset_details": [
+                {"name": preset.name, "preset_type": preset.preset_type,
+                 "apply_to_image_edit": preset.apply_to_image_edit,
+                 "reference_image_count": len(preset.reference_bindings),
+                 "available_tasks": (["draw"] if preset.preset_type == "text_to_image" else [])
+                 + (["edit_image"] if resolver.config.image_edit_presets_enabled and
+                    (preset.preset_type == "image_to_image" or preset.apply_to_image_edit) else [])}
+                for preset in resolver.config.presets if preset.enabled
+            ],
         }
 
     @Tool(

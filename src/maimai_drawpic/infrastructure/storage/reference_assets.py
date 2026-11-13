@@ -28,6 +28,8 @@ class ReferenceAssetStore:
     def snapshot(self) -> Dict[str, Any]:
         with self.lock:
             if not self.index.exists():
+                if self.root.exists() and any(self.root.glob("*.image")):
+                    raise ValueError("参考图库索引缺失，已保留图片文件，请恢复索引后重试")
                 return {"schema_version": 1, "revision": 0, "default_reference_id": "", "assets": []}
             result = read_json_file(self.index)
             if set(result) != {"schema_version", "revision", "default_reference_id", "assets"} or result["schema_version"] != 1:
@@ -77,6 +79,7 @@ class ReferenceAssetStore:
             if type(revision) is not int or revision != current["revision"]:
                 raise ValueError("图库已被修改，请刷新后重试")
             target = next((item for item in current["assets"] if item["id"] == asset_id), None)
+            written_path: Optional[Path] = None
             if operation == "save":
                 if asset_id and target is None:
                     raise ValueError("参考图片不存在")
@@ -89,7 +92,7 @@ class ReferenceAssetStore:
                     validate_image_bytes(raw)
                     if len(raw) > 20 * 1024 * 1024:
                         raise ValueError("单张参考图片不能超过 20 MiB")
-                    total = sum(item["size"] for item in current["assets"] if item is not target) + len(raw)
+                    total = sum(self._path(item["id"], item["version"]).stat().st_size for item in current["assets"] if item is not target) + len(raw)
                     if total > self.MAX_BYTES or target is None and len(current["assets"]) >= self.MAX_ASSETS:
                         raise ValueError("参考图库最多 100 张、总容量 128 MiB")
                 identifier = asset_id or uuid4().hex
@@ -99,6 +102,8 @@ class ReferenceAssetStore:
                 if raw is not None:
                     self.root.mkdir(parents=True, exist_ok=True)
                     destination = self._path(identifier, version)
+                    if target is None or target["version"] != version:
+                        written_path = destination
                     temporary_path = None
                     try:
                         with tempfile.NamedTemporaryFile(dir=self.root, delete=False) as temporary:
@@ -137,7 +142,12 @@ class ReferenceAssetStore:
             else:
                 raise ValueError("未知图库操作")
             current["revision"] += 1
-            write_json_atomically(self.index, current)
+            try:
+                write_json_atomically(self.index, current)
+            except BaseException:
+                if written_path is not None:
+                    written_path.unlink(missing_ok=True)
+                raise
             # 索引提交后才清理失去引用的版本；在途任务已持有读取的真实字节。
             keep = {self._path(item["id"], item["version"]).name for item in current["assets"]}
             for path in self.root.glob("*.image"):
@@ -151,8 +161,14 @@ class ReferenceAssetStore:
             item = next((item for item in self.snapshot()["assets"] if item["id"] == identifier), None)
             if item is None or item["kind"] != kind:
                 raise ValueError("参考图片不存在或用途归属错误")
-            raw = self._path(identifier, item["version"]).read_bytes()
-            if sha256(raw).hexdigest() != item["version"]:
+            try:
+                path = self._path(identifier, item["version"])
+                if path.stat().st_size > 20 * 1024 * 1024:
+                    raise ValueError("参考图片文件超过 20 MiB")
+                raw = path.read_bytes()
+            except FileNotFoundError:
+                raise ValueError("参考图片文件缺失，请替换图片或恢复原文件") from None
+            if len(raw) != item["size"] or sha256(raw).hexdigest() != item["version"]:
                 raise ValueError("参考图片内容与索引版本不一致")
             validate_image_bytes(raw)
             return ReferenceImage(raw, kind, role, subject, asset_id=identifier, version=item["version"])

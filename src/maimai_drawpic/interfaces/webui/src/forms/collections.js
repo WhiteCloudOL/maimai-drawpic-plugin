@@ -41,6 +41,9 @@
     return `<input data-param-value type="${type === "number" ? "number" : "text"}" ${type === "number" ? 'step="any"' : ""} aria-label="参数值" autocomplete="off" value="${e(value)}" placeholder="填写参数值…">`;
   }
   function row(key, value, options = {}) {
+    if (key === "self_reference_ids")
+      return `<div class="array-row" data-array-row><select data-value data-reference-picker="self" aria-label="自我参考图片">${U.referenceUI.options("self", value)}</select><button type="button" class="icon-button" data-remove aria-label="移除参考选择">×</button></div>`;
+
     if (key === "fallback_models" || key.endsWith("unsupported_models")) {
       const ordered = key === "fallback_models";
       const title = ordered ? "备选模型" : key === "image_edit_unsupported_models" ? "仅支持文生图的模型" : "仅支持图生图的模型";

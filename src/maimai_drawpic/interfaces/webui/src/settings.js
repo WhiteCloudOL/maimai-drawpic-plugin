@@ -2,11 +2,12 @@
   "use strict";
   const U = window.DrawpicUI,
     { state, $, call, buttonAction, toast } = U;
-  const sections = { general: "通用配置", review: "审核配置", access: "黑白名单", style: "风格预设" };
-  const sourceSection = (name) => ["review", "access"].includes(name) ? "general" : name;
+  const sections = { general: "通用配置", review: "审核配置", access: "黑白名单", style: "绘图预设", references: "参考与素材" };
+  const sourceSection = (name) => ["review", "access", "references"].includes(name) ? "general" : name;
   const reviewField = (key) => /^(prompt|image)_review_/.test(key);
   const accessField = (key) => /^(group|private)_access_/.test(key);
   const belongsToSection = (name, key) => name === "style" ||
+    (name === "references" ? key === "references" : key !== "references") &&
     (name === "review" ? reviewField(key) : name === "access" ? accessField(key) : !reviewField(key) && !accessField(key));
   U.views.settings = async () => {
     let selected = Object.hasOwn(sections, state.settingsSection)
@@ -35,11 +36,16 @@
       panel.setAttribute("role", "tabpanel");
       panel.setAttribute("aria-labelledby", `settings-tab-${name}`);
       panel.hidden = name !== selected;
-      const fields = Object.fromEntries(
+      const fields = name === "references" ? state.data.reference_fields : Object.fromEntries(
         Object.entries(state.data.schema.sections[sourceSection(name)].fields)
           .filter(([key]) => belongsToSection(name, key)),
       );
-      panel.innerHTML = U.forms.html(fields, values);
+      if (name === "references") {
+        values = values.references;
+        const selfFields = Object.fromEntries(Object.entries(fields).filter(([key]) => !key.startsWith("allow_")));
+        const sourceFields = Object.fromEntries(Object.entries(fields).filter(([key]) => key.startsWith("allow_")));
+        panel.innerHTML = `<h3>自我参考</h3><p class="hint">默认关闭。开启后依据用户原始请求识别是否描绘机器人；不明确时需要补充主体说明。填写当前机器人的名称及常用称呼。</p>${U.forms.html(selfFields, values)}<div data-self-gallery></div><h3 class="reference-source-title">素材来源</h3><p class="hint">两个来源独立开启。仅查找当前任务缺少的素材；用户本条附图与明确引用的图片不受这两个开关限制。</p>${U.forms.html(sourceFields, values)}`;
+      } else panel.innerHTML = U.forms.html(fields, values);
       const old = $(`#${panel.id}`, form);
       if (old) old.replaceWith(panel);
       else form.append(panel);
@@ -47,8 +53,19 @@
       // 通用、审核和黑白名单共享持久化配置，只读取当前分类的字段，避免覆盖其他分类草稿。
       readers[name] = () => {
         const result = read();
-        return Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
+        return name === "references" ? { references: result } : Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
       };
+      if (name === "references") {
+        U.referenceUI.confirmButton(panel);
+        U.referenceUI.gallery($("[data-self-gallery]", panel), "self");
+      } else if (name === "style") {
+        U.referenceUI.presetTypes(panel);
+        const gallery = document.createElement("div");
+        gallery.className = "reference-preset-gallery";
+        gallery.hidden = true;
+        panel.append(gallery);
+        U.referenceUI.gallery(gallery, "preset");
+      }
     }
     for (const name of Object.keys(sections))
       renderSection(name, structuredClone(state.data.settings[sourceSection(name)]));
@@ -57,7 +74,7 @@
       $("#settings-heading").textContent = sections[name];
       $("#settings-description").textContent =
         name === "style"
-          ? "把常用风格保存为提示词模板，各分类的修改可一起保存。"
+          ? "文生图和图生图分别选择预设。图生图预设默认关闭；文生图预设可逐条勾选同时应用到图生图。"
           : name === "review"
             ? "分别设置提示词审核和生成图片审核，使用 MaiBot 配置的审核模型。切换分类保留草稿。"
           : name === "access"
@@ -122,12 +139,24 @@
     });
     form.onsubmit = (event) => {
       event.preventDefault();
-      if (form.inert || requiresRefresh) return;
+      if (form.inert || requiresRefresh || save.disabled) return;
       buttonAction(save, async () => {
         const all = {
-          general: { ...state.data.settings.general, ...readers.general(), ...readers.review(), ...readers.access() },
+          general: { ...state.data.settings.general, ...readers.general(), ...readers.review(), ...readers.access(), ...readers.references() },
           style: readers.style(),
         };
+        if (!(await U.referenceUI.confirmSettings(all, state.data.settings))) {
+          renderSection("references", { references: all.general.references });
+          renderSection("style", all.style);
+          state.dirty = true;
+          updateNotice();
+          return;
+        }
+        $('[data-input="multi_reference_confirmed"]', $("#settings-panel-references")).checked = all.general.references.multi_reference_confirmed;
+        const presetRows = $('[data-array="presets"]', $("#settings-panel-style"));
+        [...presetRows.children].filter(node => node.hasAttribute("data-array-object")).forEach((row, index) => {
+          $('[data-input="multi_reference_confirmed"]', row).checked = all.style.presets[index].multi_reference_confirmed;
+        });
         form.inert = true;
         $("#reset-settings").disabled = true;
         try {

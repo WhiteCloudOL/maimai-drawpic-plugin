@@ -16,11 +16,13 @@
   }
   function scalar(key, meta, value, id, values = {}) {
     const type = meta.type;
-    if (key === "default_style") {
+    if (key === "asset_id")
+      return `<select id="${id}" data-input="${e(key)}" data-reference-picker="preset">${U.referenceUI.options("preset", value)}</select>`;
+    if (key === "default_style" || key === "default_image_edit_preset") {
       const presets = (values.presets || []).filter(
-        (item) => item.enabled && item.name.trim(),
+        (item) => item.enabled && item.name.trim() && item.preset_type === (key === "default_style" ? "text_to_image" : "image_to_image"),
       );
-      return `<select id="${id}" data-input="${e(key)}"><option value="">不使用默认风格</option>${value && !presets.some((item) => item.name === value) ? `<option value="${e(value)}" selected>${e(value)}（未启用或不存在）</option>` : ""}${presets.map((item) => `<option value="${e(item.name)}" ${item.name === value ? "selected" : ""}>${e(item.name)}</option>`).join("")}</select>`;
+      return `<select id="${id}" data-input="${e(key)}"><option value="">不使用默认预设</option>${value && !presets.some((item) => item.name === value) ? `<option value="${e(value)}" selected>${e(value)}（未启用或不存在）</option>` : ""}${presets.map((item) => `<option value="${e(item.name)}" ${item.name === value ? "selected" : ""}>${e(item.name)}</option>`).join("")}</select>`;
     }
 
     if (key === "default_model") {
@@ -185,26 +187,19 @@
     return result;
   }
   function refreshStyleChoices(root) {
-    const select = $('[data-input="default_style"]', root);
     const list = $('[data-array="presets"]', root);
-    if (!select || !list) return;
-    const selected = select.value;
-    const names = Array.from(list.children)
-      .filter((node) => node.hasAttribute("data-array-object"))
-      .map((node) => ({
-        name: $('[data-input="name"]', node)?.value.trim() || "",
-        enabled: $('[data-input="enabled"]', node)?.checked,
-      }))
-      .filter((item) => item.enabled && item.name);
-    select.innerHTML =
-      '<option value="">不使用默认风格</option>' +
-      names
-        .map(
-          (item) =>
-            `<option value="${e(item.name)}" ${item.name === selected ? "selected" : ""}>${e(item.name)}</option>`,
-        )
-        .join("");
-    if (!names.some((item) => item.name === selected)) select.value = "";
+    if (!list) return;
+    for (const [key, kind] of [["default_style", "text_to_image"], ["default_image_edit_preset", "image_to_image"]]) {
+      const select = $(`[data-input="${key}"]`, root);
+      if (!select) continue;
+      const selected = select.value;
+      const names = [...list.children].filter(node => node.hasAttribute("data-array-object"))
+        .filter(node => $('[data-input="enabled"]', node)?.checked && $('[data-input="preset_type"]', node)?.value === kind)
+        .map(node => $('[data-input="name"]', node)?.value.trim()).filter(Boolean);
+      select.innerHTML = '<option value="">不使用默认预设</option>' +
+        (selected && !names.includes(selected) ? `<option value="${e(selected)}" selected>${e(selected)}（未启用或不存在）</option>` : "") +
+        names.map(name => `<option value="${e(name)}" ${name === selected ? "selected" : ""}>${e(name)}</option>`).join("");
+    }
   }
   function fieldMeta(field, root, fields) {
     // 按嵌套路径找到字段定义，无需解析其他尚未填写完整的草稿。

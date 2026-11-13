@@ -6,10 +6,16 @@ from typing import List, Literal
 
 
 class ReferenceBindingConfig(PluginConfigBase):
-    asset_id: str = Field(default="", description="已上传的预设图片 ID", json_schema_extra={"label": "图片 ID"})
+    asset_id: str = Field(default="", description="已上传的预设图片 ID", json_schema_extra={"label": "参考图片"})
     role: Literal["identity", "clothing", "scene", "lighting", "composition", "base"] = Field(default="scene", description="图片仅承担指定用途", json_schema_extra={"label": "图片用途"})
     subject_id: str = Field(default="", description="人物或物件标识，身份参考应标明对应主体", json_schema_extra={"label": "对应主体"})
     note: str = Field(default="", max_length=500, description="需要继承的具体特征", json_schema_extra={"label": "用途说明"})
+
+
+class ReferenceBindingsSchema(PluginConfigBase):
+    """在工作台生成完整的图片绑定数组元数据。"""
+
+    reference_bindings: List[ReferenceBindingConfig] = Field(default=[])
 
 
 class StylePresetConfig(PluginConfigBase):
@@ -43,7 +49,7 @@ class StylePresetConfig(PluginConfigBase):
         default="自定义风格",
         description="风格名称，用于工具参数和 /绘图 风格 指令",
         json_schema_extra={
-            "label": "风格名称",
+            "label": "预设名称",
             "placeholder": "例如：水彩、赛博朋克",
             "order": 1,
         },
@@ -52,7 +58,7 @@ class StylePresetConfig(PluginConfigBase):
         default="",
         description="风格的语义描述，供用户查看并帮助模型匹配风格",
         json_schema_extra={
-            "label": "风格描述（可选）",
+            "label": "预设说明（可选）",
             "hint": "简要说明视觉特点和适用场景；留空时只显示风格名称",
             "input_type": "textarea",
             "x-widget": "textarea",
@@ -99,8 +105,8 @@ class StyleConfig(PluginConfigBase):
         default="",
         description="未指定风格或使用“默认”风格名时自动套用的风格。留空表示保持普通绘图行为",
         json_schema_extra={
-            "label": "默认风格",
-            "hint": "未指定风格的 AI 绘图、普通绘图命令、工作台和插件 API 会自动套用。必须选择已启用风格；留空不自动套用，显式选择“无风格”可跳过本次预设。",
+            "label": "默认文生图预设",
+            "hint": "仅在文生图中作为默认项；图生图须先开启预设功能，并在该条文生图预设勾选同时应用到图生图。留空不自动套用，显式选择不使用预设可跳过。",
             "order": 0,
         },
     )
@@ -108,8 +114,8 @@ class StyleConfig(PluginConfigBase):
         default=[],
         description="适用于所有图片平台的正向、反向提示词模板列表",
         json_schema_extra={
-            "label": "风格模板",
-            "hint": "风格只负责提示词模板，不会修改 NovelAI Anime/Furry mode 或当前会话模型",
+            "label": "绘图预设列表",
+            "hint": "两类预设共用模板；图生图预设可绑定图片与用途，文生图预设只保存文字。不修改平台模式或当前会话模型。",
             "order": 1,
         },
     )

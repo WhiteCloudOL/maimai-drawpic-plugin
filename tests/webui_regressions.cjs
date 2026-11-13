@@ -10,6 +10,7 @@ const source = path.join(__dirname, '../src/maimai_drawpic/interfaces/webui/src'
 const read = name => fs.readFileSync(path.join(source, name), 'utf8');
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const event = { preventDefault() {} };
+const referenceDefaults = { self_reference_enabled: false, self_names: ['麦麦'], self_reference_ids: [], multi_reference_confirmed: false, allow_chat_material_search: false, allow_web_material_search: false };
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -174,7 +175,7 @@ test('platform: save freezes all fields and rejects repeated submissions', async
 test('platform: failed saves retain the draft and unfreeze the form', async () => {
   const h = await platform();
   h.get('#provider-name').value = 'keep draft'; h.U.state.dirty = true;
-  h.form.onsubmit(event); h.calls[0].reject(Error('conflict')); await flush();
+  h.form.onsubmit(event); await flush(); h.calls[0].reject(Error('conflict')); await flush();
   assert.equal(h.form.inert, false); assert.equal(h.form.attrs['aria-busy'], undefined);
   assert.equal(h.get('#provider-name').value, 'keep draft');
   assert.equal(h.U.state.dirty, true); assert.equal(h.stats().closes, 0);
@@ -199,7 +200,7 @@ test('platform: durable-save warnings survive refresh errors without another sav
   const notices = [];
   h.U.bootstrap = async () => { throw Error('read unavailable'); };
   h.U.savedNotice = (...args) => notices.push(args);
-  h.U.state.dirty = true; h.form.onsubmit(event);
+  h.U.state.dirty = true; h.form.onsubmit(event); await flush();
   const response = { saved: true, recovery_pending: true, warning: 'Saved; recovery pending' };
   h.calls[0].resolve(response); await flush();
   assert.equal(h.calls.length, 1); assert.equal(h.errors.length, 0);
@@ -227,18 +228,19 @@ test('platform: a completed deletion cannot rerender a newer settings draft', as
 });
 async function settings() {
   let h;
-  const tabs = ['general', 'review', 'access', 'style'].map(section => node({ dataset: { section } }));
+  const tabs = ['general', 'review', 'access', 'style', 'references'].map(section => node({ dataset: { section } }));
   h = harness('settings', {
+    referenceUI: { gallery() {}, confirmButton() {}, presetTypes() {}, confirmSettings: async () => true },
     forms: { html: () => '', bind: (panel, fields, values) => {
       panel.fields = fields; panel.values = structuredClone(values); return () => structuredClone(panel.values);
     } },
     bootstrap: async () => {}, render: async () => {},
     submitForm: form => form.onsubmit(event),
   });
-  h.U.state.data = { revision: 7,
+  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, allow_web_material_search: {} },
     schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {}, integration_api_enabled: {}, group_access_ids: {}, private_access_mode: {} } }, style: { fields: { presets: {} } } } },
-    settings: { general: { timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist' }, style: { presets: [] } },
-    defaults: { general: { timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist' }, style: { presets: [] } } };
+    settings: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist' }, style: { presets: [] } },
+    defaults: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist' }, style: { presets: [] } } };
   const form = h.get('#settings-form');
   form.querySelector = () => null;
   form.append = panel => form.children.push(panel);
@@ -250,7 +252,7 @@ async function settings() {
   await h.U.views.settings();
   return { ...h, form, tabs };
 }
-test('settings: all four category drafts survive switching and submit in one snapshot', async () => {
+test('settings: all five category drafts survive switching and submit in one snapshot', async () => {
   const h = await settings();
   h.form.children[0].values.timeout = 231;
   h.form.children[1].values.prompt_review_enabled = true;
@@ -258,15 +260,18 @@ test('settings: all four category drafts survive switching and submit in one sna
   h.form.children[2].values.group_access_ids = ['123456'];
   h.form.children[2].values.private_access_mode = 'whitelist';
   h.form.children[3].values.presets.push({ name: 'draft', positive_prompt_template: '{prompt}' });
+  h.form.children[4].values.allow_web_material_search = true;
   assert.deepEqual(Object.keys(h.form.children[0].fields), ['timeout', 'integration_api_enabled']);
   assert.deepEqual(Object.keys(h.form.children[2].fields), ['group_access_ids', 'private_access_mode']);
   h.U.state.dirty = true;
   h.tabs[1].onclick(); h.tabs[2].onclick(); h.tabs[3].onclick(); h.tabs[0].onclick();
   assert.equal(h.form.children[0].values.timeout, 231);
   h.form.onsubmit(event); h.form.onsubmit(event);
+  await flush();
   assert.equal(h.calls.length, 1); assert.equal(h.form.inert, true);
   const submitted = JSON.parse(h.calls[0].args.config_json);
   assert.equal(submitted.general.timeout, 231);
+  assert.equal(submitted.general.references.allow_web_material_search, true);
   assert.equal(submitted.general.prompt_review_enabled, true);
   assert.equal(submitted.general.integration_api_enabled, false);
   assert.deepEqual(submitted.general.group_access_ids, ['123456']);
@@ -279,7 +284,7 @@ test('settings: failed saves retain both category drafts and allow editing', asy
   const h = await settings();
   h.form.children[0].values.timeout = 245;
   h.form.children[3].values.presets.push({ name: 'keep' }); h.U.state.dirty = true;
-  h.form.onsubmit(event); h.calls[0].reject(Error('revision conflict')); await flush();
+  h.form.onsubmit(event); await flush(); h.calls[0].reject(Error('revision conflict')); await flush();
   assert.equal(h.form.children[0].values.timeout, 245);
   assert.equal(h.form.children[3].values.presets[0].name, 'keep');
   assert.equal(h.U.state.dirty, true); assert.equal(h.form.inert, false);
@@ -289,7 +294,7 @@ test('settings: saved-but-unreadable state warns and prevents resubmission until
   const h = await settings(), notices = [];
   h.U.bootstrap = async () => { throw Error('bootstrap failed'); };
   h.U.savedNotice = (...args) => notices.push(args);
-  h.U.state.dirty = true; h.form.onsubmit(event);
+  h.U.state.dirty = true; h.form.onsubmit(event); await flush();
   const response = { saved: true, runtime_refresh_pending: true, warning: 'Runtime refresh pending' };
   h.calls[0].resolve(response); await flush();
   assert.equal(h.U.state.dirty, false); assert.equal(h.form.inert, true);
@@ -300,7 +305,7 @@ test('settings: saved-but-unreadable state warns and prevents resubmission until
   assert.match(notices[0][2].message, /bootstrap failed/);
 });
 test('settings: stale completion leaves newer dirty state alone', async () => {
-  const h = await settings(); h.form.onsubmit(event);
+  const h = await settings(); h.form.onsubmit(event); await flush();
   h.form.isConnected = false; h.U.state.dirty = true;
   h.calls[0].resolve({ saved: true }); await flush();
   assert.equal(h.U.state.dirty, true);
@@ -449,7 +454,7 @@ test('mode state, mobile save label and allowed animations stay explicit', () =>
 // independently resolving RPC promises that the application cannot issue.
 function fifoController(file = 'studio') {
   const state = { view: file, busy: 0, lastTask: null, sources: [],
-    data: { models: [{ name: 'model', draw: true }], presets: [], default_model: 'model', settings: { style: { default_style: '' } } },
+    data: { models: [{ name: 'model', draw: true }], presets: [], default_model: 'model', settings: { general: { references: structuredClone(referenceDefaults) }, style: { default_style: '', image_edit_presets_enabled: false, default_image_edit_preset: '' } } },
     taskPage: 1, taskStatus: '', taskSearch: '' };
   const calls = [];
   const bridge = (name, args) => {

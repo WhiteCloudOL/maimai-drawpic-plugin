@@ -1,7 +1,10 @@
 """runtime/requests.py 的插件组件。"""
 
+from hashlib import sha256
 from typing import Any, Dict, Optional
+from uuid import uuid4
 import asyncio
+import json
 
 from ..domain.task_errors import TaskRequestError
 from .access import require_chat_access, require_integration_api
@@ -85,6 +88,18 @@ class RequestMixin:
                     get_config=lambda: self.config,
                 )
                 style_negative_prompt_template = ""
+            if reference_preparation is not None:
+                details = {
+                    "reference_options": reference_preparation.options.model_dump(exclude_defaults=True),
+                    "reference_versions": {key: image.version for key, image in reference_preparation.frozen.items()},
+                }
+                if submission is None:
+                    signature = await asyncio.to_thread(lambda: sha256(json.dumps(
+                        {"prompt": prompt, "style": drawing_style, **details}, ensure_ascii=False, sort_keys=True,
+                    ).encode("utf-8")).hexdigest())
+                    submission = {"origin": "chat", "request_id": uuid4().hex, "signature": signature,
+                                  "prompt": prompt, "style": drawing_style}
+                submission = {**submission, **details}
             if style_negative_prompt_template is None and reference_preparation is None:
                 resolved_style = self._require_style_prompt_resolver().resolve(
                     style_name="default", user_prompt=prompt, user_negative_prompt=request_negative_prompt,

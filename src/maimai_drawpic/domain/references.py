@@ -1,8 +1,8 @@
 """参考选项与图片用途；不包含工具调用或执行规划。"""
 
 from dataclasses import dataclass
-from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import List, Literal
 import unicodedata
 
 
@@ -44,6 +44,7 @@ class ReferenceImage:
     url: str = ""
     asset_id: str = ""
     version: str = ""
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -54,4 +55,5 @@ class PreparedRequest:
     urls: List[str]
     task_type: str
     style: str
+    strict_reference_inputs: bool = False
 

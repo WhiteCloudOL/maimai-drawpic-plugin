@@ -18,6 +18,7 @@ def build() -> Path:
         "forms/controls",
         "forms/collections",
         "forms",
+        "references",
         "platform-models",
         "platform-comfyui",
         "platforms",

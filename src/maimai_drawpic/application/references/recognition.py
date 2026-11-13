@@ -1,7 +1,7 @@
 """有界、无状态的主体与候选识别。"""
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field
 import asyncio
 import base64
 import json
@@ -52,13 +52,16 @@ class ReferenceRecognizer:
 
     async def self_subject(self, request: str, names: List[str]) -> str:
         value = await self._json(PROMPTS["zh-CN"]["self"].format(request=request, names=json.dumps(names, ensure_ascii=False)))
-        if set(value) != {"subject"} or value["subject"] not in {"self", "other", "uncertain"}:
+        if set(value) != {"subject"} or not isinstance(value["subject"], str) or value["subject"] not in {"self", "other", "uncertain"}:
             raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "自身识别返回了无效分类")
         return value["subject"]
 
     async def needs(self, request: str) -> List[MaterialNeed]:
         value = await self._json(PROMPTS["zh-CN"]["needs"].format(request=request))
-        return MaterialNeeds.model_validate(value).needs
+        try:
+            return MaterialNeeds.model_validate(value).needs
+        except ValidationError as exc:
+            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "素材需求识别返回了无效结构") from exc
 
     async def matches(self, image: ReferenceImage, need: MaterialNeed) -> bool:
         value = await self._json(PROMPTS["zh-CN"]["match"].format(request=need.model_dump_json()), image)

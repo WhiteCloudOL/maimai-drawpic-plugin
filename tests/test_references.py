@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import asyncio
 import importlib
 import json
+import logging
 
 import pytest
 
@@ -227,6 +228,10 @@ def test_multi_preset_public_write_requires_dialog_and_legacy_preserves_fields(m
         plugin = make_plugin()
         await plugin.on_load()
         try:
+            bootstrap = await plugin.workspace_bootstrap()
+            binding_schema = bootstrap["schema"]["sections"]["style"]["fields"]["presets"]["item_fields"]["reference_bindings"]
+            assert binding_schema["item_type"] == "object"
+            assert set(binding_schema["item_fields"]) == {"asset_id", "role", "subject_id", "note"}
             result = await plugin.drawpic_presets_v2("save", "多图", json.dumps({"name": "多图", "preset_type": "image_to_image",
                 "reference_bindings": [{"asset_id": "a"}, {"asset_id": "b"}], "multi_reference_confirmed": True}))
             assert result["error"]["code"] == "MULTI_REFERENCE_CONFIRMATION_REQUIRED"
@@ -238,5 +243,186 @@ def test_multi_preset_public_write_requires_dialog_and_legacy_preserves_fields(m
             assert "preset_type" not in legacy["preset"]
         finally:
             await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+def test_gallery_write_failure_keeps_previous_index_and_owned_file(tmp_path, monkeypatch):
+    storage = module("infrastructure.storage.reference_assets")
+    store = storage.ReferenceAssetStore(tmp_path)
+    first = store.update(revision=0, operation="save", name="默认", tags=[], raw=image_bytes())
+    before = store.index.read_bytes()
+
+    def fail(*args):
+        raise OSError("simulated index write failure")
+
+    monkeypatch.setattr(storage, "write_json_atomically", fail)
+    with pytest.raises(OSError):
+        store.update(revision=1, operation="save", asset_id=first["assets"][0]["id"], name="替换", tags=[], raw=image_bytes() + b"new")
+    assert store.index.read_bytes() == before
+    assert len(list(store.root.glob("*.image"))) == 1
+    assert store.read(first["assets"][0]["id"], kind="self").raw == image_bytes()
+    store.index.unlink()
+    with pytest.raises(ValueError, match="索引缺失"):
+        store.snapshot()
+    assert len(list(store.root.glob("*.image"))) == 1
+
+
+@pytest.mark.parametrize("chat_fails", [False, True])
+def test_chat_material_order_and_errors_do_not_silently_enable_web(tmp_path, monkeypatch, chat_fails):
+    async def run():
+        service = module("application.references.service")
+        recognition = module("application.references.recognition")
+        references = module("domain.references")
+        config = module("domain.configuration.models").DrawpicConfig()
+        config.general.references.allow_chat_material_search = True
+        config.general.references.allow_web_material_search = True
+        counts = {"chat": 0, "web": 0}
+
+        async def context(stream_id):
+            assert stream_id == "real-stream"
+            return {"stream_id": stream_id, "user_id": "1001", "group_id": "", "platform": "qq"}
+
+        async def chat(ctx, stream_id):
+            counts["chat"] += 1
+            if chat_fails:
+                raise RuntimeError("chat service unavailable")
+            return []
+
+        async def web(self, query):
+            counts["web"] += 1
+            return [references.ReferenceImage(image_bytes(), "web", url="https://example.org/ganyu.png")]
+
+        async def needs(self, request):
+            return [recognition.MaterialNeed(subject="甘雨", role="identity", query="甘雨 官方")]
+
+        async def matches(self, image, need):
+            return True
+
+        monkeypatch.setattr(service, "read_chat_materials", chat)
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "needs", needs)
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "matches", matches)
+        monkeypatch.setattr(module("infrastructure.references.materials").MaterialSource, "web", web)
+        prepared = await service.freeze_reference_request(
+            ctx=SimpleNamespace(logger=logging.getLogger("reference-test")), config=config,
+            store=module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path),
+            streams=SimpleNamespace(existing_stream_context=context), prompt="甘雨", style="", negative="",
+            stream_id="real-stream", options=references.ReferenceOptions(user_request="画甘雨", material_sources=["chat", "web"]),
+            images=[], urls=[], required_mode="edit_image",
+        )
+        if chat_fails:
+            with pytest.raises(ValueError) as failure:
+                await prepared.prepare("fixture")
+            assert failure.value.code == "CHAT_MATERIAL_UNAVAILABLE" and counts == {"chat": 1, "web": 0}
+        else:
+            result = await prepared.prepare("fixture")
+            assert result.task_type == "edit_image" and result.images == [image_bytes()]
+            assert counts == {"chat": 1, "web": 1}
+
+    asyncio.run(run())
+
+
+def test_multi_reference_rejection_never_switches_to_fallback_model(make_plugin, monkeypatch):
+    from test_drawing_client import DrawingClient, LocalAPI
+
+    async def run():
+        plugin = make_plugin()
+        config = plugin.get_plugin_config_data()
+        config["openai"]["models"] = ["sample-image", "backup-image"]
+        config["general"]["fallback_models"] = ["backup-image"]
+        plugin.set_plugin_config(config)
+        await plugin.on_load()
+        try:
+            store = plugin._workspace().tasks.references
+            await asyncio.to_thread(store.update, revision=0, operation="save", name="正面", tags=[], raw=image_bytes())
+            snapshot = await asyncio.to_thread(store.update, revision=1, operation="save", name="侧面", tags=[], raw=image_bytes() + b"side")
+            workspace = await plugin.workspace_bootstrap()
+            workspace["settings"]["general"]["references"].update(self_reference_enabled=True,
+                self_reference_ids=[item["id"] for item in snapshot["assets"]], multi_reference_confirmed=True)
+            await plugin.workspace_settings_save(json.dumps(workspace["settings"]), workspace["revision"])
+            models = []
+
+            async def reject(**kwargs):
+                models.append(kwargs["attempt"].model)
+                raise module("domain.errors").ProviderRequestError(400, "unsupported_reference_count", "model rejects multiple references")
+
+            monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", reject)
+            client = DrawingClient(LocalAPI(plugin), poll_interval=0.001)
+            result = await client.generate("麦麦", task_type="edit_image", request_id="multi-reject-001",
+                                           reference_options={"self_reference": "required"}, wait_seconds=5)
+            assert result.status == "failed" and len(models) == 1
+            assert "sample-image" in models[0] and result.error.code == "UPSTREAM_REJECTED"
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("operation,payload", [
+    ("self_subject", {"subject": ["self"]}),
+    ("needs", {"needs": [{"subject": "甘雨", "role": "invented", "query": "甘雨"}]}),
+    ("needs", {"needs": [], "unexpected": True}),
+    ("matches", {"matches": "true"}),
+])
+def test_invalid_recognition_has_stable_error(monkeypatch, operation, payload):
+    async def run():
+        recognition = module("application.references.recognition")
+
+        async def response(self, prompt, image=None):
+            return payload
+
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "_json", response)
+        recognizer = recognition.ReferenceRecognizer(SimpleNamespace())
+        with pytest.raises(ValueError) as failure:
+            if operation == "self_subject":
+                await recognizer.self_subject("画麦麦", ["麦麦"])
+            elif operation == "needs":
+                await recognizer.needs("画甘雨")
+            else:
+                await recognizer.matches(module("domain.references").ReferenceImage(image_bytes(), "input"),
+                    recognition.MaterialNeed(subject="甘雨", role="identity", query="甘雨"))
+        assert failure.value.code == "REFERENCE_RECOGNITION_FAILED"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("markup_in_fetch", [False, True])
+def test_sdk_web_pages_produce_real_image_inputs_with_original_urls(monkeypatch, markup_in_fetch):
+    from maibot_sdk import PluginContext
+
+    async def run():
+        materials = module("infrastructure.references.materials")
+        config = module("domain.configuration.models").DrawpicConfig()
+        calls, downloads = [], []
+        page_url = "https://example.org/character/"
+        markup = '<meta property="og:image" content="/images/ganyu.png"><img src="/images/ganyu.png">'
+
+        async def rpc(method, plugin_id, payload, *, timeout_ms):
+            assert method == "cap.call" and plugin_id == "material-sdk-test"
+            assert timeout_ms == 310000
+            calls.append((payload["capability"], payload["args"]))
+            if payload["capability"] == "web.search":
+                return {"results": [{"title": "甘雨", "url": page_url, "snippet": "character"}]}
+            assert payload["capability"] == "web.fetch"
+            return {"url": page_url, "content": markup if markup_in_fetch else "角色资料正文，无图片链接"}
+
+        async def document(url, *, image_content, **options):
+            assert url == page_url and image_content is False
+            assert options["proxy_settings"].enabled is False
+            assert options["skip_ip_check"] is False
+            return markup.encode("utf-8")
+
+        async def download(url, **options):
+            downloads.append(url)
+            return image_bytes()
+
+        monkeypatch.setattr(materials, "_download_image", document)
+        monkeypatch.setattr(materials, "download_image", download)
+        result = await materials.MaterialSource(PluginContext("material-sdk-test", rpc_call=rpc), config).web("甘雨 官方")
+        assert calls == [("web.search", {"query": "甘雨 官方", "max_results": 3}),
+                         ("web.fetch", {"url": page_url})]
+        assert downloads == ["https://example.org/images/ganyu.png"]
+        assert len(result) == 1 and result[0].raw == image_bytes()
+        assert result[0].source == "web" and result[0].url == downloads[0]
 
     asyncio.run(run())

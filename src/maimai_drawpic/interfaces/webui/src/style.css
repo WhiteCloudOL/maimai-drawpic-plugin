@@ -18,6 +18,31 @@
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
 }
+.reference-gallery-header, .reference-card-actions, .reference-paging, .reference-preset-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.reference-gallery-header { justify-content: space-between; margin-top: 24px; }
+.reference-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin: 16px 0; }
+.reference-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.reference-thumbnail { background: var(--soft); border-radius: 8px; min-height: 100px; display: grid; place-items: center; }
+.reference-thumbnail img { width: 100%; height: 150px; object-fit: contain; border-radius: 8px; }
+.reference-tags, .reference-card strong { overflow-wrap: anywhere; }
+.reference-card-actions { margin-top: auto; }
+.reference-dialog-body { padding: 24px; }
+.reference-confirm { max-width: 560px; width: calc(100% - 32px); }
+.reference-source-title, .reference-preset-gallery { margin-top: 32px; }
+.reference-request { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 20px 0; }
+.reference-source-option { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; }
+.reference-preset-tabs { margin-bottom: 16px; }
+.reference-preset-tabs [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-dark); }
+@media (max-width: 480px) {
+  .reference-gallery { grid-template-columns: 1fr; }
+  .reference-card-actions button { min-height: 44px; }
+  .reference-preset-tabs button { flex: 1; }
+}
 .dark {
   --bg: #19191c;
   --surface: #222226;

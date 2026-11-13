@@ -122,14 +122,16 @@ class ReferencePreparation:
             for binding in preset.reference_bindings:
                 image = self.frozen[binding.asset_id]
                 images.append(ReferenceImage(image.raw, image.source, binding.role, binding.subject_id, image.url,
-                                             image.asset_id, image.version))
+                                             image.asset_id, image.version, binding.note))
         unique: Dict[str, ReferenceImage] = {}
         uses: Dict[str, List[str]] = {}
-        for image in images:
-            digest = sha256(image.raw).hexdigest()
+        digests = await asyncio.to_thread(lambda: [sha256(image.raw).hexdigest() for image in images])
+        for image, digest in zip(images, digests, strict=True):
             if digest not in unique or not unique[digest].url and image.url:
                 unique[digest] = image
             label = f"{image.role}: {image.subject}".strip(": ")
+            if image.note:
+                label += "; " + image.note
             uses.setdefault(digest, [])
             if label not in uses[digest]:
                 uses[digest].append(label)
@@ -149,7 +151,8 @@ class ReferencePreparation:
         self.ctx.logger.info("素材准备完成: task_id=%s task_type=%s source_image_count=%s preset=%s",
                              task_id, mode, len(unique), resolved.style_name)
         return PreparedRequest(prompt, resolved.negative_prompt_template, [image.raw for image in unique.values()],
-                               [image.url for image in unique.values()], mode, resolved.style_name)
+                               [image.url for image in unique.values()], mode, resolved.style_name,
+                               len(unique) > 1 and any(image.source != "input" for image in unique.values()))
 
 
 async def freeze_reference_request(*, ctx: Any, config: Any, store: ReferenceAssetStore, streams: Any,
@@ -180,6 +183,8 @@ async def freeze_reference_request(*, ctx: Any, config: Any, store: ReferenceAss
                 self_ids = [await asyncio.to_thread(store.select_self, options.self_reference_tags, options.user_request)]
         if len(self_ids) > 1 and not refs.multi_reference_confirmed:
             raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "自我多图配置尚未通过 dialog 确认")
+        if options.self_reference == "required" and not self_ids:
+            raise TaskRequestError("SELF_REFERENCE_MISSING", "自我参考图库为空，请先上传参考图片")
         if len(self_ids) > 1 and self_ids != refs.self_reference_ids:
             raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "本次多图选择必须使用工作台已确认的自我图片组合")
         for identifier in self_ids:

@@ -718,7 +718,20 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
 
 
 
+_FIELD_LABEL_OVERRIDES.update({
+    "StylePresetConfig.name": ("Preset name", "プリセット名", "프리셋 이름"),
+    "StylePresetConfig.description": ("Preset description", "プリセットの説明", "프리셋 설명"),
+    "StyleConfig.default_style": ("Default text-to-image preset", "文生図の既定プリセット", "기본 텍스트 이미지 프리셋"),
+    "StyleConfig.presets": ("Drawing presets", "描画プリセット", "그리기 프리셋"),
+})
+
+_FIELD_HINT_OVERRIDES.update({
+    "StyleConfig.default_style": ("Default for text-to-image. Image editing requires its preset switch and per-preset compatibility. Select none to skip.", "文生図の既定項目です。画像編集には総スイッチと各項目の互換設定が必要です。未使用を選択すると適用しません。", "텍스트 이미지의 기본값입니다. 이미지 편집에는 전체 스위치와 항목별 호환 설정이 필요합니다. 사용 안 함으로 건너뜁니다."),
+    "StyleConfig.presets": ("Both types share text templates. Image-edit presets may bind images and uses; text-to-image presets contain text only. Platform modes and session models stay unchanged.", "両種類で文字テンプレートを共有します。画像編集には画像と用途を紐付けられ、文生図は文字のみです。プラットフォームモードや会話モデルは変えません。", "두 유형은 텍스트 템플릿을 공유합니다. 이미지 편집에는 이미지와 용도를 연결할 수 있으며 텍스트 이미지에는 텍스트만 저장합니다. 플랫폼 모드와 대화 모델은 바꾸지 않습니다."),
+})
+
 _SECTION_TEXTS.update({
+    "StyleConfig": (("Drawing presets", "描画プリセット", "그리기 프리셋"), ("Text-to-image and optional image-edit presets.", "文生図と任意の画像編集プリセット。", "텍스트 이미지 및 선택적 이미지 편집 프리셋.")),
     "ReferenceConfig": (("References and materials", "参照と素材", "참조 및 소재"), ("Self references and permitted sources.", "自身の参照画像と許可された素材元。", "자신의 참조 이미지와 허용된 소재 출처.")),
     "ReferenceBindingConfig": (("Reference image use", "参照画像の用途", "참조 이미지 용도"), ("Image and subject binding.", "画像と被写体の対応。", "이미지와 대상 연결.")),
 })
@@ -734,7 +747,7 @@ _FIELD_LABELS.update({
     "tags": ("Tags", "タグ", "태그"),
     "apply_to_image_edit": ("Also apply to image editing", "画像編集にも適用", "이미지 편집에도 적용"),
     "reference_bindings": ("Preset reference images", "プリセットの参照画像", "프리셋 참조 이미지"),
-    "asset_id": ("Image ID", "画像 ID", "이미지 ID"),
+    "asset_id": ("Reference image", "参照画像", "참조 이미지"),
     "role": ("Image use", "画像の用途", "이미지 용도"),
     "subject_id": ("Subject", "被写体", "대상"),
     "note": ("Use description", "用途の説明", "용도 설명"),

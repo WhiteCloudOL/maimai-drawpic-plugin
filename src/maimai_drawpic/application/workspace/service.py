@@ -1,10 +1,12 @@
 """绘图工作台的配置、模型、会话和预设业务边界。"""
 
+from maibot_sdk.config import generate_plugin_config_schema
 from typing import Any, Awaitable, Callable, Dict
 import asyncio
 
 from ...domain.configuration.models import DrawpicConfig, StylePresetConfig
 from ...domain.task_errors import TaskRequestError
+from ...domain.configuration.references import ReferenceWorkspaceSchema
 from ...domain.models.novelai_catalog import NOVELAI_PRESET_HINT, NOVELAI_PRESET_MODELS
 from ...domain.models.minimax_profiles import MINIMAX_MODELS, MINIMAX_PRESET_HINT
 from ...infrastructure.storage.platforms import (
@@ -129,6 +131,11 @@ class WorkspaceService:
         schema = self.store.schema()
         schema["sections"].pop("plugin", None)
         schema["sections"].pop("proxy", None)
+        reference_schema = generate_plugin_config_schema(ReferenceWorkspaceSchema)["sections"]
+        bindings = reference_schema["bindings"]["fields"]["reference_bindings"]
+        schema["sections"]["style"]["fields"]["presets"]["item_fields"]["reference_bindings"].update(
+            item_type="object", item_fields=bindings["item_fields"],
+        )
         return _browser_integers({
             **snapshot,
             "config_update_pending": self._transaction is not None,
@@ -136,6 +143,8 @@ class WorkspaceService:
             "settings": _mask_secrets(config),
             "defaults": _mask_secrets(defaults),
             "schema": schema,
+            "reference_fields": reference_schema["references"]["fields"],
+            "reference_assets": await asyncio.to_thread(self.tasks.references.snapshot),
             "catalog": [
                 {
                     "kind": key,
@@ -265,6 +274,15 @@ class WorkspaceService:
 
     async def _validate_reference_assets(self, config: DrawpicConfig) -> None:
         refs = config.general.references
+        names = [preset.name.strip().casefold() for preset in config.style.presets]
+        if len(names) != len(set(names)) or any(not name or len(name) > 80 for name in names) or len(names) > 100:
+            raise ValueError("预设名称必须非空、唯一且不超过 80 字符，最多 100 条")
+        for name, kind in ((config.style.default_style, "text_to_image"),
+                           (config.style.default_image_edit_preset, "image_to_image")):
+            if name:
+                preset = next((preset for preset in config.style.presets if preset.name.casefold() == name.casefold()), None)
+                if preset is None or not preset.enabled or preset.preset_type != kind:
+                    raise ValueError("默认预设不存在、已停用或类型不符，请重新选择")
         if len(refs.self_reference_ids) > 8:
             raise ValueError("自我参考最多选择 8 张图片")
         if len(refs.self_reference_ids) > 1 and not refs.multi_reference_confirmed:

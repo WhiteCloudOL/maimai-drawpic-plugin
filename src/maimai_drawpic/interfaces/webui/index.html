@@ -25,6 +25,31 @@
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
 }
+.reference-gallery-header, .reference-card-actions, .reference-paging, .reference-preset-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.reference-gallery-header { justify-content: space-between; margin-top: 24px; }
+.reference-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin: 16px 0; }
+.reference-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.reference-thumbnail { background: var(--soft); border-radius: 8px; min-height: 100px; display: grid; place-items: center; }
+.reference-thumbnail img { width: 100%; height: 150px; object-fit: contain; border-radius: 8px; }
+.reference-tags, .reference-card strong { overflow-wrap: anywhere; }
+.reference-card-actions { margin-top: auto; }
+.reference-dialog-body { padding: 24px; }
+.reference-confirm { max-width: 560px; width: calc(100% - 32px); }
+.reference-source-title, .reference-preset-gallery { margin-top: 32px; }
+.reference-request { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 20px 0; }
+.reference-source-option { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; }
+.reference-preset-tabs { margin-bottom: 16px; }
+.reference-preset-tabs [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-dark); }
+@media (max-width: 480px) {
+  .reference-gallery { grid-template-columns: 1fr; }
+  .reference-card-actions button { min-height: 44px; }
+  .reference-preset-tabs button { flex: 1; }
+}
 .dark {
   --bg: #19191c;
   --surface: #222226;
@@ -2925,6 +2950,9 @@ dialog::backdrop {
   "use strict";
   const U = window.DrawpicUI;
   const labels = {
+    text_to_image: "文生图预设", image_to_image: "图生图预设",
+    identity: "人物身份", clothing: "服装", scene: "场景", lighting: "光线", composition: "构图", base: "待改底图",
+
     "": "使用平台默认（不传此参数）",
     auto: "自动",
     low: "低",
@@ -3020,7 +3048,7 @@ dialog::backdrop {
   };
   function label(value) {
     if (value === "") return labels[""];
-    if (["daily", "weekly", "monthly", "once", "blacklist", "whitelist"].includes(value)) return labels[value];
+    if (["daily", "weekly", "monthly", "once", "blacklist", "whitelist", "text_to_image", "image_to_image", "identity", "clothing", "scene", "lighting", "composition", "base"].includes(value)) return labels[value];
     if (Object.hasOwn(labels, value)) return `${labels[value]} · ${value}`;
     const size = String(value).match(/^(\d+)[x*](\d+)$/);
     if (size)
@@ -3190,6 +3218,9 @@ dialog::backdrop {
     return `<input data-param-value type="${type === "number" ? "number" : "text"}" ${type === "number" ? 'step="any"' : ""} aria-label="参数值" autocomplete="off" value="${e(value)}" placeholder="填写参数值…">`;
   }
   function row(key, value, options = {}) {
+    if (key === "self_reference_ids")
+      return `<div class="array-row" data-array-row><select data-value data-reference-picker="self" aria-label="自我参考图片">${U.referenceUI.options("self", value)}</select><button type="button" class="icon-button" data-remove aria-label="移除参考选择">×</button></div>`;
+
     if (key === "fallback_models" || key.endsWith("unsupported_models")) {
       const ordered = key === "fallback_models";
       const title = ordered ? "备选模型" : key === "image_edit_unsupported_models" ? "仅支持文生图的模型" : "仅支持图生图的模型";
@@ -3394,11 +3425,13 @@ dialog::backdrop {
   }
   function scalar(key, meta, value, id, values = {}) {
     const type = meta.type;
-    if (key === "default_style") {
+    if (key === "asset_id")
+      return `<select id="${id}" data-input="${e(key)}" data-reference-picker="preset">${U.referenceUI.options("preset", value)}</select>`;
+    if (key === "default_style" || key === "default_image_edit_preset") {
       const presets = (values.presets || []).filter(
-        (item) => item.enabled && item.name.trim(),
+        (item) => item.enabled && item.name.trim() && item.preset_type === (key === "default_style" ? "text_to_image" : "image_to_image"),
       );
-      return `<select id="${id}" data-input="${e(key)}"><option value="">不使用默认风格</option>${value && !presets.some((item) => item.name === value) ? `<option value="${e(value)}" selected>${e(value)}（未启用或不存在）</option>` : ""}${presets.map((item) => `<option value="${e(item.name)}" ${item.name === value ? "selected" : ""}>${e(item.name)}</option>`).join("")}</select>`;
+      return `<select id="${id}" data-input="${e(key)}"><option value="">不使用默认预设</option>${value && !presets.some((item) => item.name === value) ? `<option value="${e(value)}" selected>${e(value)}（未启用或不存在）</option>` : ""}${presets.map((item) => `<option value="${e(item.name)}" ${item.name === value ? "selected" : ""}>${e(item.name)}</option>`).join("")}</select>`;
     }
 
     if (key === "default_model") {
@@ -3563,26 +3596,19 @@ dialog::backdrop {
     return result;
   }
   function refreshStyleChoices(root) {
-    const select = $('[data-input="default_style"]', root);
     const list = $('[data-array="presets"]', root);
-    if (!select || !list) return;
-    const selected = select.value;
-    const names = Array.from(list.children)
-      .filter((node) => node.hasAttribute("data-array-object"))
-      .map((node) => ({
-        name: $('[data-input="name"]', node)?.value.trim() || "",
-        enabled: $('[data-input="enabled"]', node)?.checked,
-      }))
-      .filter((item) => item.enabled && item.name);
-    select.innerHTML =
-      '<option value="">不使用默认风格</option>' +
-      names
-        .map(
-          (item) =>
-            `<option value="${e(item.name)}" ${item.name === selected ? "selected" : ""}>${e(item.name)}</option>`,
-        )
-        .join("");
-    if (!names.some((item) => item.name === selected)) select.value = "";
+    if (!list) return;
+    for (const [key, kind] of [["default_style", "text_to_image"], ["default_image_edit_preset", "image_to_image"]]) {
+      const select = $(`[data-input="${key}"]`, root);
+      if (!select) continue;
+      const selected = select.value;
+      const names = [...list.children].filter(node => node.hasAttribute("data-array-object"))
+        .filter(node => $('[data-input="enabled"]', node)?.checked && $('[data-input="preset_type"]', node)?.value === kind)
+        .map(node => $('[data-input="name"]', node)?.value.trim()).filter(Boolean);
+      select.innerHTML = '<option value="">不使用默认预设</option>' +
+        (selected && !names.includes(selected) ? `<option value="${e(selected)}" selected>${e(selected)}（未启用或不存在）</option>` : "") +
+        names.map(name => `<option value="${e(name)}" ${name === selected ? "selected" : ""}>${e(name)}</option>`).join("");
+    }
   }
   function fieldMeta(field, root, fields) {
     // 按嵌套路径找到字段定义，无需解析其他尚未填写完整的草稿。
@@ -3759,6 +3785,205 @@ dialog::backdrop {
     }).join("");
   }
   U.forms = { html: fieldsHTML, sections, bind, read, appendArray };
+})();
+
+(() => {
+  "use strict";
+  const U = window.DrawpicUI, { state, $, e, icon, call, toast } = U;
+  const notice = "该配置会向绘图模型发送多张参考图。请确认所用服务商及具体模型支持多图参考。插件会校验图生图能力，但不自动探测多图兼容性；切换模型后请重新核实。";
+
+  function confirmMultiple() {
+    const dialog = document.createElement("dialog");
+    dialog.className = "reference-confirm";
+    const model = state.data?.settings.general.default_model || state.data?.default_model;
+    dialog.innerHTML = `<div class="modal-header"><h2>确认多图参考能力</h2></div><div class="reference-dialog-body"><p>${e(notice)}</p>${model ? `<p class="hint">当前默认模型：${e(model)}</p>` : ""}<div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button type="button" class="button" data-confirm>已确认支持</button></div></div>`;
+    document.body.append(dialog);
+    return new Promise((resolve) => {
+      let accepted = false;
+      $("[data-cancel]", dialog).onclick = () => dialog.close();
+      $("[data-confirm]", dialog).onclick = () => { accepted = true; dialog.close(); };
+      dialog.addEventListener("close", () => { dialog.remove(); resolve(accepted); }, { once: true });
+      dialog.showModal();
+    });
+  }
+
+  function assets(kind) { return (state.data.reference_assets?.assets || []).filter(item => item.kind === kind); }
+  function options(kind, selected) {
+    const entries = assets(kind);
+    return `<option value="">请选择参考图片</option>${selected && !entries.some(item => item.id === selected) ? `<option value="${e(selected)}" selected>图片不存在或用途不符</option>` : ""}` + entries.map(item => `<option value="${e(item.id)}" ${item.id === selected ? "selected" : ""}>${e(item.name)}${item.tags.length ? ` · ${e(item.tags.join(" / "))}` : ""}</option>`).join("");
+  }
+  function refreshPickers() {
+    document.querySelectorAll("[data-reference-picker]").forEach(select => {
+      const selected = select.value;
+      select.innerHTML = options(select.dataset.referencePicker, selected);
+    });
+    U.selects.refresh(document);
+  }
+
+  function gallery(root, kind) {
+    let page = 0, version = 0;
+    async function mutate(operation, item = {}, source = "") {
+      const result = await call("action", "reference_update", {
+        operation, revision: state.data.reference_assets.revision,
+        asset_json: JSON.stringify(item), source_id: source,
+      });
+      state.data.reference_assets = result;
+      refreshPickers();
+      render();
+    }
+    function edit(item) {
+      const dialog = document.createElement("dialog");
+      dialog.className = "reference-confirm";
+      dialog.innerHTML = `<form><div class="modal-header"><h2>编辑参考图片</h2></div><div class="reference-dialog-body"><div class="field"><label>图片名称<input name="name" value="${e(item.name)}" maxlength="80" required></label></div><div class="field"><label>Tag（逗号分隔）<input name="tags" value="${e(item.tags.join(", "))}"></label></div><div class="field"><label>替换图片（可选）<input name="replacement" type="file" accept="image/png,image/jpeg,image/webp"></label><p class="hint">替换后保留图片标识、默认项和预设引用；已经开始的任务仍使用读取的版本。</p></div><div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button class="button" type="submit">保存图片信息</button></div></div></form>`;
+      document.body.append(dialog);
+      $("[data-cancel]", dialog).onclick = () => dialog.close();
+      $("form", dialog).onsubmit = event => {
+        event.preventDefault();
+        U.buttonAction($("[type=submit]", dialog), async () => {
+          const file = $('[name="replacement"]', dialog).files[0];
+          const source = file ? (await call("upload", "source", {}, file)).source_id : "";
+          await mutate("save", { asset_id: item.id, kind, name: $("[name=name]", dialog).value,
+            tags: $("[name=tags]", dialog).value.split(/[,，]/).map(value => value.trim()).filter(Boolean) }, source);
+          dialog.close();
+        });
+      };
+      dialog.addEventListener("close", () => dialog.remove(), { once: true });
+      dialog.showModal();
+    }
+    function render() {
+      const current = ++version, entries = assets(kind), snapshot = state.data.reference_assets;
+      page = Math.min(page, Math.max(0, Math.ceil(entries.length / 12) - 1));
+      root.innerHTML = `<div class="reference-gallery-header"><h3>${kind === "self" ? "自我参考图库" : "图生图预设图片"}</h3><button type="button" class="button secondary compact" data-upload>${icon("upload")}上传图片</button><input data-file type="file" accept="image/png,image/jpeg,image/webp" hidden multiple></div><p class="hint">${kind === "self" ? "确认描绘机器人自身后才使用图库。Tag 未命中时使用默认图；已有图库不会自动开启功能。" : "先上传图片，再在图生图预设中选择图片及用途。文生图预设只保存文字模板。"}图片管理单独保存；设置开关与预设编辑仍通过“保存全部设置”生效。</p><div class="reference-gallery">${entries.slice(page * 12, page * 12 + 12).map(item => `<article class="reference-card" data-asset="${e(item.id)}"><div class="reference-thumbnail"><img alt="${e(item.name)}" loading="lazy" hidden><span class="hint" data-loading>正在读取预览</span></div><strong>${e(item.name)}</strong><div class="hint reference-tags">${e(item.tags.join(" · ") || "未设置 tag")}</div>${snapshot.default_reference_id === item.id ? '<span class="pill">默认自我参考</span>' : ""}<div class="reference-card-actions"><button type="button" class="button secondary compact" data-edit>编辑</button>${kind === "self" && snapshot.default_reference_id !== item.id ? '<button type="button" class="button secondary compact" data-default>设为默认</button>' : ""}<button type="button" class="icon-button" data-up aria-label="上移图片">↑</button><button type="button" class="icon-button" data-delete aria-label="删除图片">${icon("close")}</button></div></article>`).join("") || '<p class="muted">尚未上传参考图片。</p>'}</div>${entries.length > 12 ? '<div class="reference-paging"><button type="button" class="button secondary compact" data-prev>上一页</button><span data-page></span><button type="button" class="button secondary compact" data-next>下一页</button></div>' : ""}`;
+      $("[data-upload]", root).onclick = () => $("[data-file]", root).click();
+      $("[data-file]", root).onchange = event => U.buttonAction($("[data-upload]", root), async () => {
+        for (const file of event.target.files) {
+          const uploaded = await call("upload", "source", {}, file);
+          await mutate("save", { name: file.name.slice(0, 80), kind, tags: [] }, uploaded.source_id);
+        }
+        toast("参考图片已保存");
+      });
+      if ($("[data-prev]", root)) {
+        $("[data-page]", root).textContent = `${page + 1} / ${Math.ceil(entries.length / 12)}`;
+        $("[data-prev]", root).disabled = page === 0;
+        $("[data-next]", root).disabled = (page + 1) * 12 >= entries.length;
+        $("[data-prev]", root).onclick = () => { page--; render(); };
+        $("[data-next]", root).onclick = () => { page++; render(); };
+      }
+      root.querySelectorAll("[data-asset]").forEach(card => {
+        const item = entries.find(entry => entry.id === card.dataset.asset);
+        $("[data-edit]", card).onclick = () => edit(item);
+        const run = (button, operation, values) => { button.onclick = () => U.buttonAction(button, () => mutate(operation, values)); };
+        if ($("[data-default]", card)) run($("[data-default]", card), "default", { asset_id: item.id });
+        const index = entries.findIndex(entry => entry.id === item.id);
+        $("[data-up]", card).disabled = index === 0;
+        run($("[data-up]", card), "move", { asset_id: item.id, position: snapshot.assets.findIndex(entry => entry.id === entries[Math.max(0, index - 1)].id) });
+        run($("[data-delete]", card), "delete", { asset_id: item.id });
+        call("query", "reference_image", { asset_id: item.id }).then(result => {
+          if (current !== version || !card.isConnected) return;
+          $("img", card).src = result.preview;
+          $("img", card).hidden = false;
+          $("[data-loading]", card).remove();
+        }).catch(error => { if (current === version && card.isConnected) $("[data-loading]", card).textContent = error.message; });
+      });
+    }
+    render();
+  }
+
+  function confirmButton(root) {
+    const field = $('[data-field="multi_reference_confirmed"]', root);
+    if (!field) return;
+    field.hidden = true;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button secondary compact";
+    button.dataset.referenceConfirmation = "true";
+    button.textContent = "确认与其他图片合用";
+    button.onclick = async () => {
+      if (await confirmMultiple()) {
+        $('[data-input="multi_reference_confirmed"]', field).checked = true;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        toast("已确认，保存全部设置后生效；切换模型后请重新核实");
+      }
+    };
+    field.after(button);
+  }
+
+  function presetTypes(root) {
+    const list = $('[data-array="presets"]', root);
+    if (!list) return;
+    let active = state.presetKind || "text_to_image", initialized = false;
+    const toolbar = document.createElement("div");
+    toolbar.className = "reference-preset-tabs";
+    toolbar.innerHTML = '<button type="button" class="button secondary" data-kind="text_to_image">文生图预设</button><button type="button" class="button secondary" data-kind="image_to_image">图生图预设</button>';
+    list.before(toolbar);
+    function update() {
+      state.presetKind = active;
+      toolbar.querySelectorAll("button").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.kind === active)));
+      for (const row of [...list.children].filter(node => node.hasAttribute("data-array-object"))) {
+        const type = $('[data-input="preset_type"]', row);
+        if (!type) continue;
+        if (!row.dataset.referenceBound) {
+          row.dataset.referenceBound = "true";
+          if (initialized && active === "image_to_image") type.value = active;
+          confirmButton(row);
+          type.addEventListener("change", () => {
+            active = type.value;
+            if (active === "image_to_image") $('[data-input="apply_to_image_edit"]', row).checked = false;
+            update();
+          });
+        }
+        row.hidden = type.value !== active;
+        $('[data-field="apply_to_image_edit"]', row).hidden = type.value !== "text_to_image";
+        const bindings = $('[data-field="reference_bindings"]', row);
+        bindings.hidden = type.value !== "image_to_image" && !bindings.querySelector("[data-array-object]");
+        $('[data-reference-confirmation]', row).hidden = type.value !== "image_to_image";
+      }
+      for (const key of ["image_edit_presets_enabled", "default_image_edit_preset"])
+        $(`[data-field="${key}"]`, root).hidden = active !== "image_to_image";
+      $('[data-field="default_style"]', root).hidden = active !== "text_to_image";
+      const gallery = $(".reference-preset-gallery", root);
+      if (gallery) gallery.hidden = active !== "image_to_image";
+      initialized = true;
+    }
+    toolbar.querySelectorAll("button").forEach(button => { button.onclick = () => { active = button.dataset.kind; update(); }; });
+    const observer = new MutationObserver(update);
+    observer.observe(list, { childList: true, subtree: true });
+    const reset = event => {
+      if (event.detail.key !== "presets") return;
+      observer.disconnect();
+      toolbar.remove();
+      root.removeEventListener("fieldreset", reset);
+      presetTypes(root);
+    };
+    root.addEventListener("fieldreset", reset);
+    update();
+  }
+
+  async function confirmSettings(all, previous) {
+    const refs = all.general.references, old = previous.general.references;
+    const changed = JSON.stringify(refs.self_reference_ids) !== JSON.stringify(old.self_reference_ids);
+    const combination = refs.self_reference_enabled && (refs.allow_chat_material_search || refs.allow_web_material_search || all.style.image_edit_presets_enabled && all.style.presets.some(preset => preset.reference_bindings.length));
+    const selfNeeds = (refs.self_reference_ids.length > 1 && changed) || ((refs.self_reference_ids.length > 1 || combination) && !refs.multi_reference_confirmed);
+    const presets = all.style.presets.filter(preset => {
+      const before = previous.style.presets.find(item => item.name === preset.name);
+      return preset.reference_bindings.length > 1 && (!preset.multi_reference_confirmed || JSON.stringify(preset.reference_bindings) !== JSON.stringify(before?.reference_bindings));
+    });
+    if (!selfNeeds && !presets.length) return true;
+    if (!(await confirmMultiple())) {
+      if (selfNeeds) refs.self_reference_ids = [...old.self_reference_ids];
+      for (const preset of presets) {
+        const before = previous.style.presets.find(item => item.name === preset.name);
+        preset.reference_bindings = structuredClone(before?.reference_bindings || preset.reference_bindings.slice(0, 1));
+        preset.multi_reference_confirmed = before?.multi_reference_confirmed || false;
+      }
+      return false;
+    }
+    if (selfNeeds) refs.multi_reference_confirmed = true;
+    presets.forEach(preset => { preset.multi_reference_confirmed = true; });
+    return true;
+  }
+
+  U.referenceUI = { gallery, options, confirmButton, presetTypes, confirmSettings, confirmMultiple };
 })();
 
 (() => {
@@ -4236,9 +4461,13 @@ dialog::backdrop {
       "draw-negative",
       "draw-delivery",
       "chat-platform",
+      "reference-self",
+      "reference-tags",
+      "reference-chat",
+      "reference-web",
     ]) {
       const input = $("#" + id);
-      if (input) draft[id] = input.value;
+      if (input) draft[id] = input.type === "checkbox" ? input.checked : input.value;
     }
   }
   function modelOptions() {
@@ -4381,15 +4610,22 @@ dialog::backdrop {
       $("#first-platform").onclick = () => U.navigate("platforms");
       return;
     }
+    const refs = state.data.settings.general.references;
+    const styles = state.data.settings.style;
+    const inherited = state.data.presets.find(preset => preset.name === styles.default_style && preset.apply_to_image_edit);
+    const defaultPreset = mode === "draw" ? styles.default_style : styles.default_image_edit_preset || inherited?.name;
+    const presetCaption = mode === "edit_image" && !styles.image_edit_presets_enabled ? "图生图预设已关闭" : `跟随当前模式默认预设${defaultPreset ? `（${defaultPreset}）` : "（未设置）"}`;
+
+    const referenceControls = mode === "edit_image" ? `<fieldset class="reference-request"><legend>本次参考与素材</legend><div class="field"><label for="reference-self">机器人自身</label><select id="reference-self" ${refs.self_reference_enabled ? "" : "disabled"}><option value="off">不使用自我参考</option><option value="auto" ${refs.self_reference_enabled ? "selected" : ""}>根据本次原始描述识别</option><option value="required">明确描绘机器人自身</option></select></div><div class="field"><label for="reference-tags">自我参考 Tag（可选）</label><input id="reference-tags" placeholder="例如：冬装，居家"></div><label class="reference-source-option"><span>从当前选定聊天查找缺少的素材</span><input id="reference-chat" type="checkbox" role="switch" class="toggle" ${refs.allow_chat_material_search ? "" : "disabled"}></label><label class="reference-source-option"><span>联网查找缺少的素材</span><input id="reference-web" type="checkbox" role="switch" class="toggle" ${refs.allow_web_material_search ? "" : "disabled"}></label><p class="hint">自我图库、预设图或合格素材可提供真实源图。聊天取材需要在结果去向中选择对应会话；全局关闭的来源不可使用。</p><button type="button" class="button ghost compact" id="studio-references">管理参考与素材 ${icon("arrow")}</button></fieldset>` : "";
     $("#workspace-content").innerHTML =
-      `<div class="studio-grid"><section class="panel"><div class="panel-header"><div class="section-label">${icon("sparkles")}<h2>创作新的画面</h2></div><span class="pill">后台执行</span></div><div class="mode-switch" data-mode="${mode}" role="group" aria-label="绘图模式"><span class="mode-indicator" aria-hidden="true"></span><button id="mode-draw" aria-pressed="${mode === "draw"}" class="${mode === "draw" ? "active" : ""}">文生图</button><button id="mode-edit" aria-pressed="${mode === "edit_image"}" class="${mode === "edit_image" ? "active" : ""}">图生图</button></div><form id="draw-form"><div class="field"><label for="draw-prompt">你想画什么？</label><textarea id="draw-prompt" class="prompt-input" maxlength="16000" required placeholder="描述主体、构图、光线和风格。例如：一只橘猫坐在窗边，午后阳光照进房间，水彩质感。"></textarea></div><div class="field-row"><div class="field"><label for="draw-model">绘图模型</label><select id="draw-model" required${state.data.default_model_error ? ' aria-describedby="draw-model-error"' : ""}>${modelOptions()}</select>${state.data.default_model_error ? `<p id="draw-model-error" class="hint" role="status">${e(state.data.default_model_error)}。请选择完整的“平台实例 / 模型”名称；可在偏好与预设中更新默认模型。</p>` : ""}</div><div class="field"><label for="draw-style">风格预设</label><select id="draw-style"><option value="">跟随默认风格${state.data.settings.style.default_style ? `（${e(state.data.settings.style.default_style)}）` : "（未设置）"}</option><option value="none">不使用预设</option>${state.data.presets
-        .filter((item) => item.enabled)
+      `<div class="studio-grid"><section class="panel"><div class="panel-header"><div class="section-label">${icon("sparkles")}<h2>创作新的画面</h2></div><span class="pill">后台执行</span></div><div class="mode-switch" data-mode="${mode}" role="group" aria-label="绘图模式"><span class="mode-indicator" aria-hidden="true"></span><button id="mode-draw" aria-pressed="${mode === "draw"}" class="${mode === "draw" ? "active" : ""}">文生图</button><button id="mode-edit" aria-pressed="${mode === "edit_image"}" class="${mode === "edit_image" ? "active" : ""}">图生图</button></div><form id="draw-form"><div class="field"><label for="draw-prompt">你想画什么？</label><textarea id="draw-prompt" class="prompt-input" maxlength="16000" required placeholder="描述主体、构图、光线和风格。例如：一只橘猫坐在窗边，午后阳光照进房间，水彩质感。"></textarea></div><div class="field-row"><div class="field"><label for="draw-model">绘图模型</label><select id="draw-model" required${state.data.default_model_error ? ' aria-describedby="draw-model-error"' : ""}>${modelOptions()}</select>${state.data.default_model_error ? `<p id="draw-model-error" class="hint" role="status">${e(state.data.default_model_error)}。请选择完整的“平台实例 / 模型”名称；可在偏好与预设中更新默认模型。</p>` : ""}</div><div class="field"><label for="draw-style">绘图预设</label><select id="draw-style"><option value="">${e(presetCaption)}</option><option value="none">不使用预设</option>${state.data.presets
+        .filter((item) => item.enabled && (mode === "draw" ? item.preset_type === "text_to_image" : state.data.settings.style.image_edit_presets_enabled && (item.preset_type === "image_to_image" || item.apply_to_image_edit)))
         .map(
           (item) => `<option value="${e(item.name)}">${e(item.name)}</option>`,
         )
         .join(
           "",
-        )}</select></div></div>${mode === "edit_image" ? `<div class="field"><label>源图片</label><div class="upload-zone" id="upload-zone">${icon("upload")}<p>拖放图片到这里，或选择文件</p><button type="button" id="source-button" class="button secondary compact">${icon("upload")}选择源图片</button><input type="file" id="source-file" accept="image/png,image/jpeg,image/webp" multiple hidden></div><div class="source-list" id="source-list"></div><p class="hint">上传真实源图；最终支持数量以模型为准。需要公网原图 URL 的模型不支持直接使用网页上传的本地图片。</p></div>` : ""}<details><summary class="muted" style="cursor:pointer;margin-bottom:15px">反向提示词与发送选项</summary><div class="field"><label for="draw-negative">反向提示词</label><textarea id="draw-negative" rows="2" maxlength="16000" placeholder="不希望出现在画面中的内容"></textarea></div><div class="field"><label for="draw-delivery">结果去向</label><select id="draw-delivery"><option value="web">仅在工作台查看</option><option value="chat">同时发送到聊天</option></select></div><div id="delivery-fields" hidden><div class="field-row"><div class="field"><label for="chat-platform">聊天平台标识</label><input id="chat-platform" value="qq" maxlength="80"></div><div class="field"><label>&nbsp;</label><button type="button" id="load-streams" class="button secondary wide">加载聊天会话</button></div></div><div class="field"><label for="draw-stream">目标会话</label><select id="draw-stream"><option value="">请先加载会话</option></select><p class="hint">使用实际聊天流；发送到聊天时沿用群聊或私聊额度。网页专用任务由当前实例管理，不计入聊天额度。</p></div></div></details><div class="sticky-save"><span class="hint">模型校验 · 提示词与图片审核</span><button type="submit" class="button" id="start-drawing">${icon("sparkles")}开始绘图</button></div></form></section><aside class="stack"><section class="panel"><div class="panel-header"><h3>创作结果</h3>${icon("images")}</div><div id="studio-submissions" aria-live="polite"></div><div id="studio-result"><div class="placeholder-art">${icon("sparkles")}<span>想象，正在等待落笔</span><small>任务提交后，会在这里显示进度与生成图片。</small></div></div></section><div class="panel"><h3>让画面更接近你的想法</h3><p class="hint">描述具体的主体、环境和光线。试试风格预设，把常用的画面语言保存下来。</p><button class="button ghost compact" id="studio-presets" style="margin-top:8px">管理预设 ${icon("arrow")}</button></div></aside></div>`;
+        )}</select></div></div>${mode === "edit_image" ? `<div class="field"><label>源图片</label><div class="upload-zone" id="upload-zone">${icon("upload")}<p>拖放图片到这里，或选择文件</p><button type="button" id="source-button" class="button secondary compact">${icon("upload")}选择源图片</button><input type="file" id="source-file" accept="image/png,image/jpeg,image/webp" multiple hidden></div><div class="source-list" id="source-list"></div><p class="hint">上传真实源图；最终支持数量以模型为准。需要公网原图 URL 的模型不支持直接使用网页上传的本地图片。</p></div>` : ""}${referenceControls}<details><summary class="muted" style="cursor:pointer;margin-bottom:15px">反向提示词与发送选项</summary><div class="field"><label for="draw-negative">反向提示词</label><textarea id="draw-negative" rows="2" maxlength="16000" placeholder="不希望出现在画面中的内容"></textarea></div><div class="field"><label for="draw-delivery">结果去向</label><select id="draw-delivery"><option value="web">仅在工作台查看</option><option value="chat">同时发送到聊天</option></select></div><div id="delivery-fields" hidden><div class="field-row"><div class="field"><label for="chat-platform">聊天平台标识</label><input id="chat-platform" value="qq" maxlength="80"></div><div class="field"><label>&nbsp;</label><button type="button" id="load-streams" class="button secondary wide">加载聊天会话</button></div></div><div class="field"><label for="draw-stream">目标会话</label><select id="draw-stream"><option value="">请先加载会话</option></select><p class="hint">使用实际聊天流；发送到聊天时沿用群聊或私聊额度。网页专用任务由当前实例管理，不计入聊天额度。</p></div></div></details><div class="sticky-save"><span class="hint">模型校验 · 提示词与图片审核</span><button type="submit" class="button" id="start-drawing">${icon("sparkles")}开始绘图</button></div></form></section><aside class="stack"><section class="panel"><div class="panel-header"><h3>创作结果</h3>${icon("images")}</div><div id="studio-submissions" aria-live="polite"></div><div id="studio-result"><div class="placeholder-art">${icon("sparkles")}<span>想象，正在等待落笔</span><small>任务提交后，会在这里显示进度与生成图片。</small></div></div></section><div class="panel"><h3>让画面更接近你的想法</h3><p class="hint">描述具体的主体、环境和光线。试试绘图预设，把常用的画面语言保存下来。</p><button class="button ghost compact" id="studio-presets" style="margin-top:8px">管理预设 ${icon("arrow")}</button></div></aside></div>`;
     for (const [id, value] of Object.entries(draft)) {
       const input = $("#" + id);
       if (
@@ -4397,7 +4633,8 @@ dialog::backdrop {
         (!input.options ||
           Array.from(input.options).some((option) => option.value === value))
       )
-        input.value = value;
+        if (input.type === "checkbox") input.checked = value;
+        else input.value = value;
     }
     $("#delivery-fields").hidden = $("#draw-delivery").value !== "chat";
     function changeMode(next) {
@@ -4433,6 +4670,12 @@ dialog::backdrop {
     $("#draw-delivery").onchange = () => {
       $("#delivery-fields").hidden = $("#draw-delivery").value !== "chat";
     };
+    if ($("#studio-references")) {
+      $("#studio-references").onclick = () => { state.settingsSection = "references"; U.navigate("settings"); };
+      const updateTags = () => { $("#reference-tags").disabled = $("#reference-self").value === "off"; };
+      $("#reference-self").onchange = updateTags;
+      updateTags();
+    }
     $("#studio-presets").onclick = () => {
       state.settingsSection = "style";
       U.navigate("settings");
@@ -4495,6 +4738,14 @@ dialog::backdrop {
               ? state.sources.map((item) => item.source_id)
               : [],
         };
+        if (mode === "edit_image") {
+          const self = $("#reference-self").value;
+          const sources = [$("#reference-chat").checked ? "chat" : "", $("#reference-web").checked ? "web" : ""].filter(Boolean);
+          if (sources.includes("chat") && !stream) throw new Error("从聊天取材需要选择对应聊天会话，并明确将结果发送到该会话");
+          request.reference_options_json = JSON.stringify({ self_reference: self,
+            self_reference_tags: self === "off" ? [] : $("#reference-tags").value.split(/[,，]/).map(value => value.trim()).filter(Boolean),
+            user_request: request.prompt, material_sources: sources });
+        }
         const signature = JSON.stringify(request);
         let entry = submissions.get(signature);
         if (!entry) {
@@ -4695,11 +4946,12 @@ dialog::backdrop {
   "use strict";
   const U = window.DrawpicUI,
     { state, $, call, buttonAction, toast } = U;
-  const sections = { general: "通用配置", review: "审核配置", access: "黑白名单", style: "风格预设" };
-  const sourceSection = (name) => ["review", "access"].includes(name) ? "general" : name;
+  const sections = { general: "通用配置", review: "审核配置", access: "黑白名单", style: "绘图预设", references: "参考与素材" };
+  const sourceSection = (name) => ["review", "access", "references"].includes(name) ? "general" : name;
   const reviewField = (key) => /^(prompt|image)_review_/.test(key);
   const accessField = (key) => /^(group|private)_access_/.test(key);
   const belongsToSection = (name, key) => name === "style" ||
+    (name === "references" ? key === "references" : key !== "references") &&
     (name === "review" ? reviewField(key) : name === "access" ? accessField(key) : !reviewField(key) && !accessField(key));
   U.views.settings = async () => {
     let selected = Object.hasOwn(sections, state.settingsSection)
@@ -4728,11 +4980,16 @@ dialog::backdrop {
       panel.setAttribute("role", "tabpanel");
       panel.setAttribute("aria-labelledby", `settings-tab-${name}`);
       panel.hidden = name !== selected;
-      const fields = Object.fromEntries(
+      const fields = name === "references" ? state.data.reference_fields : Object.fromEntries(
         Object.entries(state.data.schema.sections[sourceSection(name)].fields)
           .filter(([key]) => belongsToSection(name, key)),
       );
-      panel.innerHTML = U.forms.html(fields, values);
+      if (name === "references") {
+        values = values.references;
+        const selfFields = Object.fromEntries(Object.entries(fields).filter(([key]) => !key.startsWith("allow_")));
+        const sourceFields = Object.fromEntries(Object.entries(fields).filter(([key]) => key.startsWith("allow_")));
+        panel.innerHTML = `<h3>自我参考</h3><p class="hint">默认关闭。开启后依据用户原始请求识别是否描绘机器人；不明确时需要补充主体说明。填写当前机器人的名称及常用称呼。</p>${U.forms.html(selfFields, values)}<div data-self-gallery></div><h3 class="reference-source-title">素材来源</h3><p class="hint">两个来源独立开启。仅查找当前任务缺少的素材；用户本条附图与明确引用的图片不受这两个开关限制。</p>${U.forms.html(sourceFields, values)}`;
+      } else panel.innerHTML = U.forms.html(fields, values);
       const old = $(`#${panel.id}`, form);
       if (old) old.replaceWith(panel);
       else form.append(panel);
@@ -4740,8 +4997,19 @@ dialog::backdrop {
       // 通用、审核和黑白名单共享持久化配置，只读取当前分类的字段，避免覆盖其他分类草稿。
       readers[name] = () => {
         const result = read();
-        return Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
+        return name === "references" ? { references: result } : Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
       };
+      if (name === "references") {
+        U.referenceUI.confirmButton(panel);
+        U.referenceUI.gallery($("[data-self-gallery]", panel), "self");
+      } else if (name === "style") {
+        U.referenceUI.presetTypes(panel);
+        const gallery = document.createElement("div");
+        gallery.className = "reference-preset-gallery";
+        gallery.hidden = true;
+        panel.append(gallery);
+        U.referenceUI.gallery(gallery, "preset");
+      }
     }
     for (const name of Object.keys(sections))
       renderSection(name, structuredClone(state.data.settings[sourceSection(name)]));
@@ -4750,7 +5018,7 @@ dialog::backdrop {
       $("#settings-heading").textContent = sections[name];
       $("#settings-description").textContent =
         name === "style"
-          ? "把常用风格保存为提示词模板，各分类的修改可一起保存。"
+          ? "文生图和图生图分别选择预设。图生图预设默认关闭；文生图预设可逐条勾选同时应用到图生图。"
           : name === "review"
             ? "分别设置提示词审核和生成图片审核，使用 MaiBot 配置的审核模型。切换分类保留草稿。"
           : name === "access"
@@ -4815,12 +5083,24 @@ dialog::backdrop {
     });
     form.onsubmit = (event) => {
       event.preventDefault();
-      if (form.inert || requiresRefresh) return;
+      if (form.inert || requiresRefresh || save.disabled) return;
       buttonAction(save, async () => {
         const all = {
-          general: { ...state.data.settings.general, ...readers.general(), ...readers.review(), ...readers.access() },
+          general: { ...state.data.settings.general, ...readers.general(), ...readers.review(), ...readers.access(), ...readers.references() },
           style: readers.style(),
         };
+        if (!(await U.referenceUI.confirmSettings(all, state.data.settings))) {
+          renderSection("references", { references: all.general.references });
+          renderSection("style", all.style);
+          state.dirty = true;
+          updateNotice();
+          return;
+        }
+        $('[data-input="multi_reference_confirmed"]', $("#settings-panel-references")).checked = all.general.references.multi_reference_confirmed;
+        const presetRows = $('[data-array="presets"]', $("#settings-panel-style"));
+        [...presetRows.children].filter(node => node.hasAttribute("data-array-object")).forEach((row, index) => {
+          $('[data-input="multi_reference_confirmed"]', row).checked = all.style.presets[index].multi_reference_confirmed;
+        });
         form.inert = true;
         $("#reset-settings").disabled = true;
         try {

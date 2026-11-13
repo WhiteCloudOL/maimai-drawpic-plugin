@@ -41,6 +41,7 @@ class ImageExecutionMixin:
         self._started_task_ids.add(task_id)
         notified = False
         delivery_started = False
+        strict_reference_inputs = False
 
         async def _update_terminal(**changes) -> None:
             await self.persist_terminal(task_id, **changes)
@@ -107,6 +108,7 @@ class ImageExecutionMixin:
                 style_negative_prompt_template = prepared.negative_template
                 normalized_source_images, normalized_source_urls = prepared.images, prepared.urls
                 task_type = prepared.task_type
+                strict_reference_inputs = prepared.strict_reference_inputs
                 is_image_edit = task_type == "edit_image"
                 running_message = "图片正在编辑中" if is_image_edit else "图片正在生成中"
                 timeout_message = "图片编辑超时" if is_image_edit else "图片生成超时"
@@ -163,6 +165,7 @@ class ImageExecutionMixin:
                 matched_message_id=matched_message_id,
                 request_negative_prompt=request_negative_prompt,
                 style_negative_prompt_template=style_negative_prompt_template,
+                strict_reference_inputs=strict_reference_inputs,
             )
 
             if successful_attempt is None:
