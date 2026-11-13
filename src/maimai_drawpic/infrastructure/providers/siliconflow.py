@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict
 import aiohttp
 import asyncio
 import base64
@@ -39,6 +39,7 @@ class SiliconFlowImage:
         extra_parameters: dict[str, Any] | None = None,
         proxy_settings: HttpProxySettings | None = None,
         skip_image_url_ip_check: bool = False,
+        watermark_enabled: bool = True,
     ) -> None:
         self.api_key = api_key
         self.logger = logger
@@ -57,6 +58,7 @@ class SiliconFlowImage:
         self.extra_parameters = dict(extra_parameters or {})
         self.proxy_settings = proxy_settings or HttpProxySettings.disabled()
         self.skip_image_url_ip_check = skip_image_url_ip_check
+        self.watermark_enabled = watermark_enabled
 
     async def generate_images(self, prompt: str, model: str, n: int = 1) -> list[bytes]:
         """调用硅基流动文生图接口。"""
@@ -135,13 +137,16 @@ class SiliconFlowImage:
             payload.pop("cfg", None)
         return payload
 
-    def _build_headers(self) -> dict[str, str]:
+    def _build_headers(self) -> Dict[str, str]:
         """构建请求头。"""
 
-        return {
+        headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if not self.watermark_enabled:
+            headers["X-Enable-Watermark"] = "0"
+        return headers
 
     @staticmethod
     def _detect_mime_type(image_bytes: bytes) -> str:

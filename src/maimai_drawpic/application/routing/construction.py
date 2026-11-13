@@ -274,6 +274,7 @@ class ProviderConstructionMixin:
             num_inference_steps=self.config.siliconflow.num_inference_steps,
             guidance_scale=self.config.siliconflow.guidance_scale,
             cfg=self.config.siliconflow.cfg,
+            watermark_enabled=self.config.siliconflow.watermark_enabled,
             negative_prompt=self._provider_negative_prompt(
                 "siliconflow", request_negative_prompt, prepared_negative_prompt,
             ),
