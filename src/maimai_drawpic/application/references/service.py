@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 import asyncio
 
 from ...domain.references import PreparedRequest, ReferenceImage, ReferenceOptions, normalize_tag
-from ...domain.styles import StylePromptResolver
+from ...domain.styles import StylePromptResolver, merge_prompt_parts
 from ...domain.task_errors import TaskRequestError
 from ...infrastructure.references.materials import MaterialSource
 from ...infrastructure.storage.reference_assets import ReferenceAssetStore
@@ -23,7 +23,7 @@ class ReferencePreparation:
         self.prompt, self.style, self.negative = prompt, style, negative
         self.stream_id, self.required_mode, self.streams = stream_id, required_mode, streams
         self.images, self.frozen, self.self_ids = images, frozen, self_ids
-        self.recognizer = ReferenceRecognizer(ctx)
+        self.recognizer = ReferenceRecognizer(ctx, config.general.references.material_model)
         self.sources = MaterialSource(ctx, config)
         self.get_config = get_config
 
@@ -53,7 +53,7 @@ class ReferencePreparation:
         images = list(self.images)
         if refs.self_reference_enabled and self.options.self_reference != "off":
             subject = "self" if self.options.self_reference == "required" else await self.recognizer.self_subject(
-                self.options.user_request, refs.self_names)
+                self.options.user_request, refs.self_names, refs.self_keywords)
             if subject == "uncertain":
                 raise TaskRequestError("SELF_SUBJECT_UNCERTAIN", "无法确定要描绘谁，请明确是否描绘机器人自身")
             if subject == "self":
@@ -65,32 +65,42 @@ class ReferencePreparation:
         if explicit is not None and explicit.preset_type == "image_to_image":
             images.extend(self.frozen[binding.asset_id] for binding in explicit.reference_bindings)
         if self.options.material_sources:
-            needs = await self.recognizer.needs(self.options.user_request)
+            plan = await self.recognizer.needs(self.options.user_request, source_count=len(self.images))
             chat_images: Optional[List[ReferenceImage]] = None
+            if plan.chat_followup and "chat" in self.options.material_sources:
+                context = await self.streams.existing_stream_context(self.stream_id)
+                if not context:
+                    raise TaskRequestError("STREAM_UNAVAILABLE", "继续改图需要可访问的聊天记录")
+                require_chat_access(live.general, context, self.ctx.logger)
+                try:
+                    chat_images = await read_chat_materials(
+                        self.ctx, self.stream_id, message_limit=min(
+                            refs.chat_material_search_limit, live.general.references.chat_material_search_limit,
+                        ),
+                    )
+                except TaskRequestError:
+                    raise
+                except Exception as exc:
+                    raise TaskRequestError("CHAT_MATERIAL_UNAVAILABLE", f"聊天素材读取失败（{type(exc).__name__}）") from exc
+                def previous_image() -> Optional[ReferenceImage]:
+                    return next((candidate for candidate in chat_images if not any(candidate.raw == image.raw for image in self.images)), None)
+                previous = await asyncio.to_thread(previous_image)
+                if previous is None:
+                    raise TaskRequestError("MATERIAL_MISSING", "没有找到要接续的前图，请回复或补充那张图片")
+                images.append(previous)
             visual_calls = 0
-            for need in needs:
+            for need in plan.needs:
                 if need.role == "identity" and (need.kind == "bot" or normalize_tag(need.subject) in {normalize_tag(name) for name in refs.self_names}):
                     if not any(image.source == "self" for image in images):
                         raise TaskRequestError("SELF_REFERENCE_MISSING", "机器人自身形象需要已启用的自我参考，不能用同名网图替代")
                     continue
+                if need.kind != "user" and (not need.web_search or "web" not in self.options.material_sources):
+                    continue
                 found = False
                 candidates = list(images)
-                for source in ("existing", "chat", "web"):
-                    if source == "chat":
-                        if "chat" not in self.options.material_sources:
-                            continue
-                        if chat_images is None:
-                            context = await self.streams.existing_stream_context(self.stream_id)
-                            if not context:
-                                raise TaskRequestError("STREAM_UNAVAILABLE", "素材查找需要真实可访问的聊天流")
-                            require_chat_access(live.general, context, self.ctx.logger)
-                            try:
-                                chat_images = await read_chat_materials(self.ctx, self.stream_id)
-                            except Exception as exc:
-                                raise TaskRequestError("CHAT_MATERIAL_UNAVAILABLE", f"聊天素材读取失败（{type(exc).__name__}）") from exc
-                        candidates = chat_images
-                    elif source == "web":
-                        if "web" not in self.options.material_sources:
+                for source in ("existing", "web"):
+                    if source == "web":
+                        if "web" not in self.options.material_sources or not need.web_search:
                             continue
                         if need.kind == "user" or need.subject.strip() in {"用户", "我", "本人", "user"}:
                             raise TaskRequestError("MATERIAL_MISSING", "用户本人形象需要明确提供照片，不能使用同名网图")
@@ -122,7 +132,7 @@ class ReferencePreparation:
             for binding in preset.reference_bindings:
                 image = self.frozen[binding.asset_id]
                 images.append(ReferenceImage(image.raw, image.source, binding.role, binding.subject_id, image.url,
-                                             image.asset_id, image.version, binding.note))
+                                             image.asset_id, image.version, merge_prompt_parts((image.note, binding.note))))
         unique: Dict[str, ReferenceImage] = {}
         uses: Dict[str, List[str]] = {}
         digests = await asyncio.to_thread(lambda: [sha256(image.raw).hexdigest() for image in images])

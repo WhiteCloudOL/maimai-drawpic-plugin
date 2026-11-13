@@ -16,7 +16,7 @@ class ZhipuModelConfig(NegativePromptConfig):
         description="是否启用智谱平台",
         json_schema_extra={
             "label": "启用智谱平台",
-            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "hint": "关闭后，该平台的模型将不可选。",
             "order": -1,
         },
     )

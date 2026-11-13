@@ -157,7 +157,7 @@ class ComfyUIModelConfig(NegativePromptConfig):
         description="图生图源图读取节点 ID",
         json_schema_extra={
             "label": "图生图源图节点 ID",
-            "hint": "填写 API 工作流中 LoadImage 或兼容节点的 ID。插件会先上传源图，再将文件名写入该节点",
+            "hint": "填写工作流中接收参考图片的节点 ID。",
             "order": 14,
         },
     )
@@ -177,7 +177,7 @@ class ComfyUIModelConfig(NegativePromptConfig):
         description="ComfyUI 任务完成状态的轮询间隔（秒）",
         json_schema_extra={
             "label": "任务轮询间隔",
-            "hint": "默认 1 秒。总超时仍使用 general.request_timeout_seconds",
+            "hint": "默认 1 秒，增大间隔可减少查询频率。",
             "order": 16,
         },
     )

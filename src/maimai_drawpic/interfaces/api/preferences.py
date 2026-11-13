@@ -25,6 +25,8 @@ class PreferenceAPIMixin(WorkspaceAPIBase):
                             "default": item["id"] == snapshot["default_reference_id"]} for item in assets[(page - 1) * 12:page * 12]],
                 "self_reference_enabled": config.self_reference_enabled,
                 "allow_chat_material_search": config.allow_chat_material_search,
+                "chat_material_search_limit": config.chat_material_search_limit,
+                "material_model": config.material_model,
                 "allow_web_material_search": config.allow_web_material_search,
                 "multi_reference_confirmed": config.multi_reference_confirmed}
 

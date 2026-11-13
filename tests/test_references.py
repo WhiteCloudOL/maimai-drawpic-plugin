@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 import asyncio
+import base64
 import importlib
 import json
 import logging
@@ -15,10 +16,143 @@ def module(name):
     return importlib.import_module(f"{_PACKAGE}.src.maimai_drawpic.{name}")
 
 
+@pytest.mark.parametrize("supplied,expected", [
+    ("off", "off"), (" AUTO ", "auto"), ("required", "required"),
+    ("self", "auto"), ("", "auto"), (None, "auto"), (True, "auto"),
+    (1, "auto"), ([], "auto"), ({"value": "required"}, "auto"),
+])
+def test_tool_self_reference_recovers_to_auto_after_host_schema_validation(supplied, expected):
+    from jsonschema import validate
+
+    schema = module("interfaces.tools.schemas").DRAW_TOOL_PARAMETERS_SCHEMA
+    request = {"prompt": "海边的麦麦", "reference_options": {"self_reference": supplied}}
+    validate(request, schema)
+    options = module("interfaces.tools.drawing").DrawingToolMixin._drawing_reference_options(
+        {"message": {"processed_plain_text": "画你在海边的样子"}}, request["reference_options"],
+    )
+    parsed = module("domain.references").ReferenceOptions.model_validate(options)
+    assert parsed.self_reference == expected and parsed.user_request == "画你在海边的样子"
+    if supplied != expected:
+        with pytest.raises(ValueError):
+            module("domain.references").ReferenceOptions.model_validate({"self_reference": supplied, "user_request": "原话"})
+
+
+def test_auto_recognition_uses_custom_hints_without_turning_them_into_actions(monkeypatch):
+    async def run():
+        recognition = module("application.references.recognition")
+        captured = []
+
+        async def response(self, prompt, image=None):
+            captured.append(prompt)
+            return {"subject": "other"}
+
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "_json", response)
+        classifier = recognition.ReferenceRecognizer(SimpleNamespace())
+        assert await classifier.self_subject("不要画你的自拍，画我的照片", ["麦麦", "小麦"], ["你的自拍"]) == "other"
+        assert "不要画你的自拍，画我的照片" in captured[0] and "不能命中即认定" in captured[0]
+        for prompts in module("application.references.prompts").PROMPTS.values():
+            assert "麦麦" in prompts["self"].format(request="用户原话", names="麦麦", keywords="你的自拍")
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("user_text,followup,named,sources,expected", [
+    ("画一只猫", False, False, ["chat", "web"], (0, 0, "draw")),
+    ("画甘雨", False, True, ["chat", "web"], (0, 1, "edit_image")),
+    ("画甘雨", False, True, ["chat"], (0, 0, "draw")),
+    ("继续改刚才那张图", True, False, ["chat", "web"], (1, 0, "edit_image")),
+    ("不要使用以前的图，画一只猫", False, False, ["chat", "web"], (0, 0, "draw")),
+])
+def test_material_triggers_only_fetch_sources_needed_for_this_request(tmp_path, monkeypatch, user_text, followup, named, sources, expected):
+    async def run():
+        recognition = module("application.references.recognition")
+        service = module("application.references.service")
+        references = module("domain.references")
+        config = module("domain.configuration.models").DrawpicConfig()
+        config.general.references.allow_chat_material_search = True
+        config.general.references.allow_web_material_search = True
+        counts = {"chat": 0, "web": 0}
+
+        async def needs(self, original, *, source_count=0):
+            assert original == user_text and source_count == 0
+            return recognition.MaterialNeeds(chat_followup=followup, needs=[
+                recognition.MaterialNeed(subject="甘雨", mention="甘雨", web_search=True, role="identity", query="甘雨 官方"),
+            ] if named else [])
+
+        async def chat(*args, **kwargs):
+            counts["chat"] += 1
+            return [references.ReferenceImage(image_bytes(), "chat", description="刚才的图片")]
+
+        async def web(*args, **kwargs):
+            counts["web"] += 1
+            return [references.ReferenceImage(image_bytes(), "web")]
+
+        async def matches(*args):
+            return True
+
+        async def context(stream_id):
+            return {"stream_id": stream_id, "user_id": "1001", "group_id": "", "platform": "qq"}
+
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "needs", needs)
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "matches", matches)
+        monkeypatch.setattr(service, "read_chat_materials", chat)
+        monkeypatch.setattr(module("infrastructure.references.materials").MaterialSource, "web", web)
+        prepared = await service.freeze_reference_request(
+            ctx=SimpleNamespace(logger=logging.getLogger("trigger-test")), config=config,
+            store=module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path),
+            streams=SimpleNamespace(existing_stream_context=context), prompt=user_text, style="", negative="",
+            stream_id="real-stream", options=references.ReferenceOptions(user_request=user_text, material_sources=sources),
+            images=[], urls=[],
+        )
+        result = await prepared.prepare("trigger-test")
+        assert (counts["chat"], counts["web"], result.task_type) == expected
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("status,expected,calls", [("match", True, 1), ("mismatch", False, 1), ("uncertain", True, 2)])
+def test_cached_chat_description_reuses_text_before_viewing_image(status, expected, calls):
+    async def run():
+        recognition = module("application.references.recognition")
+        prompts = []
+
+        async def generate(prompt, **kwargs):
+            assert kwargs["model"] == "fast-multimodal"
+            prompts.append(prompt)
+            return {"content": json.dumps({"result": status} if len(prompts) == 1 else {"matches": True})}
+
+        classifier = recognition.ReferenceRecognizer(SimpleNamespace(llm=SimpleNamespace(generate=generate)), "fast-multimodal")
+        image = module("domain.references").ReferenceImage(image_bytes(), "chat", description="蓝发角色甘雨")
+        need = recognition.MaterialNeed(subject="甘雨", mention="甘雨", web_search=True, role="identity", query="甘雨 官方")
+        assert await classifier.matches(image, need) is expected
+        assert len(prompts) == calls and isinstance(prompts[0], str)
+        if calls == 2:
+            assert isinstance(prompts[1], list)
+
+    asyncio.run(run())
+
+
+def test_material_queries_cannot_invent_entities_outside_original_request(monkeypatch):
+    async def run():
+        recognition = module("application.references.recognition")
+
+        async def response(*args, **kwargs):
+            return {"chat_followup": False, "needs": [{"subject": "甘雨", "mention": "甘雨", "role": "identity",
+                    "kind": "character", "web_search": True, "query": "甘雨 官方"}]}
+
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "_json", response)
+        with pytest.raises(ValueError, match="原始请求"):
+            await recognition.ReferenceRecognizer(SimpleNamespace()).needs("画一只猫")
+        for prompts in module("application.references.prompts").PROMPTS.values():
+            assert "chat_followup" in prompts["needs"].format(request="画猫", source_count=0)
+
+    asyncio.run(run())
+
+
 def test_gallery_default_tags_revision_and_frozen_content(tmp_path):
     store = module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path)
     raw = image_bytes()
-    first = store.update(revision=0, operation="save", name="默认", tags=["居家"], raw=raw)
+    first = store.update(revision=0, operation="save", name="默认", tags=["居家"], raw=raw, prompt="保留白色长发")
     identifier = first["assets"][0]["id"]
     assert first["default_reference_id"] == identifier
     second = store.update(revision=1, operation="save", name="冬装", tags=["冬装"], raw=raw)
@@ -30,8 +164,10 @@ def test_gallery_default_tags_revision_and_frozen_content(tmp_path):
     with pytest.raises(ValueError, match="刷新"):
         store.update(revision=1, operation="default", asset_id=winter)
     frozen = store.read(identifier, kind="self")
+    assert frozen.note == "保留白色长发"
     store.update(revision=2, operation="save", asset_id=identifier, name="替换", tags=[], raw=raw + b"version2")
     assert frozen.raw == raw and frozen.version != store.read(identifier, kind="self").version
+    assert store.read(identifier, kind="self").note == "保留白色长发"
     current = store.update(revision=3, operation="delete", asset_id=identifier)
     assert current["default_reference_id"] == winter
     with pytest.raises(ValueError, match="引用"):
@@ -56,6 +192,55 @@ def test_gallery_corruption_and_asset_scope_are_not_defaulted(tmp_path):
     store._path(image["id"], image["version"]).write_bytes(b"broken")
     with pytest.raises(ValueError, match="版本"):
         store.read(image["id"], kind="preset")
+
+
+def test_legacy_gallery_gains_empty_prompt_without_rewriting_index(tmp_path):
+    store = module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path)
+    snapshot = store.update(revision=0, operation="save", name="旧图片", tags=[], raw=image_bytes())
+    identifier = snapshot["assets"][0]["id"]
+    del snapshot["assets"][0]["prompt"]
+    original = json.dumps(snapshot).encode()
+    store.index.write_bytes(original)
+    assert store.read(identifier, kind="self").note == ""
+    assert store.index.read_bytes() == original
+    with pytest.raises(ValueError, match="提示词"):
+        store.update(revision=1, operation="save", asset_id=identifier, name="旧图片", tags=[], prompt="a" * 501)
+    assert store.index.read_bytes() == original
+
+
+@pytest.mark.parametrize("kind", ["self", "preset"])
+def test_reference_image_prompt_is_frozen_and_used_in_generation(tmp_path, kind):
+    async def run():
+        config_module = module("domain.configuration.models")
+        config = config_module.DrawpicConfig()
+        store = module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path)
+        snapshot = store.update(revision=0, operation="save", name="水彩参考", tags=[], kind=kind,
+                                raw=image_bytes(), prompt="保留水彩笔触")
+        identifier = snapshot["assets"][0]["id"]
+        if kind == "self":
+            config.general.references.self_reference_enabled = True
+            options = module("domain.references").ReferenceOptions(self_reference="required")
+            style = ""
+        else:
+            config.style.image_edit_presets_enabled = True
+            config.style.presets = [config_module.StylePresetConfig(
+                name="水彩", preset_type="image_to_image", reference_bindings=[{"asset_id": identifier}],
+            )]
+            options = module("domain.references").ReferenceOptions()
+            style = "水彩"
+        prepared = await module("application.references.service").freeze_reference_request(
+            ctx=SimpleNamespace(logger=logging.getLogger("reference-test")), config=config, store=store,
+            streams=None, prompt="画一只猫", style=style, negative="", stream_id="", options=options,
+            images=[], urls=[], required_mode="edit_image",
+        )
+        store.update(revision=1, operation="save", asset_id=identifier, kind=kind,
+                     name="水彩参考", tags=[], prompt="新的参考提示词")
+        result = await prepared.prepare("frozen-prompt")
+        assert result.prompt.count("保留水彩笔触") == 1
+        assert "新的参考提示词" not in result.prompt
+        assert result.images == [image_bytes()]
+
+    asyncio.run(run())
 
 
 def test_presets_mode_defaults_and_legacy_contract():
@@ -120,7 +305,7 @@ def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, m
         try:
             store = plugin._workspace().tasks.references
             first = await asyncio.to_thread(store.update, revision=0, operation="save", name="默认", tags=[], raw=image_bytes())
-            selected = await asyncio.to_thread(store.update, revision=1, operation="save", name="冬装", tags=["冬装"], raw=image_bytes() + b"winter")
+            selected = await asyncio.to_thread(store.update, revision=1, operation="save", name="冬装", tags=["冬装"], raw=image_bytes() + b"winter", prompt="保留白色长发")
             calls = []
 
             async def no_recognition(*args, **kwargs):
@@ -139,12 +324,14 @@ def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, m
             result = await client.generate("麦麦", task_type="edit_image", request_id="self-refs-001", reference_options=options, wait_seconds=5)
             assert result.status == "completed" and calls[-1]["source_image_bytes_list"] == [image_bytes() + b"winter"]
             assert "identity: bot" in calls[-1]["prompt"]
+            assert "保留白色长发" in calls[-1]["prompt"]
             identifier = selected["assets"][1]["id"]
             await asyncio.to_thread(store.update, revision=2, operation="save", asset_id=identifier, name="新版", tags=[], raw=image_bytes() + b"changed")
             repeat = await client.submit("麦麦", task_type="edit_image", request_id="self-refs-001", reference_options=options)
             assert repeat.task_id == result.task_id and repeat.reused and len(calls) == 2
             directory = await client.references()
             assert directory["total"] == 2
+            assert directory["chat_material_search_limit"] == 50
             assert set(directory["assets"][0]) == {"id", "name", "tags", "default"}
             assert directory["assets"][0]["default"]
             conflict = await plugin.drawpic_submit_v2("麦麦", reference_options_json=json.dumps(options))
@@ -187,9 +374,9 @@ def test_search_verifies_each_subject_and_reuse_does_not_search_again(make_plugi
             recognizer = module("application.references.recognition")
             images = module("domain.references")
 
-            async def needs(self, request):
+            async def needs(self, request, *, source_count=0):
                 counts["needs"] += 1
-                return [recognizer.MaterialNeed(subject="甘雨", role="identity", query="原神 甘雨 官方")]
+                return recognizer.MaterialNeeds(chat_followup=False, needs=[recognizer.MaterialNeed(subject="甘雨", mention="甘雨", web_search=True, role="identity", query="原神 甘雨 官方")])
 
             async def matches(self, image, need):
                 return image.raw.endswith(b"ganyu")
@@ -269,7 +456,8 @@ def test_gallery_write_failure_keeps_previous_index_and_owned_file(tmp_path, mon
 
 
 @pytest.mark.parametrize("chat_fails", [False, True])
-def test_chat_material_order_and_errors_do_not_silently_enable_web(tmp_path, monkeypatch, chat_fails):
+@pytest.mark.parametrize("live_limit", [20, 100])
+def test_chat_material_order_and_errors_do_not_silently_enable_web(tmp_path, monkeypatch, chat_fails, live_limit):
     async def run():
         service = module("application.references.service")
         recognition = module("application.references.recognition")
@@ -277,24 +465,28 @@ def test_chat_material_order_and_errors_do_not_silently_enable_web(tmp_path, mon
         config = module("domain.configuration.models").DrawpicConfig()
         config.general.references.allow_chat_material_search = True
         config.general.references.allow_web_material_search = True
+        config.general.references.chat_material_search_limit = 70
+        live = config.model_copy(deep=True)
+        live.general.references.chat_material_search_limit = live_limit
         counts = {"chat": 0, "web": 0}
 
         async def context(stream_id):
             assert stream_id == "real-stream"
             return {"stream_id": stream_id, "user_id": "1001", "group_id": "", "platform": "qq"}
 
-        async def chat(ctx, stream_id):
+        async def chat(ctx, stream_id, *, message_limit):
             counts["chat"] += 1
+            assert message_limit == min(70, live_limit)
             if chat_fails:
                 raise RuntimeError("chat service unavailable")
-            return []
+            return [references.ReferenceImage(image_bytes(), "chat")]
 
         async def web(self, query):
             counts["web"] += 1
             return [references.ReferenceImage(image_bytes(), "web", url="https://example.org/ganyu.png")]
 
-        async def needs(self, request):
-            return [recognition.MaterialNeed(subject="甘雨", role="identity", query="甘雨 官方")]
+        async def needs(self, request, *, source_count=0):
+            return recognition.MaterialNeeds(chat_followup=True, needs=[recognition.MaterialNeed(subject="甘雨", mention="甘雨", web_search=True, role="identity", query="甘雨 官方")])
 
         async def matches(self, image, need):
             return True
@@ -308,7 +500,7 @@ def test_chat_material_order_and_errors_do_not_silently_enable_web(tmp_path, mon
             store=module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path),
             streams=SimpleNamespace(existing_stream_context=context), prompt="甘雨", style="", negative="",
             stream_id="real-stream", options=references.ReferenceOptions(user_request="画甘雨", material_sources=["chat", "web"]),
-            images=[], urls=[], required_mode="edit_image",
+            images=[], urls=[], required_mode="edit_image", get_config=lambda: live,
         )
         if chat_fails:
             with pytest.raises(ValueError) as failure:
@@ -317,7 +509,53 @@ def test_chat_material_order_and_errors_do_not_silently_enable_web(tmp_path, mon
         else:
             result = await prepared.prepare("fixture")
             assert result.task_type == "edit_image" and result.images == [image_bytes()]
-            assert counts == {"chat": 1, "web": 1}
+            assert counts == {"chat": 1, "web": 0}
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("message_limit", [1, 50, 200])
+def test_sdk_chat_materials_read_once_with_configured_limit_and_real_images(message_limit):
+    from maibot_sdk import PluginContext
+
+    async def run():
+        calls = []
+        encoded = base64.b64encode(image_bytes()).decode("ascii")
+
+        async def rpc(method, plugin_id, payload):
+            assert method == "cap.call" and plugin_id == "chat-material-test"
+            calls.append(payload)
+            return {"success": True, "messages": [
+                {"message_id": str(index), "is_self": index == message_limit - 1, "message_segments": [
+                    {"type": "image", "base64": encoded, "url": f"https://example.org/{index}.png", "data": f"MaiBot 已识别图片 {index}"},
+                ]} for index in range(message_limit)
+            ]}
+
+        images = await module("application.references.chat").read_chat_materials(
+            PluginContext("chat-material-test", rpc_call=rpc), "real-stream", message_limit=message_limit,
+        )
+        assert calls == [{"capability": "message.get_recent", "args": {
+            "chat_id": "real-stream", "limit": message_limit, "hours": 24,
+            "limit_mode": "latest", "include_binary_data": True,
+        }}]
+        assert [image.url for image in images] == [
+            f"https://example.org/{index}.png" for index in reversed(range(message_limit))
+        ][:6]
+        assert all(image.raw == image_bytes() and image.source == "chat" for image in images)
+        assert images[0].description == f"MaiBot 已识别图片 {message_limit - 1}"
+
+    asyncio.run(run())
+
+
+def test_chat_materials_reject_host_response_exceeding_search_limit():
+    async def recent(*args, **kwargs):
+        return [{}, {}]
+
+    async def run():
+        with pytest.raises(ValueError, match="搜索上限"):
+            await module("application.references.chat").read_chat_materials(
+                SimpleNamespace(call_capability=recent), "real-stream", message_limit=1,
+            )
 
     asyncio.run(run())
 
@@ -380,7 +618,7 @@ def test_invalid_recognition_has_stable_error(monkeypatch, operation, payload):
                 await recognizer.needs("画甘雨")
             else:
                 await recognizer.matches(module("domain.references").ReferenceImage(image_bytes(), "input"),
-                    recognition.MaterialNeed(subject="甘雨", role="identity", query="甘雨"))
+                    recognition.MaterialNeed(subject="甘雨", mention="甘雨", web_search=True, role="identity", query="甘雨"))
         assert failure.value.code == "REFERENCE_RECOGNITION_FAILED"
 
     asyncio.run(run())

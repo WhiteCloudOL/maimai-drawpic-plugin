@@ -13,7 +13,10 @@ def normalize_tag(value: str) -> str:
 class ReferenceOptions(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    self_reference: Literal["off", "auto", "required"] = "off"
+    self_reference: Literal["off", "auto", "required"] = Field(
+        default="off",
+        description="描绘机器人自身时用 required，其他人物用 off；指向不确定时用 auto。依据用户原话判断，不依据改写提示词中的第一人称。",
+    )
     user_request: str = Field(default="", max_length=16000)
     self_reference_ids: List[str] = Field(default_factory=list, max_length=8)
     self_reference_tags: List[str] = Field(default_factory=list, max_length=32)
@@ -45,6 +48,7 @@ class ReferenceImage:
     asset_id: str = ""
     version: str = ""
     note: str = ""
+    description: str = ""
 
 
 @dataclass(frozen=True)

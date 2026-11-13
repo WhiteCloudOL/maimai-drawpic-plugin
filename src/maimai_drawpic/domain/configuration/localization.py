@@ -481,10 +481,50 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "ReferenceConfig.material_model": (
+        "A fast multimodal model is recommended.",
+        "高速なマルチモーダルモデルを推奨します。",
+        "빠른 멀티모달 모델을 권장합니다.",
+    ),
+    "ReferenceConfig.allow_chat_material_search": (
+        "Read prior images only for clear follow-up edits or regeneration requests.",
+        "前図の編集・再生成を明確に続ける場合だけ履歴画像を探します。",
+        "이전 그림의 수정이나 재생성을 명확히 이어갈 때만 대화 이미지를 찾습니다.",
+    ),
+    "ReferenceConfig.self_reference_ids": (
+        "Leave empty to select one image by gallery tags, using the default image when no tag matches. Select images only to keep a fixed appearance.",
+        "空欄ではギャラリーのタグで1枚を選び、一致しなければ既定画像を使います。外見を固定する場合に画像を選択してください。",
+        "비워 두면 갤러리 태그로 한 장을 선택하고 일치하지 않으면 기본 이미지를 사용합니다. 외형을 고정하려면 이미지를 선택하세요.",
+    ),
+    "StylePresetConfig.tags": (
+        "Keywords for automatic selection, such as watercolor. More matching tags take priority; ties follow list order. With no match, use the default preset. Explicit preset choices ignore tags.",
+        "水彩など、自動選択に使うキーワードです。一致数が多い項目を優先し、同数ならリスト順、一致なしなら既定項目を使います。手動選択はタグに依存しません。",
+        "수채화 같은 자동 선택 키워드입니다. 일치 태그가 많은 항목을 우선하고 동점이면 목록 순서, 일치하지 않으면 기본 프리셋을 사용합니다. 직접 선택은 태그와 무관합니다.",
+    ),
+    "StylePresetConfig.description": (
+        "Describe the look and suitable scenes to help users and the chat model choose a style. Web automatic selection uses tags.",
+        "見た目や適した場面を説明し、ユーザーとチャットモデルの選択を助けます。Webの自動選択はタグを使います。",
+        "시각적 특징과 적합한 장면을 설명하여 사용자와 대화 모델의 스타일 선택을 돕습니다. 웹 자동 선택은 태그를 사용합니다.",
+    ),
+    "ReferenceConfig.chat_material_search_limit": (
+        "Recommended: 50 messages; range: 1–200. Search only the current chat within the last 24 hours and select at most 6 candidate images.",
+        "推奨は50件、設定範囲は1～200件です。現在のチャットの直近24時間のみ検索し、候補画像は最大6枚です。",
+        "권장값은 50개이며 1~200개로 설정할 수 있습니다. 현재 대화의 최근 24시간만 검색하고 후보 이미지는 최대 6장 선택합니다.",
+    ),
+    "ReferenceConfig.allow_web_material_search": (
+        "Search only for named characters, specific objects or explicit reference requests. Uses the service selected in MaiBot.",
+        "指定キャラ、特定物品、明示的な参照画像探しのみ検索します。サービスはMaiBotの設定に従います。",
+        "지정 캐릭터, 특정 물건 또는 명시적인 참고 이미지 요청만 검색합니다. 서비스는 MaiBot 설정을 따릅니다.",
+    ),
+    "ReferenceConfig.self_keywords": (
+        "Optional hints such as your selfie or draw yourself. Interpret negation, quotations and the speaker; a keyword hit alone never selects the bot. Leave empty to use the original request and bot names.",
+        "あなたの自撮り等の任意の手掛かりです。否定・引用・話者も判断し、単語の一致だけでボットを選びません。空欄では元の依頼と名前を使います。",
+        "너의 셀카 등 선택적인 단서입니다. 부정, 인용 및 화자를 함께 판단하며 키워드 일치만으로 봇을 선택하지 않습니다. 비우면 원래 요청과 이름을 사용합니다.",
+    ),
     "SiliconFlowModelConfig.watermark_enabled": (
-        "Enabled by default. Disable to send X-Enable-Watermark: 0; the implicit watermark remains. The provider permits this for downstream processing and requires a visible label on the final output.",
-        "既定は有効。無効にすると X-Enable-Watermark: 0 を送信し、不可視透かしは残ります。提供元は後処理時のみ無効化を認め、最終出力への可視表示を求めています。",
-        "기본적으로 켜져 있습니다. 끄면 X-Enable-Watermark: 0을 보내며 비표시 워터마크는 유지됩니다. 제공자는 후처리 시에만 해제를 허용하며 최종 출력에 표시 라벨을 요구합니다.",
+        "Enabled by default. The invisible watermark remains when disabled.",
+        "既定は有効です。無効にしても不可視の透かしは残ります。",
+        "기본적으로 켜져 있으며 꺼도 비표시 워터마크는 유지됩니다.",
     ),
     "MiniMaxModelConfig.enabled": ("Enabled. See the MiniMax model-specific limits in the platform guide.", "有効。モデルごとの制約はプラットフォームガイドを参照してください。", "활성화. 모델별 제한은 플랫폼 가이드를 참조하세요."),
     "MiniMaxModelConfig.api_key": ("API Key. See the MiniMax model-specific limits in the platform guide.", "API キー。モデルごとの制約はプラットフォームガイドを参照してください。", "API 키. 모델별 제한은 플랫폼 가이드를 참조하세요."),
@@ -634,14 +674,14 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "비활성화하면 이 인스턴스의 모델은 라우팅에서 제외됩니다. 다른 플랫폼 인스턴스는 개별적으로 활성화할 수 있습니다.",
     ),
     "StylePresetConfig.positive_prompt_template": (
-        "{prompt} inserts this request's drawing description. Keep it and add style words around it: watercolor, {prompt} + a cat becomes watercolor, a cat. Without it, the description is appended automatically. NovelAI {{tag}} weights are preserved.",
-        "{prompt} は今回の描画内容に置換されます。残したまま前後にスタイルを追加してください。例：水彩、{prompt} に「猫」を入力すると「水彩、猫」になります。削除した場合も描画内容を末尾に追加します。NovelAI の {{tag}} は保持されます。",
-        "{prompt}는 이번 요청의 그림 설명으로 바뀝니다. 유지하고 앞뒤에 스타일을 추가하세요. 예: 수채화, {prompt}에 고양이를 입력하면 수채화, 고양이가 됩니다. 삭제해도 설명을 뒤에 추가하며 NovelAI {{tag}} 가중치는 유지합니다.",
+        "{prompt} inserts the drawing description, for example watercolor, {prompt}. Without the placeholder, the description is appended.",
+        "{prompt} は今回の描画内容に置換されます。例：水彩、{prompt}。省略すると描画内容を末尾に追加します。",
+        "{prompt}는 이번 그림 설명으로 바뀝니다. 예: 수채화, {prompt}. 생략하면 설명을 뒤에 추가합니다.",
     ),
     "StylePresetConfig.negative_prompt_template": (
-        "{negative_prompt} inserts request and instance default negatives, with duplicate terms removed. When the instance disables negatives, its inputs and defaults are cleared while the template's own content remains. Without the placeholder, negatives are appended. Providers without a separate field receive merged text.",
-        "{negative_prompt} には今回の入力とインスタンスの既定値を挿入し、重複語を除去します。無効時は入力と既定値を空にし、テンプレート固有の内容を保持します。プレースホルダーがなくても末尾に追加し、専用フィールドのないサービスでは本文に統合します。",
-        "{negative_prompt}에는 요청과 인스턴스 기본값을 넣고 중복 항목을 제거합니다. 비활성화하면 입력과 기본값은 비우고 템플릿 자체의 내용은 유지합니다. 자리표시자가 없어도 뒤에 추가하며 별도 필드가 없는 제공자는 본문에 합칩니다.",
+        "Describe unwanted content, for example blurry, {negative_prompt}. The placeholder inserts this request's negative prompt.",
+        "避けたい内容を入力します。例：ぼやけ、{negative_prompt}。今回のネガティブプロンプトを挿入します。",
+        "원치 않는 내용을 입력하세요. 예: 흐림, {negative_prompt}. 자리표시자에는 이번 제외 프롬프트를 넣습니다.",
     ),
     "PluginSectionConfig.image_cache_max_mb": (
         "Default 300 MB for originals and WebP previews in the plugin temporary directory. Old images are removed automatically; task records remain.",
@@ -746,12 +786,15 @@ _SECTION_TEXTS.update({
     "ReferenceBindingConfig": (("Reference image use", "参照画像の用途", "참조 이미지 용도"), ("Image and subject binding.", "画像と被写体の対応。", "이미지와 대상 연결.")),
 })
 _FIELD_LABELS.update({
+    "material_model": ("Recognition model", "識別モデル", "인식 모델"),
+    "self_keywords": ("Self-reference keywords", "自身を指すキーワード", "자신을 가리키는 키워드"),
     "references": ("References and materials", "参照と素材", "참조 및 소재"),
     "self_reference_enabled": ("Enable self references", "自身の参照を有効化", "자신의 참조 활성화"),
     "self_names": ("Bot names and aliases", "ボットの名前と別名", "봇 이름 및 별칭"),
     "self_reference_ids": ("Self reference images", "自身の参照画像", "자신의 참조 이미지"),
     "multi_reference_confirmed": ("Multiple references confirmed", "複数参照を確認済み", "다중 참조 확인됨"),
     "allow_chat_material_search": ("Allow chat materials", "チャット内の素材を許可", "대화 소재 허용"),
+    "chat_material_search_limit": ("Chat search limit (messages)", "チャット検索の上限（件）", "대화 검색 상한(메시지 수)"),
     "allow_web_material_search": ("Allow web materials", "ウェブ素材を許可", "웹 소재 허용"),
     "preset_type": ("Preset type", "プリセットの種類", "프리셋 유형"),
     "tags": ("Tags", "タグ", "태그"),
@@ -763,6 +806,19 @@ _FIELD_LABELS.update({
     "note": ("Use description", "用途の説明", "용도 설명"),
     "image_edit_presets_enabled": ("Enable image editing presets", "画像編集プリセットを有効化", "이미지 편집 프리셋 활성화"),
     "default_image_edit_preset": ("Default image editing preset", "画像編集の既定プリセット", "기본 이미지 편집 프리셋"),
+})
+
+_FIELD_HINT_OVERRIDES.update({
+    f"{name}.enabled": (
+        "When disabled, this platform's models cannot be selected.",
+        "無効にすると、このプラットフォームのモデルは選択できません。",
+        "끄면 이 플랫폼의 모델을 선택할 수 없습니다.",
+    )
+    for name in ("AliyunModelConfig", "GoogleModelConfig", "MiniMaxModelConfig", "NovelAIModelConfig", "SiliconFlowModelConfig", "OpenAIModelConfig", "VolcengineModelConfig", "ZhipuModelConfig")
+})
+_FIELD_HINT_OVERRIDES.update({
+    "ComfyUIModelConfig.poll_interval_seconds": ("Default: 1 second. A longer interval reduces polling frequency.", "既定は1秒です。間隔を長くすると確認頻度が下がります。", "기본값은 1초입니다. 간격을 늘리면 조회 빈도가 줄어듭니다."),
+    "NovelAIModelConfig.max_images": ("Images per request; 1–4 recommended.", "1回の生成枚数です。1～4枚を推奨します。", "한 번에 생성할 이미지 수입니다. 1~4장을 권장합니다."),
 })
 
 def _localized_field_entries(

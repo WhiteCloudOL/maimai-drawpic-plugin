@@ -660,27 +660,6 @@ def _unwrap_message_result(result: Any) -> dict[str, Any] | None:
     return None
 
 
-def _unwrap_messages_result(result: Any) -> list[dict[str, Any]]:
-    """兼容运行时包装层，提取消息列表。"""
-
-    if isinstance(result, list):
-        return [message for message in result if isinstance(message, dict)]
-
-    if not isinstance(result, dict):
-        return []
-
-    direct_messages = result.get("messages")
-    if isinstance(direct_messages, list):
-        return [message for message in direct_messages if isinstance(message, dict)]
-
-    nested_result = result.get("result")
-    if isinstance(nested_result, dict):
-        nested_messages = nested_result.get("messages")
-        if isinstance(nested_messages, list):
-            return [message for message in nested_messages if isinstance(message, dict)]
-
-    return []
-
 
 async def find_source_image(
     ctx: Any,
@@ -750,32 +729,7 @@ async def find_source_image_inputs(
         if found is not None:
             return found
 
-    recent_messages: list[dict[str, Any]] = []
-    has_recent_result = False
-    for chat_id in _normalize_stream_ids(stream_id):
-        recent_result = await ctx.call_capability(
-            "message.get_recent",
-            chat_id=chat_id,
-            limit=8,
-            include_binary_data=True,
-        )
-        if not isinstance(recent_result, (dict, list)):
-            continue
-        has_recent_result = True
-        recent_messages = _unwrap_messages_result(recent_result)
-        if recent_messages:
-            break
-    if not has_recent_result:
-        raise ValueError("无法读取最近消息，无法自动寻找待编辑图片")
-    if not recent_messages:
-        raise ValueError("最近消息返回格式不正确，无法自动寻找待编辑图片")
-
-    for message in reversed(recent_messages):
-        found = await collect_message_source_image_inputs(ctx, stream_id, message)
-        if found is not None:
-            return found
-
-    raise ValueError("最近消息和引用消息中没有找到可编辑的真实图片，请先发送或回复一张图片")
+    raise ValueError("没有找到本条消息或明确引用的图片，请补图或开启聊天取材以继续前图")
 
 
 async def collect_message_source_images(

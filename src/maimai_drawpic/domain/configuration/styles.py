@@ -7,7 +7,7 @@ from typing import List, Literal
 
 class ReferenceBindingConfig(PluginConfigBase):
     asset_id: str = Field(default="", description="已上传的预设图片 ID", json_schema_extra={"label": "参考图片"})
-    role: Literal["identity", "clothing", "scene", "lighting", "composition", "base"] = Field(default="scene", description="图片仅承担指定用途", json_schema_extra={"label": "图片用途"})
+    role: Literal["identity", "clothing", "scene", "lighting", "composition", "base"] = Field(default="base", description="图片仅承担指定用途", json_schema_extra={"label": "图片用途"})
     subject_id: str = Field(default="", description="人物或物件标识，身份参考应标明对应主体", json_schema_extra={"label": "对应主体"})
     note: str = Field(default="", max_length=500, description="需要继承的具体特征", json_schema_extra={"label": "用途说明"})
 
@@ -22,7 +22,7 @@ class StylePresetConfig(PluginConfigBase):
     """单个全平台绘图风格的提示词模板。"""
 
     preset_type: Literal["text_to_image", "image_to_image"] = Field(default="text_to_image", description="文生图或图生图预设", json_schema_extra={"label": "预设类型"})
-    tags: List[str] = Field(default=[], max_length=32, description="用于固定匹配的 tag", json_schema_extra={"label": "预设 tag"})
+    tags: List[str] = Field(default=[], max_length=32, description="用于自动匹配预设的关键词", json_schema_extra={"label": "预设 tag", "hint": "用于自动匹配，例如填写“水彩”，绘图描述包含“水彩”时可触发。命中 tag 更多的预设优先，同分按列表顺序；没有命中则使用默认预设。手动指定预设不受 tag 限制。"})
     apply_to_image_edit: bool = Field(default=False, description="允许文生图文字预设同时用于图生图", json_schema_extra={"label": "同时应用到图生图"})
     reference_bindings: List[ReferenceBindingConfig] = Field(default=[], max_length=8, description="图生图预设的真实图片和用途", json_schema_extra={"label": "预设参考图片"})
     multi_reference_confirmed: bool = Field(default=False, description="已在 dialog 中核实当前预设多图配置", json_schema_extra={"label": "已确认多图参考"})
@@ -59,7 +59,7 @@ class StylePresetConfig(PluginConfigBase):
         description="风格的语义描述，供用户查看并帮助模型匹配风格",
         json_schema_extra={
             "label": "预设说明（可选）",
-            "hint": "简要说明视觉特点和适用场景；留空时只显示风格名称",
+            "hint": "说明视觉特点和适用场景，供用户查看并帮助聊天模型选择风格；网页的“自动匹配”按 tag 选择。",
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 2,
@@ -71,7 +71,7 @@ class StylePresetConfig(PluginConfigBase):
         description="正向提示词模板。{prompt} 会替换为用户正向提示词；没有占位符时会自动追加用户提示词",
         json_schema_extra={
             "label": "正向提示词模板",
-            "hint": "{prompt} 会替换为你本次输入的绘图描述，建议保留它，在前后添加风格词。例如“水彩，{prompt}”遇到“一只猫”会变成“水彩，一只猫”。删除占位符时仍会自动追加本次描述；NovelAI 的 {{tag}} 权重花括号可保留。",
+            "hint": "{prompt} 会替换为本次绘图描述，例如“水彩，{prompt}”。不填写占位符时，描述会追加到末尾。",
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 4,
@@ -83,7 +83,7 @@ class StylePresetConfig(PluginConfigBase):
         description="反向提示词模板。{negative_prompt} 会替换为用户反向提示词；没有占位符时会自动追加",
         json_schema_extra={
             "label": "反向提示词模板",
-            "hint": "{negative_prompt} 会替换为本次反向词与实例默认词，并与模板按词条去重。实例关闭反向词时清空本次输入与实例默认值，保留模板自己的内容；例如“模糊，{negative_prompt}”仍保留“模糊”。无占位符时自动追加；不支持独立反向字段的平台会合并提示词。",
+            "hint": "填写不希望出现的内容，例如“模糊，{negative_prompt}”；占位符会带入本次反向提示词。",
             "input_type": "textarea",
             "x-widget": "textarea",
             "rows": 4,

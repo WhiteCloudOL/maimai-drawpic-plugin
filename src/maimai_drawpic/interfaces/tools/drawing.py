@@ -17,6 +17,10 @@ class DrawingToolMixin:
     def _drawing_reference_options(kwargs: Dict[str, Any], reference_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """显式原话优先；否则只读取当前真实消息的文本，不使用改写后的 prompt。"""
         values = dict(reference_options or {})
+        if "self_reference" in values:
+            supplied = values["self_reference"]
+            normalized = supplied.strip().casefold() if isinstance(supplied, str) else ""
+            values["self_reference"] = normalized if normalized in {"off", "auto", "required"} else "auto"
         message = kwargs.get("message")
         if "user_request" not in values and isinstance(message, dict):
             text = message.get("processed_plain_text")
@@ -210,9 +214,11 @@ class DrawingToolMixin:
             configured_input = (refs.self_reference_enabled and (reference_options or {}).get("self_reference", "auto") != "off"
                                 or refs.allow_chat_material_search or refs.allow_web_material_search
                                 or any(preset.name.casefold() == style.casefold() and preset.reference_bindings for preset in self.config.style.presets))
-            if configured_input and not source_message_id and not source_image_base64:
+            if not source_message_id and not source_image_base64:
                 source_image_inputs = await collect_command_source_image_inputs(self.ctx, lookup_stream_ids, current_message) if isinstance(current_message, dict) else []
                 matched_message_id = str(current_message.get("message_id", "")) if isinstance(current_message, dict) else ""
+                if not source_image_inputs and not configured_input:
+                    raise ValueError("请提供本条图片、引用前图，或开启聊天取材以继续改图")
             else:
                 source_image_inputs, matched_message_id = await find_source_image_inputs(
                     self.ctx, lookup_stream_ids, source_message_id=source_message_id,

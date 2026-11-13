@@ -12,8 +12,8 @@ class MiniMaxModelConfig(NegativePromptConfig):
 
     enabled: bool = Field(
         default=True,
-        description="关闭后该实例不参与模型路由。",
-        json_schema_extra={"label":"启用 MiniMax","hint":"关闭后该实例不参与模型路由。","order":0},
+        description="关闭后，该平台的模型将不可选。",
+        json_schema_extra={"label":"启用 MiniMax","hint":"关闭后，该平台的模型将不可选。","order":0},
     )
     api_key: str = Field(
         default="",

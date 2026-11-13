@@ -34,7 +34,7 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
         },
         "source_message_id": {
             "type": "string",
-            "description": "可选，指定要编辑的源图片消息 ID；不填时自动优先取当前/最近引用消息中的图片，再取最近一张图片",
+            "description": "可选，指定要编辑的源图片消息 ID；不填时只取本条或明确引用的图片；接续前图须开启聊天取材，不能任意选择历史图片",
         },
         "source_image_base64": {
             "type": "string",
@@ -58,6 +58,15 @@ for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
     schema["properties"]["reference_options"] = {
         **ReferenceOptions.model_json_schema(),
         "description": "已启用参考或素材搜索时，user_request 必须原样复制用户原始请求，不能用改写的绘图提示词代替。自我图只用于机器人；素材来源只能使用工作台已开启的 chat/web。省略各项时遵循聊天入口已开启的功能。",
+    }
+    schema["properties"]["reference_options"]["properties"]["self_reference"] = {
+        "description": "正常使用 required（明确描绘机器人自身）、off（其他人物）、auto（指向不明确）。优先依据当前对话明确选择；异常值统一按 auto 重新识别，不会直接注入默认人物图。",
+        "default": "auto",
+        "anyOf": [
+            {"type": "string"}, {"type": "null"}, {"type": "boolean"},
+            {"type": "number"}, {"type": "array", "items": {}},
+            {"type": "object", "additionalProperties": True},
+        ],
     }
 
 

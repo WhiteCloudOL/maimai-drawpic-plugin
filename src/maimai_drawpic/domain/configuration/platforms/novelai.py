@@ -30,7 +30,7 @@ class NovelAIModelConfig(NegativePromptConfig):
         description="是否启用 NovelAI / NovelAPI 平台",
         json_schema_extra={
             "label": "启用 NovelAI / NovelAPI 平台",
-            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "hint": "关闭后，该平台的模型将不可选。",
             "order": -1,
         },
     )
@@ -174,7 +174,7 @@ class NovelAIModelConfig(NegativePromptConfig):
         description="NovelAI 默认反向提示词，启用后与本次反向词及风格词去重合并",
         json_schema_extra={
             "label": "默认反向提示词（可选）",
-            "hint": "仅在反向提示词开关开启时生效；与本次反向词、风格反向词去重合并，英文改写后写入 uc",
+            "hint": "仅在反向提示词开启时生效，会和本次反向提示词、预设反向词合并。",
             "input_type": "textarea",
             "order": 81,
         },
@@ -256,7 +256,7 @@ class NovelAIModelConfig(NegativePromptConfig):
         description="单次 NovelAI 请求生成图片数量上限",
         json_schema_extra={
             "label": "单次图片数量",
-            "hint": "会写入 n_samples，建议 1 到 4",
+            "hint": "每次生成的图片数量，推荐 1～4 张。",
             "order": 20,
         },
     )

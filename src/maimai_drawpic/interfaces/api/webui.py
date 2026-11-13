@@ -36,7 +36,7 @@ class WebUIAPIMixin(WorkspaceAPIBase):
     async def workspace_reference_update(self, operation: str, revision: int, asset_json: str = "{}", source_id: str = "") -> Dict[str, Any]:
         workspace = self._workspace()
         values = parse_json_object(asset_json)
-        if values.keys() - {"asset_id", "name", "tags", "kind", "position"}:
+        if values.keys() - {"asset_id", "name", "tags", "kind", "position", "prompt"}:
             raise ValueError("参考图片包含未知字段")
 
         async def update() -> Dict[str, Any]:

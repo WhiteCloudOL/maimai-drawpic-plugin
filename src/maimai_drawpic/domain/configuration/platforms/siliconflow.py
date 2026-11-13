@@ -16,7 +16,7 @@ class SiliconFlowModelConfig(NegativePromptConfig):
         description="是否启用硅基流动平台",
         json_schema_extra={
             "label": "启用硅基流动平台",
-            "hint": "关闭后，本节模型不会出现在可用模型列表，也不会参与路由",
+            "hint": "关闭后，该平台的模型将不可选。",
             "order": -1,
         },
     )
@@ -102,8 +102,8 @@ class SiliconFlowModelConfig(NegativePromptConfig):
         default=True,
         description="是否启用硅基流动生成图片的显式 AI 生成水印。",
         json_schema_extra={
-            "label": "启用「AI 生成」显式水印",
-            "hint": "默认开启。关闭时发送请求头 X-Enable-Watermark: 0，隐式水印仍保留。官方要求仅在继续处理生成图时关闭，并为最终输出补充显式标识。",
+            "label": "启用AI 生成显式水印",
+            "hint": "默认开启，关闭后仍保留隐式水印。",
             "order": 8,
         },
     )

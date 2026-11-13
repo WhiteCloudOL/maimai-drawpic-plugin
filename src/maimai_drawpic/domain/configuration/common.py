@@ -23,7 +23,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.47.0",
+        default="2.50.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",
@@ -65,7 +65,7 @@ class PluginSectionConfig(PluginConfigBase):
 class GeneralConfig(PluginConfigBase):
     """通用配置。"""
 
-    references: ReferenceConfig = Field(default_factory=ReferenceConfig, description="自我参考与素材来源", json_schema_extra={"label": "参考与素材"})
+    references: ReferenceConfig = Field(default_factory=ReferenceConfig, description="自我参考与素材来源", json_schema_extra={"label": "参考素材"})
 
     __ui_label__ = "通用配置"
     __ui_order__ = 1

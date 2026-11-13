@@ -38,12 +38,14 @@ class ReferenceAssetStore:
                 raise ValueError("参考图库索引内容错误")
             seen = set()
             for item in result["assets"]:
-                if not isinstance(item, dict) or set(item) != {"id", "name", "tags", "kind", "version", "size"}:
+                fields = {"id", "name", "tags", "kind", "version", "size"}
+                if not isinstance(item, dict) or set(item) not in (fields, fields | {"prompt"}):
                     raise ValueError("参考图片索引字段错误")
                 self._path(item["id"], item["version"])
                 if item["id"] in seen or item["kind"] not in {"self", "preset"} or type(item["size"]) is not int or item["size"] <= 0:
                     raise ValueError("参考图片索引不一致")
                 self._metadata(item["name"], item["tags"])
+                item["prompt"] = self._prompt(item.get("prompt", ""))
                 seen.add(item["id"])
             own = [item["id"] for item in result["assets"] if item["kind"] == "self"]
             if (own and result["default_reference_id"] not in own) or (not own and result["default_reference_id"]):
@@ -61,6 +63,12 @@ class ReferenceAssetStore:
         return path
 
     @staticmethod
+    def _prompt(prompt: str) -> str:
+        if not isinstance(prompt, str) or len(prompt) > 500:
+            raise ValueError("参考提示词最多 500 个字符")
+        return prompt.strip()
+
+    @staticmethod
     def _metadata(name: str, tags: List[str]) -> List[str]:
         if not isinstance(name, str) or not name.strip() or len(name) > 80:
             raise ValueError("参考图片名称必须是 1～80 个字符")
@@ -73,7 +81,8 @@ class ReferenceAssetStore:
         return list(unique.values())
 
     def update(self, *, revision: int, operation: str, asset_id: str = "", name: str = "", tags: Optional[List[str]] = None,
-               kind: str = "self", raw: Optional[bytes] = None, referenced_ids: Optional[List[str]] = None, position: Optional[int] = None) -> Dict[str, Any]:
+               kind: str = "self", raw: Optional[bytes] = None, referenced_ids: Optional[List[str]] = None,
+               position: Optional[int] = None, prompt: Optional[str] = None) -> Dict[str, Any]:
         with self.lock:
             current = self.snapshot()
             if type(revision) is not int or revision != current["revision"]:
@@ -84,6 +93,7 @@ class ReferenceAssetStore:
                 if asset_id and target is None:
                     raise ValueError("参考图片不存在")
                 clean_tags = self._metadata(name, tags if tags is not None else [])
+                clean_prompt = self._prompt(prompt if prompt is not None else target["prompt"] if target else "")
                 if kind not in {"self", "preset"} or target and target["kind"] != kind:
                     raise ValueError("参考图片用途归属不可修改")
                 if raw is None and target is None:
@@ -98,7 +108,7 @@ class ReferenceAssetStore:
                 identifier = asset_id or uuid4().hex
                 version = sha256(raw).hexdigest() if raw is not None else target["version"]
                 item = {"id": identifier, "name": name.strip(), "tags": clean_tags, "kind": kind, "version": version,
-                        "size": len(raw) if raw is not None else target["size"]}
+                        "size": len(raw) if raw is not None else target["size"], "prompt": clean_prompt}
                 if raw is not None:
                     self.root.mkdir(parents=True, exist_ok=True)
                     destination = self._path(identifier, version)
@@ -171,7 +181,7 @@ class ReferenceAssetStore:
             if len(raw) != item["size"] or sha256(raw).hexdigest() != item["version"]:
                 raise ValueError("参考图片内容与索引版本不一致")
             validate_image_bytes(raw)
-            return ReferenceImage(raw, kind, role, subject, asset_id=identifier, version=item["version"])
+            return ReferenceImage(raw, kind, role, subject, asset_id=identifier, version=item["version"], note=item["prompt"])
 
     def select_self(self, tags: List[str], text: str = "") -> str:
         snapshot = self.snapshot()
