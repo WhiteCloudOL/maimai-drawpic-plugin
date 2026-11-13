@@ -14,6 +14,7 @@
 | --- | --- |
 | `data/plugins/maimai-drawpic-plugin/platforms.json` | 所有命名平台实例、连接信息、密钥与模型参数 |
 | `data/plugins/maimai-drawpic-plugin/workspace_settings.json` | 通用参数、管理员、额度规则、审核与风格模板 |
+| `data/plugins/maimai-drawpic-plugin/reference_assets/` | 持久参考图库索引和图片；由工作台管理，不属于临时图片缓存 |
 | 插件目录内的 `config.toml` | 插件开关、代理、图片/日志/上传缓存容量 |
 
 插件文件夹改名不会改变上面以插件 ID 命名的数据目录。先正常加载插件一次，让它创建配置；编辑已有文件比从零手写完整结构更方便。
@@ -175,15 +176,30 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
       "image_review_enabled": false,
       "image_review_model": "vlm",
       "image_review_timeout_seconds": 60,
-      "image_review_retry_count": 2
+      "image_review_retry_count": 2,
+      "references": {
+        "self_reference_enabled": false,
+        "self_names": ["麦麦"],
+        "self_reference_ids": [],
+        "multi_reference_confirmed": false,
+        "allow_chat_material_search": false,
+        "allow_web_material_search": false
+      }
     },
     "style": {
       "default_style": "水彩",
+      "image_edit_presets_enabled": false,
+      "default_image_edit_preset": "",
       "presets": [
         {
           "name": "水彩",
           "enabled": true,
           "description": "柔和的透明水彩质感",
+          "preset_type": "text_to_image",
+          "tags": ["水彩"],
+          "apply_to_image_edit": false,
+          "reference_bindings": [],
+          "multi_reference_confirmed": false,
           "positive_prompt_template": "水彩，{prompt}",
           "negative_prompt_template": "水印，{negative_prompt}"
         }
@@ -211,7 +227,44 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 - `prompt_review_retry_count`、`image_review_retry_count`：分别控制两类审核失败后额外重试的次数，默认 2，范围 0～5；0 表示关闭。明确拒绝或取消不重试，图片审核重试不重新生图。
 - `admin_user_ids`：字符串列表，例如 `["12345678"]`；不同适配器的用户 ID 形式可能不同。
 - `image_edit_unsupported_models`、`text_to_image_unsupported_models`：人工限制的模型列表；优先使用工作台中的完整模型名称。
-- `presets`：风格模板列表。默认风格名称应对应一个已启用风格；保留 `{prompt}`、`{negative_prompt}` 来代入本次描述和反向词。
+- `presets`：绘图预设列表；保留 `{prompt}`、`{negative_prompt}` 来代入本次描述和反向词。旧预设缺少新字段时按文生图预设读取。
+- `default_style`：默认文生图预设名称；应对应已启用的 `text_to_image` 预设。空字符串表示不设置默认项。
+- `image_edit_presets_enabled`：图生图预设总开关，默认 `false`。关闭时新入口的图生图不使用任何预设；不影响图生图本身和自我参考。
+- `default_image_edit_preset`：默认图生图预设名称；留空时，只有默认文生图预设已勾选 `apply_to_image_edit` 才可继承。
+- `preset_type`：`text_to_image` 只能保存文字模板；`image_to_image` 可以绑定真实参考图片，不再使用 `apply_to_image_edit`。
+- `apply_to_image_edit`：文生图预设是否也适用于图生图，默认 `false`；同时受图生图总开关控制。
+- `tags`：用于固定匹配的 tag 列表。显式选择优先，其次 tag，最后当前模式的默认项；同次只使用一个预设。
+
+### 参考与素材字段
+
+`general.references` 是“偏好与预设 → 参考与素材”的持久设置。以上示例保留所有新功能关闭状态：
+
+- `self_reference_enabled`：开启后才允许使用机器人自身图库；`self_names` 填当前机器人的名称、别称，供原始请求的自身指向识别使用。
+- `self_reference_ids`：留空时按 tag 从自我图库选一张，无命中时使用默认图。指定单张可固定形象；多张应通过工作台选择和确认。
+- `allow_chat_material_search`、`allow_web_material_search`：两个独立开关，默认均为 `false`。聊天只检索当前真实聊天流，网络通过宿主统一搜索服务获取真实候选后再识别。外部 v2 调用还须逐次选择来源，见 [API 文档](integration.md#参考与素材选项)。
+- `multi_reference_confirmed`：记录管理员在工作台 dialog 中确认当前多图配置；不表示插件已经探测到模型支持多图，也不能绕过图生图能力与图片数量限制。不要通过手动设为 `true` 代替确认。
+
+图生图预设的 `reference_bindings` 是图片用途列表，例如下方**字段片段**。`asset_id` 必须从工作台上传后的预设图片中选择，不是路径、URL 或 Base64：
+
+```json
+{
+  "preset_type": "image_to_image",
+  "apply_to_image_edit": false,
+  "reference_bindings": [
+    {
+      "asset_id": "由工作台生成的图片ID",
+      "role": "scene",
+      "subject_id": "海边场景",
+      "note": "继承夕阳和背景，不继承图中人物"
+    }
+  ],
+  "multi_reference_confirmed": false
+}
+```
+
+`role` 可填 `identity`、`clothing`、`scene`、`lighting`、`composition`、`base`。多图以及单张预设图与其他输入合用，需要在工作台确认服务商模型支持多图参考。更改图片组合后重新确认。
+
+图库索引、默认图和图片版本由工作台原子写入。请通过图库上传、替换、排序、设默认和删除，不直接编辑 `reference_assets/index.json` 或替换其图片文件；直接改动可能使内容校验不匹配。图库图片不会随上传或生成缓存过期而自动删除，总上限为 100 张、128 MiB；备份时连同整个目录一起备份。
 
 仅修改普通绘图设置时，保留原文件已有的审核模板、管理员及额度规则；不要把示例整体覆盖到正在使用的配置上。
 

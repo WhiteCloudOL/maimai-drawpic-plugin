@@ -70,3 +70,18 @@ result = await client.generate(
 等待结束不取消任务、不换新 request_id；外部取消协程时保留 asyncio 的取消语义。LLM 工具应使用 `submit` 并快速返回，通过后续工具取结果；不要在临近超时的工具中创建无人管理的后台任务。
 
 相关文档：[API 与四类示例](../docs/integration.md) · [用户指南](../docs/usage.md)。
+
+## 主线新增：参考与素材
+
+本次主线扩展 `DrawingRequest.reference_options` 并新增 `references(page=1)`。原 2.2.1 release 不包含这些新增参数/API；先确认服务端已经更新，不向旧服务端静默降级重试。
+
+```python
+handle = await client.submit(
+    "麦麦穿冬装在海边", task_type="edit_image", request_id=saved_request_id,
+    reference_options={"self_reference": "required", "self_reference_tags": ["冬装"]},
+)
+```
+
+`reference_options` 使用可导出的 `DrawingReferenceOptions` 类型，包含 `self_reference`、`user_request`、`self_reference_ids`、`self_reference_tags`、`material_sources`。客户端自动序列化 JSON；未提供选项时不启用自我参考或自动搜索。全局开关、真实会话权限及多图 dialog 确认不能被参数绕过。
+
+`style` 仍是统一预设名。`presets/preset/save_preset/delete_preset` 继续使用原方法，支持两类预设及跨模式标记；资源目录返回状态不代表授权。每个 API 的完整参数、返回值、错误及示例见[完整接口目录](../docs/integration.md#接口目录)。
