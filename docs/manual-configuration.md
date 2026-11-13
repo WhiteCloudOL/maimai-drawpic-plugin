@@ -192,9 +192,12 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
       "references": {
         "self_reference_enabled": false,
         "self_names": ["麦麦"],
+        "self_keywords": ["画你自己", "你的自拍", "你的样子"],
         "self_reference_ids": [],
         "multi_reference_confirmed": false,
+        "material_model": "vlm",
         "allow_chat_material_search": false,
+        "chat_material_search_limit": 50,
         "allow_web_material_search": false
       }
     },
@@ -231,7 +234,7 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 
 - `default_model`：空字符串表示自动选择；指定时填写完整“平台名/模型名”。
 - `fallback_models`：有顺序的模型名称列表，空列表表示不启用备选。
-- `request_retry_count`：每模型额外重试次数，默认 1，可选 0～5；不是遇到任何失败都重新绘图。审核配置在界面中独立成标签页，文件中的字段仍在 `general` 下。
+- `request_retry_count`：每模型额外重试次数，默认 1，可选 0～5；不是遇到任何失败都重新绘图。内容审核位于插件设置的独立分类，文件中的字段仍在 `general` 下。
 - `request_timeout_seconds`：单次平台尝试的超时预算，不是任务整体的永久等待时间。
 - `skip_image_url_ip_check`：默认 `false`。仅在可信内网图床或 TUN/Fake-IP 等特殊 DNS 环境需要时设为 `true`；手动/系统代理会自动保留域名交由代理解析，详见[图片下载说明](configuration.md#请求与安全边界)。
 - `prompt_review_model`、`image_review_model`：分别选择提示词和图片审核使用的宿主任务组，均默认 `vlm`，还可填 `replyer` 或 `planner`；图片审核必须使用支持图片输入的模型。
@@ -249,11 +252,14 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 
 ### 参考与素材字段
 
-`general.references` 是“偏好与预设 → 参考与素材”的持久设置。以上示例保留所有新功能关闭状态：
+`general.references` 是“预设参考 → 自我参考 / 素材来源”的持久设置。以上示例保留所有新功能关闭状态：
 
 - `self_reference_enabled`：开启后才允许使用机器人自身图库；`self_names` 填当前机器人的名称、别称，供原始请求的自身指向识别使用。
+- `self_keywords`：可选的自身指向语义线索，最多 32 项，每项 1～80 字符；留空时只依据原话与名称识别。关键词不是硬匹配触发器，否定、引用和用户本人仍需区分。
 - `self_reference_ids`：留空时按 tag 从自我图库选一张，无命中时使用默认图。指定单张可固定形象；多张应通过工作台选择和确认。
-- `allow_chat_material_search`、`allow_web_material_search`：两个独立开关，默认均为 `false`。聊天只检索当前真实聊天流，网络通过宿主统一搜索服务获取真实候选后再识别。外部 v2 调用还须逐次选择来源，见 [API 文档](integration.md#参考与素材选项)。
+- `allow_chat_material_search`、`allow_web_material_search`：两个独立开关，默认均为 `false`。聊天仅在明确接续前图时读取当前聊天；网络仅为具体角色、特定物件或明确找参考图的请求搜索。外部 v2 调用还须逐次选择来源，见 [API 文档](integration.md#参考与素材选项)。
+- `material_model`：识别所用的 MaiBot 模型名称，默认 `vlm`（跟随视觉模型）。可在工作台选择“指定模型”并填写已配置的名称，建议使用快速多模态模型。此项和其他取材选项只保存在 `workspace_settings.json`，不放入 `config.toml`。
+- `chat_material_search_limit`：每次任务最多读取当前聊天最近 24 小时内的消息条数，推荐默认 50 条，可设 1～200 条，不接受 0 或无限制。每个任务只读取一次，各素材需求共用最多 6 张聊天候选图；在途任务降低上限立即收紧，提高只影响新任务。
 - `multi_reference_confirmed`：记录管理员在工作台 dialog 中确认当前多图配置；不表示插件已经探测到模型支持多图，也不能绕过图生图能力与图片数量限制。不要通过手动设为 `true` 代替确认。
 
 图生图预设的 `reference_bindings` 是图片用途列表，例如下方**字段片段**。`asset_id` 必须从工作台上传后的预设图片中选择，不是路径、URL 或 Base64：
