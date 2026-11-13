@@ -123,9 +123,9 @@
       if (key.includes("extra_parameters"))
         return "仅在需要平台扩展参数时添加。分别填写名称、值类型和值；开关直接选择，复杂结构使用 JSON。";
       if (key === "models" || key === "custom_models")
-        return "按账号实际权限填写模型 ID；可直接粘贴。下方的按模型覆盖选项会随本列表更新。";
+        return "填写账号可用的模型 ID。";
       if (key.endsWith("unsupported_models"))
-        return "按需添加模型，可选择多个；通过右侧 × 移除。人工限制优先于自动识别，已有未匹配的模型仍会保留。";
+        return "选择需要限制的模型，可添加多个。";
       return "";
     },
   };

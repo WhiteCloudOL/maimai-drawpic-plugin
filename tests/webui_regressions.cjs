@@ -10,7 +10,7 @@ const source = path.join(__dirname, '../src/maimai_drawpic/interfaces/webui/src'
 const read = name => fs.readFileSync(path.join(source, name), 'utf8');
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const event = { preventDefault() {} };
-const referenceDefaults = { self_reference_enabled: false, self_names: ['麦麦'], self_reference_ids: [], multi_reference_confirmed: false, allow_chat_material_search: false, allow_web_material_search: false };
+const referenceDefaults = { self_reference_enabled: false, self_names: ['麦麦'], self_reference_ids: [], multi_reference_confirmed: false, allow_chat_material_search: false, chat_material_search_limit: 50, material_model: "vlm", allow_web_material_search: false };
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -40,6 +40,7 @@ function harness(file, extra = {}) {
   const U = { state: { view: file, dirty: false, busy: 0, modalVersion: 0 },
     views: {}, $: get, e: String, icon: () => '', bindSubmit() {}, bindDirty() {},
     selects: { refresh() {} },
+    motion: { enter() {}, loading() {}, segmented() {} },
     toast() {}, savedNotice() {}, error: e => errors.push(e),
     call(kind, name, args) {
       const d = deferred(); calls.push({ kind, name, args, ...d }); return d.promise;
@@ -226,9 +227,9 @@ test('platform: a completed deletion cannot rerender a newer settings draft', as
   h.calls[0].resolve({ saved: true }); await flush();
   assert.equal(h.stats().renders, 0); assert.equal(h.U.state.dirty, true);
 });
-async function settings() {
+async function settings(view = 'settings') {
   let h;
-  const tabs = ['general', 'review', 'access', 'style', 'references'].map(section => node({ dataset: { section } }));
+  const tabs = (view === 'library' ? ['style', 'references', 'materials'] : ['general', 'review', 'access']).map(section => node({ dataset: { section } }));
   h = harness('settings', {
     referenceUI: { gallery() {}, confirmButton() {}, presetTypes() {}, confirmSettings: async () => true },
     forms: { html: () => '', bind: (panel, fields, values) => {
@@ -237,10 +238,10 @@ async function settings() {
     bootstrap: async () => {}, render: async () => {},
     submitForm: form => form.onsubmit(event),
   });
-  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, allow_web_material_search: {} },
-    schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {}, integration_api_enabled: {}, group_access_ids: {}, private_access_mode: {} } }, style: { fields: { presets: {} } } } },
-    settings: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist' }, style: { presets: [] } },
-    defaults: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist' }, style: { presets: [] } } };
+  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, allow_web_material_search: {} },
+    schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {}, integration_api_enabled: {}, group_access_ids: {}, private_access_mode: {}, admin_user_ids: {}, group_default_quota: {} } }, style: { fields: { presets: {} } } } },
+    settings: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } },
+    defaults: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } } };
   const form = h.get('#settings-form');
   form.querySelector = () => null;
   form.append = panel => form.children.push(panel);
@@ -249,44 +250,71 @@ async function settings() {
   h.document.querySelectorAll = selector => selector === '[data-section]' ? tabs : [];
   // Controllers capture U.$ when loaded, so reload after installing the scoped seam.
   h.run('settings');
-  await h.U.views.settings();
-  return { ...h, form, tabs };
+  h.U.state.view = view;
+  await h.U.views[view]();
+  return { ...h, form, tabs, panel: name => form.children.find(panel => panel.dataset.settingsPanel === name) };
 }
-test('settings: all five category drafts survive switching and submit in one snapshot', async () => {
+test('settings: runtime drafts survive category changes and preserve creative configuration', async () => {
   const h = await settings();
-  h.form.children[0].values.timeout = 231;
-  h.form.children[1].values.prompt_review_enabled = true;
-  h.form.children[0].values.integration_api_enabled = false;
-  h.form.children[2].values.group_access_ids = ['123456'];
-  h.form.children[2].values.private_access_mode = 'whitelist';
-  h.form.children[3].values.presets.push({ name: 'draft', positive_prompt_template: '{prompt}' });
-  h.form.children[4].values.allow_web_material_search = true;
-  assert.deepEqual(Object.keys(h.form.children[0].fields), ['timeout', 'integration_api_enabled']);
-  assert.deepEqual(Object.keys(h.form.children[2].fields), ['group_access_ids', 'private_access_mode']);
+  h.panel('general').values.timeout = 231;
+  h.panel('review').values.prompt_review_enabled = true;
+  h.panel('general').values.integration_api_enabled = false;
+  h.panel('access').values.group_access_ids = ['123456'];
+  h.panel('access').values.private_access_mode = 'whitelist';
+  h.panel('access').values.admin_user_ids = ['10001'];
+  h.panel('access').values.group_default_quota = 20;
+  assert.deepEqual(Object.keys(h.panel('general').fields), ['timeout', 'integration_api_enabled']);
+  assert.deepEqual(Object.keys(h.panel('access').fields), ['group_access_ids', 'private_access_mode', 'admin_user_ids', 'group_default_quota']);
   h.U.state.dirty = true;
-  h.tabs[1].onclick(); h.tabs[2].onclick(); h.tabs[3].onclick(); h.tabs[0].onclick();
-  assert.equal(h.form.children[0].values.timeout, 231);
+  h.tabs[1].onclick(); h.tabs[2].onclick(); h.tabs[0].onclick();
+  assert.equal(h.panel('general').values.timeout, 231);
   h.form.onsubmit(event); h.form.onsubmit(event);
   await flush();
   assert.equal(h.calls.length, 1); assert.equal(h.form.inert, true);
   const submitted = JSON.parse(h.calls[0].args.config_json);
   assert.equal(submitted.general.timeout, 231);
-  assert.equal(submitted.general.references.allow_web_material_search, true);
+  assert.equal(submitted.general.references.allow_web_material_search, false);
   assert.equal(submitted.general.prompt_review_enabled, true);
   assert.equal(submitted.general.integration_api_enabled, false);
   assert.deepEqual(submitted.general.group_access_ids, ['123456']);
   assert.equal(submitted.general.private_access_mode, 'whitelist');
-  assert.equal(submitted.style.presets[0].name, 'draft');
+  assert.deepEqual(submitted.general.admin_user_ids, ['10001']);
+  assert.equal(submitted.general.group_default_quota, 20);
+  assert.deepEqual(submitted.style.presets, []);
   h.calls[0].resolve({ saved: true }); await flush();
   assert.equal(h.U.state.dirty, false);
 });
+test('creative: preset, self-reference and material drafts merge without overwriting one another', async () => {
+  const h = await settings('library');
+  h.panel('style').values.presets.push({ name: 'draft' });
+  h.panel('references').values.self_reference_enabled = true;
+  h.panel('materials').values.allow_web_material_search = true;
+  h.panel('materials').values.chat_material_search_limit = 80;
+  h.panel('materials').values.material_model = 'fast-vision';
+  assert.ok(Object.hasOwn(h.panel('materials').fields, 'chat_material_search_limit'));
+  assert.equal(Object.hasOwn(h.panel('references').fields, 'chat_material_search_limit'), false);
+  h.tabs[1].onclick(); h.tabs[2].onclick(); h.tabs[0].onclick();
+  h.U.state.dirty = true;
+  h.form.onsubmit(event); await flush();
+  const submitted = JSON.parse(h.calls[0].args.config_json);
+  assert.equal(submitted.style.presets[0].name, 'draft');
+  assert.equal(submitted.general.references.self_reference_enabled, true);
+  assert.equal(submitted.general.references.allow_web_material_search, true);
+  assert.equal(submitted.general.references.chat_material_search_limit, 80);
+  assert.equal(submitted.general.references.material_model, 'fast-vision');
+  assert.equal(submitted.general.timeout, 150);
+  assert.deepEqual(submitted.general.admin_user_ids, []);
+  h.calls[0].resolve({ saved: true }); await flush();
+  assert.equal(h.U.state.dirty, false);
+});
+
 test('settings: failed saves retain both category drafts and allow editing', async () => {
   const h = await settings();
-  h.form.children[0].values.timeout = 245;
-  h.form.children[3].values.presets.push({ name: 'keep' }); h.U.state.dirty = true;
+  h.panel('general').values.timeout = 245;
+  h.panel('review').values.prompt_review_enabled = true; h.U.state.dirty = true;
   h.form.onsubmit(event); await flush(); h.calls[0].reject(Error('revision conflict')); await flush();
-  assert.equal(h.form.children[0].values.timeout, 245);
-  assert.equal(h.form.children[3].values.presets[0].name, 'keep');
+  assert.equal(h.panel('general').values.timeout, 245);
+  assert.equal(h.panel('review').values.prompt_review_enabled, true);
   assert.equal(h.U.state.dirty, true); assert.equal(h.form.inert, false);
   assert.equal(h.get('#reset-settings').disabled, false);
 });
@@ -448,6 +476,27 @@ test('mode state, mobile save label and allowed animations stay explicit', () =>
   assert.match(studio, /id="mode-edit" aria-pressed="\$\{mode === "edit_image"\}"/);
   assert.doesNotMatch(studio, /duration: 190|translateY\(-5px\)/);
   assert.match(read('index.html'), /class="action-tag" aria-hidden="true">保存全部设置<\/span>/);
+});
+
+test('submit: ordinary input Enter and IME never start a drawing in shortcut-only forms', () => {
+  const source = read('app.js');
+  const code = source.slice(source.indexOf('  function bindSubmit('), source.indexOf('  window.DrawpicUI ='));
+  for (const [options, keys, tagName, expected] of [
+    [{ shortcutOnly: true }, {}, 'INPUT', 0],
+    [{ shortcutOnly: true }, {}, 'TEXTAREA', 0],
+    [{ shortcutOnly: true }, { ctrlKey: true }, 'TEXTAREA', 1],
+    [{ shortcutOnly: true }, { metaKey: true }, 'INPUT', 1],
+    [{ shortcutOnly: true }, { ctrlKey: true, isComposing: true }, 'INPUT', 0],
+    [{}, {}, 'INPUT', 1],
+    [{}, { isComposing: true }, 'INPUT', 0],
+  ]) {
+    let submissions = 0, keydown;
+    const form = { querySelectorAll: () => [], addEventListener: (_name, handler) => { keydown = handler; } };
+    const bind = new Function('submitForm', code + ';return bindSubmit;')(() => { submissions++; });
+    bind(form, options);
+    keydown({ key: 'Enter', target: { tagName }, preventDefault() {}, ...keys });
+    assert.equal(submissions, expected, JSON.stringify({ options, keys, tagName }));
+  }
 });
 
 // Use the actual production bridge queue: ordering bugs must not be tested with
@@ -627,7 +676,7 @@ test('bootstrap: pending transaction/runtime notices survive read refresh until 
   response = { config_update_pending: true, runtime_refresh_pending: true };
   await bootstrap();
   assert.equal(get('#load-error').hidden, false);
-  assert.match(get('#load-error').textContent, /提交与运行配置刷新尚未确认完成/);
+  assert.match(get('#load-error').textContent, /设置仍在生效中/);
   await bootstrap(); // The toolbar refresh uses this same production function.
   assert.equal(get('#load-error').hidden, false);
   response = { config_update_pending: false, runtime_refresh_pending: true };
@@ -642,4 +691,20 @@ test('bootstrap: pending transaction/runtime notices survive read refresh until 
   assert.equal(get('#load-error').hidden, true);
   assert.equal(get('#load-error').textContent, '');
   assert.doesNotMatch(read('boot.js'), /hidden\s*=\s*true/);
+});
+
+test('page render uses the shared motion component without an undeclared UI alias', async () => {
+  const app = read('app.js');
+  const source = app.slice(app.indexOf('  async function render()'), app.indexOf('  function updateNavigationIndicator()'));
+  const nodes = new Map(), events = [];
+  const get = key => { if (!nodes.has(key)) nodes.set(key, {}); return nodes.get(key); };
+  const state = { view: 'tasks', dirty: false };
+  const motion = { loading: (node, pending) => events.push(pending), enter: () => events.push('enter') };
+  const render = new Function('state', '$', 'titles', 'document', 'views', 'updateNavigationIndicator', 'window', source + ';return render;')(
+    state, get, { tasks: '绘图任务' }, { querySelectorAll: () => [] },
+    { tasks: async () => events.push('rendered') }, () => {}, { DrawpicUI: { motion } },
+  );
+  await render();
+  assert.equal(get('#page-title').textContent, '绘图任务');
+  assert.deepEqual(events, [true, 'rendered', 'enter', false]);
 });

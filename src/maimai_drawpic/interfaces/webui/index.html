@@ -434,11 +434,7 @@ footer {
 .section-label svg {
   color: var(--accent);
 }
-.studio-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(270px, 1fr);
-  gap: 22px;
-}
+
 .stack {
   display: flex;
   flex-direction: column;
@@ -1292,12 +1288,7 @@ textarea {
   max-width: 360px;
   margin: 0 auto 20px;
 }
-.settings-layout {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
+
 .page-actions {
   display: flex;
   align-items: center;
@@ -1317,94 +1308,7 @@ textarea {
 .page-header > div:first-child {
   min-width: 0;
 }
-.settings-tabs {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  position: sticky;
-  top: 16px;
-  align-self: start;
-  max-height: calc(100dvh - 32px);
-  overflow-y: auto;
-}
-#settings-heading {
-  scroll-margin-top: 24px;
-}
-.shell:has(.settings-layout) main {
-  padding-right: 208px;
-}
-.shell:has(.settings-layout) .page-actions {
-  position: fixed;
-  right: 24px;
-  bottom: max(24px, env(safe-area-inset-bottom, 0px));
-  width: 52px;
-  flex-direction: column;
-  gap: 18px;
-  z-index: 4;
-}
-.shell:has(.settings-layout) .page-actions > .button {
-  position: relative;
-  width: 52px;
-  height: 52px;
-  min-height: 52px;
-  padding: 0;
-  border-radius: 50%;
-  justify-content: center;
-  box-shadow: 0 6px 20px #34232520;
-}
-.shell:has(.settings-layout) .page-actions .action-tag {
-  display: block;
-  opacity: 0;
-  visibility: hidden;
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 10px);
-  transform: translateY(-50%);
-  padding: 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
-  pointer-events: none;
-  box-shadow: var(--shadow);
-}
-.shell:has(.settings-layout) .page-actions > .button:focus-visible .action-tag {
-  opacity: 1;
-  visibility: visible;
-}
-@media (hover: hover) and (pointer: fine) {
-  .shell:has(.settings-layout) .page-actions > .button:hover .action-tag {
-    opacity: 1;
-    visibility: visible;
-  }
-}
-.shell:has(.settings-layout) .page-actions .unsaved {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 12px);
-  max-width: 180px;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  text-align: center;
-  white-space: nowrap;
-}
-.settings-tab {
-  padding: 12px 16px;
-  border-radius: 10px;
-  border: 0;
-  text-align: left;
-  background: none;
-  color: var(--muted);
-}
-.settings-tab.active {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
+
 .sticky-save {
   display: flex;
   align-items: center;
@@ -1632,9 +1536,7 @@ dialog::backdrop {
   .card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .studio-grid {
-    grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr);
-  }
+
   .sidebar {
     padding-left: 12px;
     padding-right: 12px;
@@ -1684,17 +1586,12 @@ dialog::backdrop {
     width: 16px;
     height: 16px;
   }
-  .studio-grid {
-    grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr);
-  }
-  .settings-layout {
-    grid-template-columns: 150px minmax(0, 1fr);
-  }
+
 }
 @media (max-width: 640px) {
   #navigation {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 3px;
     overflow: visible;
   }
@@ -1764,9 +1661,7 @@ dialog::backdrop {
   .task-card {
     padding: 0;
   }
-  .studio-grid {
-    gap: 16px;
-  }
+
   .stat-row {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
@@ -1784,21 +1679,7 @@ dialog::backdrop {
   .toolbar .search-input {
     min-width: 0;
   }
-  .settings-layout {
-    grid-template-columns: 1fr;
-  }
-  .settings-tabs {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    overflow: visible;
-  }
-  .settings-tab {
-    white-space: nowrap;
-    min-height: 44px;
-    text-align: center;
-    padding: 9px 4px;
-    font-size: 12px;
-  }
+
   .catalog-grid {
     grid-template-columns: 1fr;
   }
@@ -2091,100 +1972,6 @@ dialog::backdrop {
   }
 }
 
-@media (max-width: 860px) {
-  body:has(.settings-layout) {
-    height: 100dvh;
-    overflow: hidden;
-  }
-  .shell:has(.settings-layout) {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    min-height: 0;
-  }
-  .shell:has(.settings-layout) .sidebar {
-    flex-shrink: 0;
-  }
-  .shell:has(.settings-layout) main {
-    flex: 1;
-    min-height: 0;
-    align-self: stretch;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding-right: 24px;
-    margin-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
-    scrollbar-gutter: stable;
-  }
-  .settings-tabs {
-    max-height: calc(100dvh - 250px);
-  }
-  .shell:has(.settings-layout) .page-actions {
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: calc(104px + env(safe-area-inset-bottom, 0px));
-    padding: 40px 36px calc(12px + env(safe-area-inset-bottom, 0px));
-    flex-direction: row;
-    justify-content: flex-end;
-    align-items: flex-end;
-    gap: 64px;
-    border-top: 1px solid var(--line);
-    background: var(--bg);
-  }
-  .shell:has(.settings-layout) .page-actions > .button {
-    flex: 0 0 48px;
-    width: 48px;
-    height: 48px;
-    min-height: 48px;
-  }
-  .shell:has(.settings-layout) .page-actions .action-tag {
-    top: auto;
-    bottom: calc(100% + 8px);
-    right: 50%;
-    transform: translateX(50%);
-  }
-  .shell:has(.settings-layout) .page-actions .unsaved {
-    left: 12px;
-    right: auto;
-    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-    max-width: 80px;
-    font-size: 11px;
-    white-space: normal;
-  }
-  body:has(.settings-layout) #toast {
-    bottom: calc(116px + env(safe-area-inset-bottom, 0px));
-  }
-}
-@media (max-width: 640px) {
-  .shell:has(.settings-layout) main {
-    padding-right: 16px;
-  }
-  .settings-tabs {
-    top: 0;
-    z-index: 3;
-    padding: 8px 0;
-    max-height: none;
-    overflow: visible;
-    background: var(--bg);
-    border-bottom: 1px solid var(--line);
-  }
-  #settings-heading,
-  #settings-form input,
-  #settings-form textarea,
-  #settings-form select {
-    scroll-margin-top: 96px;
-  }
-}
-@media (max-width: 860px) and (max-height: 560px) {
-  .shell:has(.settings-layout) .sidebar {
-    padding: 8px 12px;
-    gap: 0;
-  }
-  .shell:has(.settings-layout) .brand {
-    display: none;
-  }
-}
-
 /* 导航标记与模式滑块独立于内容动画，快速切换时可自然衔接。 */
 #navigation {
   position: relative;
@@ -2235,6 +2022,293 @@ dialog::backdrop {
   }
 }
 
+/* Creation: a focused editor beside a persistent result canvas. */
+.section-kicker { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; letter-spacing: .08em; }
+.studio-grid { display: grid; grid-template-columns: minmax(330px, .95fr) minmax(0, 1.25fr); gap: 24px; align-items: start; }
+.studio-controls { padding: 26px; }
+.studio-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.studio-heading > svg { width: 30px; height: 30px; color: var(--accent); stroke-width: 1.2; }
+.studio-heading h2 { font-size: 19px; }
+.studio-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.studio-label label { font-weight: 600; }
+.studio-label .button { min-height: 26px; padding: 0 2px; font-size: 12px; }
+.label-optional { color: var(--muted); font-size: 11px; font-weight: 400; }
+.prompt-field textarea.prompt-input { min-height: 172px; padding: 16px; font-size: 14px; line-height: 1.9; border-radius: 13px; background: var(--bg); }
+.studio-models { padding: 4px 0 0; }
+.studio-models .field { margin-bottom: 17px; }
+.studio-source { margin: 24px 0; }
+.studio-source .upload-zone { display: flex; align-items: center; gap: 12px; padding: 18px 14px; margin-top: 10px; text-align: left; border-radius: 12px; background: var(--bg); }
+.studio-source .upload-zone > svg { width: 25px; height: 25px; margin: 0; }
+.studio-source .upload-zone > div { flex: 1; min-width: 0; }
+.studio-source .upload-zone strong { display: block; font-size: 12px; font-weight: 550; }
+.studio-source .upload-zone small { display: block; color: var(--muted); font-size: 10px; }
+.control-disclosure { border-top: 1px solid var(--line); }
+.control-disclosure > summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 16px 0; cursor: pointer; list-style: none; font-weight: 550; }
+.control-disclosure > summary > span { display: flex; align-items: center; gap: 8px; }
+.control-disclosure summary svg { width: 16px; height: 16px; color: var(--muted); }
+.disclosure-note { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.control-disclosure[open] > summary .disclosure-note > svg, .settings-disclosure[open] > summary > svg { transform: rotate(180deg); }
+.control-disclosure > summary::-webkit-details-marker, .settings-disclosure > summary::-webkit-details-marker, .preset-advanced > summary::-webkit-details-marker { display: none; }
+.disclosure-body { padding: 2px 0 18px; }
+.reference-source-option strong { display: block; font-size: 12px; font-weight: 550; }
+.reference-source-option small { display: block; font-size: 11px; color: var(--muted); }
+.reference-source-option { border-top: 1px solid var(--line); }
+.studio-delivery { border-top: 1px solid var(--line); padding-top: 18px; }
+.studio-delivery > .field { margin-bottom: 0; }
+#delivery-fields { margin-top: 16px; }
+.stream-load { display: flex; align-items: end; }
+.studio-submit { position: sticky; bottom: 12px; padding: 16px 0 0; background: var(--surface); margin-top: 22px; gap: 12px; }
+.studio-submit .hint { font-size: 11px; line-height: 1.6; }
+.studio-submit > .button { min-height: 46px; padding-inline: 24px; border-radius: 11px; }
+.studio-preview { position: sticky; top: 24px; min-width: 0; }
+.studio-canvas-panel { padding: 26px; }
+.studio-canvas-panel .panel-header h2 { font-size: 18px; }
+.studio-canvas-panel .panel-header { margin-bottom: 20px; }
+.studio-empty.placeholder-art { aspect-ratio: auto; min-height: 470px; gap: 14px; padding: 32px 20px; border: 1px dashed var(--line); background: var(--bg); color: var(--text); }
+.empty-canvas { display: grid; place-items: center; width: 110px; height: 125px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; background: var(--surface); box-shadow: 8px 8px 0 var(--soft); transform: rotate(-5deg); }
+.empty-canvas svg { width: 36px; height: 36px; color: var(--accent); }
+.empty-canvas span { display: none; }
+.studio-empty > span { font-size: 15px; font-weight: 550; }
+.studio-empty small { max-width: 260px; }
+.studio-canvas-note { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 18px; color: var(--muted); font-size: 11px; }
+.studio-canvas-note svg { width: 14px; height: 14px; }
+#studio-result .preview-image { max-height: min(65vh, 680px); min-height: 240px; padding: 12px; }
+#studio-result .result-meta { margin-top: 14px; }
+#studio-submissions:not(:empty) { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 16px; }
+
+/* Settings: stable category navigation and one shared, visible save action. */
+.settings-layout { display: grid; grid-template-columns: 174px minmax(0, 1fr); align-items: start; gap: 28px; }
+.settings-workspace, #settings-form, #settings-form > section { min-width: 0; }
+.settings-tabs { position: sticky; top: 24px; display: flex; flex-direction: column; gap: 4px; padding: 8px 0; }
+.settings-nav-caption { padding: 0 12px; margin: 8px 0; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.settings-nav-caption:not(:first-child) { margin-top: 22px; }
+.settings-tab { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 11px 12px; text-align: left; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 12px; }
+.settings-tab > svg { width: 17px; height: 17px; }
+.settings-tab > svg:last-child { width: 12px; height: 12px; margin-left: auto; transform: rotate(-90deg); opacity: 0; }
+.settings-tab:hover { background: var(--soft); color: var(--text); }
+.settings-tab.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.settings-tab.active > svg:last-child { opacity: 1; }
+.settings-page-heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; margin: 2px 0 22px; }
+.settings-page-heading h2 { font-size: 22px; margin-bottom: 6px; }
+.settings-page-heading > .button { flex-shrink: 0; margin-top: 4px; }
+.settings-card { border: 1px solid var(--line); border-radius: 15px; background: var(--surface); padding: 22px; margin-bottom: 18px; min-width: 0; box-shadow: var(--shadow); }
+.settings-card-heading { margin-bottom: 20px; }
+.settings-card-heading h3 { margin-bottom: 5px; font-size: 15px; }
+.settings-card .field:last-child { margin-bottom: 0; }
+.settings-card .form-grid > .field-toggle:last-child { border-bottom: 0; padding-bottom: 0; }
+.settings-disclosure { padding: 0; }
+.settings-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 19px 22px; cursor: pointer; font-weight: 550; list-style: none; }
+.settings-disclosure > summary > span { display: flex; align-items: center; gap: 8px; }
+.settings-disclosure > summary svg { width: 16px; height: 16px; color: var(--muted); }
+.settings-card-body { padding: 0 22px 22px; }
+.settings-card-body > .hint { margin-bottom: 18px; }
+.shell:has(.settings-layout) main { padding-right: 32px; padding-bottom: 120px; }
+.shell:has(.settings-layout) .page-actions { position: fixed; z-index: 5; right: 32px; bottom: 20px; display: flex; flex-direction: row; align-items: center; justify-content: end; gap: 10px; width: auto; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 8px 28px #34232514; }
+.shell:has(.settings-layout) .page-actions > .button { min-height: 44px; height: auto; width: auto; padding: 10px 16px; border-radius: 9px; flex: none; }
+.shell:has(.settings-layout) .page-actions .action-tag { display: inline; position: static; visibility: visible; opacity: 1; transform: none; background: transparent; color: inherit; border: 0; box-shadow: none; padding: 0; font-size: 12px; }
+.shell:has(.settings-layout) .page-actions .unsaved { position: static; margin-inline: 8px; max-width: none; white-space: nowrap; }
+body:has(.settings-layout) #toast { bottom: 100px; }
+#settings-heading, #settings-form input, #settings-form textarea, #settings-form select { scroll-margin-top: 24px; }
+
+/* Preset library: select in the list, edit one item without losing drafts. */
+.preset-manager { min-width: 0; }
+.preset-modebar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+.reference-preset-tabs { display: inline-flex; margin: 0; padding: 4px; gap: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--soft); }
+.reference-preset-tabs > .button { border: 0; min-height: 36px; padding: 7px 16px; background: transparent; color: var(--muted); font-size: 12px; border-radius: 7px; }
+.reference-preset-tabs > [aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 4px #34232510; }
+.preset-defaults { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; gap: 24px; padding: 20px 22px; }
+.preset-default-description h3 { font-size: 14px; margin-bottom: 6px; }
+.preset-defaults [data-preset-defaults] > .field { margin-bottom: 12px; }
+.preset-defaults [data-field="image_edit_presets_enabled"] { padding-top: 0; }
+.preset-body { display: grid; grid-template-columns: 202px minmax(0, 1fr); gap: 18px; align-items: start; }
+.preset-library { padding: 14px 10px; position: sticky; top: 24px; }
+.preset-library-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 6px 12px; }
+.preset-library-heading h3 { font-size: 13px; }
+.preset-library-heading .icon-button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 8px; }
+.preset-search { display: flex; gap: 6px; align-items: center; padding: 7px 9px; margin: 0 4px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.preset-search svg { width: 14px; height: 14px; color: var(--muted); }
+.preset-search input { min-width: 0; width: 100%; background: transparent; border: 0; color: var(--text); font-size: 12px; outline-offset: 5px; }
+.preset-list { display: flex; flex-direction: column; gap: 4px; max-height: 54vh; overflow: auto; }
+.preset-list-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 11px 9px; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 9px; color: var(--text); min-width: 0; }
+.preset-list-item:hover { background: var(--soft); }
+.preset-list-item.active { background: var(--accent-soft); border-color: var(--line); color: var(--accent); }
+.preset-item-icon { display: grid; place-items: center; flex: 0 0 25px; width: 25px; height: 30px; }
+.preset-item-icon svg { width: 18px; height: 18px; }
+.preset-list-item > span:nth-child(2) { min-width: 0; flex: 1; }
+.preset-list-item strong { display: block; font-size: 12px; font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.preset-list-item small { display: block; color: var(--muted); font-size: 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-top: 3px; }
+.preset-badge { flex: none; font-size: 9px; color: var(--muted); }
+.preset-no-match { padding: 16px 8px; }
+.preset-editor { min-width: 0; }
+.preset-editor > [data-field="presets"] { border: 0; padding: 0; margin: 0; }
+.preset-editor > [data-field="presets"] > .field-heading,
+.preset-editor > [data-field="presets"] > .hint,
+.preset-editor > [data-field="presets"] > .field-controls > .field-reset,
+.preset-editor [data-array="presets"] > [data-add-array] { display: none; }
+.preset-detail-card.array-object { margin: 0 0 18px; padding: 0; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); overflow: hidden; }
+.preset-detail-card > .array-object-header { padding: 13px 22px; border-bottom: 1px solid var(--line); background: var(--bg); margin: 0; }
+.preset-detail-card > .array-object-header .muted { font-size: 12px; font-weight: 600; }
+.preset-detail-card [data-remove-object] { color: var(--muted); font-size: 11px; gap: 4px; }
+.preset-detail-card [data-remove-object] svg { width: 13px; height: 13px; }
+.preset-field-section { padding: 22px; border-bottom: 1px solid var(--line); }
+.preset-field-section:last-child { border-bottom: 0; }
+.preset-section-heading { margin-bottom: 18px; }
+.preset-section-heading h3 { font-size: 14px; margin-bottom: 4px; }
+.preset-detail-card .form-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.preset-field-section .field:last-child { margin-bottom: 0; }
+.preset-prompts textarea { min-height: 116px; font-size: 12px; line-height: 1.8; background: var(--bg); }
+.preset-advanced { padding: 0; }
+.preset-advanced > summary { padding: 16px 22px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; cursor: pointer; list-style: none; }
+.preset-advanced > .form-grid { padding: 0 22px 22px; }
+.preset-empty { display: flex; flex-direction: column; gap: 12px; text-align: center; align-items: center; justify-content: center; min-height: 300px; padding: 32px 22px; }
+.preset-empty > svg { color: var(--accent); width: 30px; height: 30px; margin-bottom: 4px; }
+.preset-detail-card [data-array="reference_bindings"] > .array-object { background: var(--bg); border-radius: 10px; }
+.reference-library-card .reference-gallery-header { margin-top: 0; }
+.reference-library-card .reference-gallery { margin-bottom: 0; }
+.reference-card { padding: 10px; background: var(--surface); }
+.reference-thumbnail { min-height: 0; overflow: hidden; aspect-ratio: 4/3; }
+.reference-thumbnail img { height: 100%; min-height: 0; object-fit: contain; }
+.reference-card .reference-card-actions .button { font-size: 11px; padding-inline: 8px; }
+.reference-card .pill { align-self: start; font-size: 10px; }
+.reference-confirm .modal-footer { padding-inline: 0; padding-bottom: 0; }
+
+@media (max-width: 1250px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .settings-tabs { position: static; flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 0 0 16px; border-bottom: 1px solid var(--line); }
+  .settings-nav-caption, .settings-tab > svg:last-child { display: none; }
+  .settings-tab { padding: 10px 13px; }
+  .studio-grid { grid-template-columns: minmax(310px, 1fr) minmax(0, 1fr); gap: 18px; }
+  .studio-controls, .studio-canvas-panel { padding: 22px; }
+  .studio-empty.placeholder-art { min-height: 420px; }
+}
+@media (max-width: 950px) {
+  .studio-grid { grid-template-columns: minmax(0, 1fr); }
+  .studio-preview { position: static; }
+  .studio-empty.placeholder-art { min-height: 320px; }
+  .studio-controls { max-width: none; }
+  .studio-models { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .shell:has(.settings-layout) .page-actions { right: 20px; }
+}
+@media (max-width: 760px) {
+  .preset-body { grid-template-columns: minmax(0, 1fr); }
+  .preset-library { position: static; padding: 14px; margin-bottom: 0; }
+  .preset-list { max-height: 184px; }
+  .preset-list-item { min-height: 50px; }
+  .preset-defaults { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .preset-default-description .hint { max-width: none; }
+  .preset-detail-card { scroll-margin-top: 16px; }
+}
+@media (max-width: 640px) {
+  .studio-controls, .studio-canvas-panel { padding: 20px; }
+  .studio-heading h2 { font-size: 18px; }
+  .studio-models { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .prompt-field textarea.prompt-input { min-height: 155px; }
+  .studio-source .upload-zone { flex-wrap: wrap; }
+  .studio-source .upload-zone > div { flex-basis: calc(100% - 40px); }
+  .studio-source .upload-zone > .button { margin-left: 37px; min-height: 40px; }
+  .studio-submit { bottom: 8px; }
+  .studio-empty.placeholder-art { min-height: 300px; }
+  .settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding-bottom: 14px; }
+  .settings-tab { min-height: 44px; justify-content: center; gap: 6px; padding: 9px 4px; font-size: 11px; white-space: nowrap; }
+  .settings-tab > svg { width: 15px; height: 15px; }
+  .settings-page-heading { flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .settings-page-heading h2 { font-size: 20px; }
+  .settings-page-heading > .button { min-height: 38px; font-size: 11px; }
+  .settings-card { padding: 18px; border-radius: 13px; }
+  .settings-disclosure { padding: 0; }
+  .settings-disclosure > summary { padding: 18px; }
+  .settings-card-body { padding: 0 18px 18px; }
+  .preset-defaults { padding: 18px; }
+  .preset-modebar { gap: 8px; }
+  .reference-preset-tabs { width: 100%; }
+  .reference-preset-tabs > .button { flex: 1; min-height: 40px; padding: 6px 10px; }
+  .preset-library { padding: 12px; }
+  .preset-library-heading .icon-button { width: 40px; height: 40px; }
+  .preset-search { padding: 10px; }
+  .preset-search input { font-size: 12px; }
+  .preset-field-section { padding: 18px; }
+  .preset-detail-card > .array-object-header { padding: 12px 18px; }
+  .preset-advanced { padding: 0; }
+  .preset-advanced > .form-grid { padding: 0 18px 18px; }
+  .preset-advanced > summary { padding: 16px 18px; }
+  .reference-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .reference-card { padding: 8px; gap: 6px; }
+  .reference-card strong { font-size: 12px; }
+  .reference-tags { font-size: 11px; }
+  .reference-card-actions { gap: 4px; }
+  .reference-card-actions .icon-button { min-height: 44px; min-width: 44px; }
+  .shell:has(.settings-layout) main { padding: 24px 16px calc(116px + env(safe-area-inset-bottom, 0px)); }
+  .shell:has(.settings-layout) .page-actions { left: 0; right: 0; bottom: 0; justify-content: space-between; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-radius: 0; border-inline: 0; border-bottom: 0; gap: 8px; }
+  .shell:has(.settings-layout) .page-actions > .button { padding: 10px 12px; }
+  .shell:has(.settings-layout) .page-actions > #save-settings { margin-left: auto; order: 1; }
+  .shell:has(.settings-layout) .page-actions .unsaved { margin-inline: 0; font-size: 11px; white-space: normal; max-width: 80px; }
+  body:has(.settings-layout) #toast { bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
+}
+
+
+/* Reference images are uploaded and selected inside their preset. */
+.preset-field-sections { display: flex; flex-direction: column; }
+.preset-identity { order: 0; }
+.preset-bindings { order: 1; }
+.preset-prompts { order: 2; }
+.preset-advanced { order: 3; }
+.preset-image-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; }
+.preset-reference-field > .field-heading { font-size: 0; margin: 0; }
+.preset-reference-field > .field-heading::after { content: none; }
+.preset-reference-field > .field-controls > .field-reset { display: none; }
+.preset-image-preview { display: grid; place-items: center; min-height: 100px; margin: 4px 0 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); overflow: hidden; }
+.preset-image-preview img { max-height: 180px; width: 100%; object-fit: contain; }
+.recognition-hints { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
+.recognition-hints > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+.recognition-hints > summary svg { width: 15px; height: 15px; }
+@media (max-width: 640px) {
+  .sidebar { padding-inline: 12px; }
+  #navigation { gap: 2px; }
+  .nav-item { font-size: 10px; }
+  .preset-image-actions > .button { min-height: 44px; }
+}
+
+.preset-asset-manager { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+.preset-asset-manager > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 12px; color: var(--muted); }
+.preset-asset-manager > summary svg { width: 14px; height: 14px; }
+.preset-asset-manager [data-upload] { display: none; }
+.preset-asset-manager .reference-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.preset-asset-manager .reference-card-actions { gap: 4px; }
+.reference-upload-toolbar { margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.reference-gallery, .preset-reference-field [data-array="reference_bindings"] { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.preset-reference-field .array-object.reference-binding-row { margin: 0; padding: 0; border: 0; background: none; min-width: 0; }
+.reference-binding-row > .reference-card { height: 100%; }
+.reference-card-open { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.reference-card-open strong { font-size: 12px; width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.reference-card-open .reference-thumbnail { width: 100%; }
+.reference-prompt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.reference-image-editor .form-grid { grid-template-columns: minmax(0, 1fr); }
+.reference-editor-preview { display: grid; place-items: center; height: 150px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+.reference-editor-preview img { width: 100%; height: 100%; object-fit: contain; }
+.reference-image-editor [data-replace] { margin-bottom: 22px; }
+.reference-image-editor [data-reset-field] { display: none; }
+.reference-image-info { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 12px; }
+.reference-image-info > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+.reference-image-info > summary svg { width: 15px; height: 15px; }
+.reference-image-picker { max-width: 720px; }
+.motion-segmented { position: relative; isolation: isolate; }
+.motion-segmented > button { position: relative; z-index: 1; }
+.motion-segmented > button[aria-pressed="true"] { background: transparent; box-shadow: none; }
+.motion-segmented > .motion-segmented-indicator { position: absolute; z-index: 0; left: 0; top: 0; bottom: auto; pointer-events: none; border-radius: 7px; background: var(--surface); box-shadow: 0 1px 5px #34232510; transition: transform 320ms cubic-bezier(.2,.8,.2,1), width 320ms cubic-bezier(.2,.8,.2,1), height 320ms cubic-bezier(.2,.8,.2,1); }
+.motion-segmented:not(.motion-ready) > .motion-segmented-indicator { transition: none; }
+#workspace-content { position: relative; }
+#workspace-content[data-page-loading]::before { content: ""; position: absolute; top: -10px; left: 0; z-index: 3; width: 30%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: 0; pointer-events: none; animation: page-loading 1.1s ease-in-out 120ms infinite; }
+dialog[open] { animation: dialog-enter 180ms cubic-bezier(.2,.8,.2,1); }
+dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
+@keyframes page-loading { 0% { opacity: 0; transform: translateX(0); } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateX(220%); } }
+@keyframes dialog-enter { from { opacity: .4; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes backdrop-enter { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 640px) {
+  .reference-gallery, .preset-reference-field [data-array="reference_bindings"] { grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); }
+  .reference-image-editor .reference-editor-preview { height: 120px; }
+  .reference-image-editor .reference-card-actions .icon-button { min-width: 44px; min-height: 44px; }
+}
+
 </style>
   </head>
   <body>
@@ -2247,7 +2321,7 @@ dialog::backdrop {
             alt=""
             width="44"
             height="44"
-          /><span>麦麦绘图<small>把想象变成画面</small></span></a
+          /><span>麦麦绘图</span></a
         >
         <div class="nav-caption">工作台</div>
         <nav id="navigation">
@@ -2261,11 +2335,14 @@ dialog::backdrop {
               hidden
             ></span>
           </button>
+          <button data-view="library" class="nav-item">
+            <span data-icon="images"></span>预设参考
+          </button>
           <button data-view="platforms" class="nav-item">
             <span data-icon="layers"></span>绘图平台
           </button>
           <button data-view="settings" class="nav-item">
-            <span data-icon="sliders"></span>偏好与预设
+            <span data-icon="sliders"></span>插件设置
           </button>
           <button data-view="logs" class="nav-item">
             <span data-icon="terminal"></span>运行日志
@@ -2279,9 +2356,8 @@ dialog::backdrop {
       <main>
         <header class="page-header">
           <div>
-            <div class="eyebrow">MAIMAI / DRAWING WORKSPACE</div>
+
             <h1 id="page-title">开始创作</h1>
-            <p id="page-description">从一个想法开始，剩下的交给画笔。</p>
           </div>
           <div class="page-actions">
             <span id="settings-unsaved" class="unsaved" hidden
@@ -2312,7 +2388,6 @@ dialog::backdrop {
             <span class="spinner"></span>正在准备绘图工作台…
           </div>
         </div>
-        <footer>麦麦绘图<span>配置和作品保存在当前 MaiBot 实例</span></footer>
       </main>
     </div>
     <dialog id="modal" aria-labelledby="modal-title">
@@ -2365,11 +2440,12 @@ dialog::backdrop {
   };
   const views = {};
   const titles = {
-    studio: ["开始创作", "从一个想法开始，剩下的交给画笔。"],
-    tasks: ["绘图任务", "每一次创作，都可以在这里找到。"],
-    platforms: ["绘图平台", "用到哪个，就添加哪个。让每个模型各展所长。"],
-    settings: ["偏好与预设", "把常用的选择，变成顺手的习惯。"],
-    logs: ["运行日志", "沿着任务链路，找到问题发生的位置。"],
+    studio: "开始创作",
+    tasks: "绘图任务",
+    library: "预设参考",
+    platforms: "绘图平台",
+    settings: "插件设置",
+    logs: "运行日志",
   };
   const $ = (selector, root = document) => root.querySelector(selector);
   const e = (value) =>
@@ -2487,9 +2563,9 @@ dialog::backdrop {
   $("#modal-close").onclick = () => closeModal();
   async function bootstrap() {
     state.data = await call("query", "bootstrap");
-    $("#connection").textContent = "已连接当前实例";
+    $("#connection").textContent = "已连接";
     const notice = state.data.config_update_pending
-      ? "配置更新仍在处理中，提交与运行配置刷新尚未确认完成。请稍后刷新查看状态，无需重复提交。"
+      ? "设置仍在生效中，请稍后刷新，无需重复保存。"
       : state.data.runtime_refresh_pending
         ? "运行配置刷新尚未完成。页面刷新只重新查询状态，不会重复保存或自动修复运行配置。"
         : "";
@@ -2517,11 +2593,10 @@ dialog::backdrop {
   }
   async function render() {
     state.renderVersion = (state.renderVersion || 0) + 1;
-    $("#save-settings").hidden = state.view !== "settings";
-    $("#settings-unsaved").hidden = state.view !== "settings" || !state.dirty;
-    const [title, description] = titles[state.view];
-    $("#page-title").textContent = title;
-    $("#page-description").textContent = description;
+    const version = state.renderVersion, content = $("#workspace-content");
+    $("#save-settings").hidden = !["settings", "library"].includes(state.view);
+    $("#settings-unsaved").hidden = !["settings", "library"].includes(state.view) || !state.dirty;
+    $("#page-title").textContent = titles[state.view];
     document.querySelectorAll("[data-view]").forEach((node) => {
       node.classList.toggle("active", node.dataset.view === state.view);
       node.setAttribute(
@@ -2530,7 +2605,13 @@ dialog::backdrop {
       );
     });
     updateNavigationIndicator();
-    await views[state.view]();
+    window.DrawpicUI.motion.loading(content, true);
+    try {
+      await views[state.view]();
+      if (version === state.renderVersion) window.DrawpicUI.motion.enter(content);
+    } finally {
+      if (version === state.renderVersion) window.DrawpicUI.motion.loading(content, false);
+    }
   }
   function updateNavigationIndicator() {
     const nav = $("#navigation"),
@@ -2618,7 +2699,7 @@ dialog::backdrop {
       );
     }
   }
-  function bindSubmit(form) {
+  function bindSubmit(form, { shortcutOnly = false } = {}) {
     // 宿主 sandbox 没有 allow-forms：使用受校验的事件处理，不进行原生表单导航。
     form.querySelectorAll('[type="submit"]').forEach((button) => {
       button.onclick = (event) => {
@@ -2627,9 +2708,13 @@ dialog::backdrop {
       };
     });
     form.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && event.target.tagName === "INPUT") {
+      if (event.key !== "Enter" || event.isComposing) return;
+      if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
         submitForm(form);
+      } else if (event.target.tagName === "INPUT") {
+        event.preventDefault();
+        if (!shortcutOnly) submitForm(form);
       }
     });
   }
@@ -2680,6 +2765,61 @@ dialog::backdrop {
       });
     return refresh();
   };
+})();
+
+(() => {
+  "use strict";
+  const U = window.DrawpicUI;
+  const easing = "cubic-bezier(.2,.8,.2,1)", effects = new WeakMap(), segments = new WeakMap();
+  const observed = new Set();
+  const observer = new ResizeObserver(entries => {
+    for (const { target } of entries) {
+      if (target.isConnected) segments.get(target).position();
+      else { observer.unobserve(target); observed.delete(target); }
+    }
+  });
+  const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function enter(element, distance = 5) {
+    effects.get(element)?.cancel();
+    if (reduced()) return;
+    effects.set(element, element.animate([
+      { opacity: .55, transform: `translateY(${distance}px)` },
+      { opacity: 1, transform: "translateY(0)" },
+    ], { duration: 220, easing }));
+  }
+  function loading(element, pending) {
+    element.toggleAttribute("data-page-loading", pending);
+    element.setAttribute("aria-busy", String(pending));
+  }
+  function segmented(root, fromTransform = null) {
+    for (const element of observed) if (!element.isConnected) { observer.unobserve(element); observed.delete(element); }
+    let controller = segments.get(root);
+    if (!controller) {
+      const indicator = root.querySelector('.mode-indicator') || document.createElement("span");
+      indicator.classList.add("motion-segmented-indicator");
+      indicator.setAttribute("aria-hidden", "true");
+      if (!indicator.isConnected) root.prepend(indicator);
+      root.classList.add("motion-segmented");
+      const position = () => {
+        const active = root.querySelector('[aria-pressed="true"]');
+        if (!active || !root.offsetWidth) return;
+        indicator.style.width = `${active.offsetWidth}px`;
+        indicator.style.height = `${active.offsetHeight}px`;
+        indicator.style.transform = `translate(${active.offsetLeft}px,${active.offsetTop}px)`;
+      };
+      controller = { indicator, position };
+      segments.set(root, controller);
+      observer.observe(root);
+      observed.add(root);
+      controller.position();
+      requestAnimationFrame(() => { if (root.isConnected) root.classList.add("motion-ready"); });
+    }
+    controller.position();
+    if (fromTransform && !reduced()) controller.indicator.animate([
+      { transform: fromTransform }, { transform: controller.indicator.style.transform },
+    ], { duration: 320, easing });
+  }
+  U.motion = { enter, loading, segmented };
 })();
 
 (() => {
@@ -3071,9 +3211,9 @@ dialog::backdrop {
       if (key.includes("extra_parameters"))
         return "仅在需要平台扩展参数时添加。分别填写名称、值类型和值；开关直接选择，复杂结构使用 JSON。";
       if (key === "models" || key === "custom_models")
-        return "按账号实际权限填写模型 ID；可直接粘贴。下方的按模型覆盖选项会随本列表更新。";
+        return "填写账号可用的模型 ID。";
       if (key.endsWith("unsupported_models"))
-        return "按需添加模型，可选择多个；通过右侧 × 移除。人工限制优先于自动识别，已有未匹配的模型仍会保留。";
+        return "选择需要限制的模型，可添加多个。";
       return "";
     },
   };
@@ -3085,18 +3225,18 @@ dialog::backdrop {
     { e, $ } = U;
   let sequence = 0;
   const custom = "__workspace_custom__";
-  function optionsHTML(choices, selected) {
+  function optionsHTML(choices, selected, labels = {}) {
     return choices
       .map(
         (value) =>
-          `<option value="${e(value)}" ${value === selected ? "selected" : ""}>${e(U.formOptions.label(value))}</option>`,
+          `<option value="${e(value)}" ${value === selected ? "selected" : ""}>${e(labels[value] || U.formOptions.label(value))}</option>`,
       )
       .join("");
   }
   function choice(
     value,
     choices,
-    { id, label, size = false, kind = "", allowCustom = true } = {},
+    { id, label, size = false, kind = "", allowCustom = true, labels = {}, placeholder = "填写服务要求的值…", customLabel = "自定义值…" } = {},
   ) {
     const known = choices.includes(value),
       selected = known ? value : custom;
@@ -3106,10 +3246,10 @@ dialog::backdrop {
     const active = !known && !legacySize;
     const controls = size
       ? `<div class="dimension-inputs" data-custom-panel ${active ? "" : "hidden"}><label>宽度（px）<input data-width type="number" min="1" step="1" value="${e(parts?.[1] || "")}" ${active ? "required" : "disabled"}></label><span aria-hidden="true">×</span><label>高度（px）<input data-height type="number" min="1" step="1" value="${e(parts?.[2] || "")}" ${active ? "required" : "disabled"}></label></div>`
-      : `<input data-custom-value aria-label="自定义${e(label || "参数值")}" value="${e(known ? "" : value)}" placeholder="填写服务要求的值…" autocomplete="off" ${active ? "required" : "hidden disabled"}>`;
+      : `<input data-custom-value aria-label="自定义${e(label || "参数值")}" value="${e(known ? "" : value)}" placeholder="${e(placeholder)}" autocomplete="off" ${active ? "required" : "hidden disabled"}>`;
     // 无法解析的旧尺寸仍作为独立选项保留，不打开空的宽高输入覆盖原值。
     const items = legacySize ? [value, ...choices] : choices;
-    return `<div data-control="${size ? "dimension" : "choice"}" data-kind="${e(kind)}"><select id="${identity}" data-choice-select aria-label="${e(label || "参数值")}">${optionsHTML(items, legacySize ? value : selected)}${allowCustom || !known ? `<option value="${custom}" ${selected === custom && !legacySize ? "selected" : ""}>${size ? "自定义宽高…" : "自定义值…"}</option>` : ""}</select>${controls}</div>`;
+    return `<div data-control="${size ? "dimension" : "choice"}" data-kind="${e(kind)}"><select id="${identity}" data-choice-select aria-label="${e(label || "参数值")}">${optionsHTML(items, legacySize ? value : selected, labels)}${allowCustom || !known ? `<option value="${custom}" ${selected === custom && !legacySize ? "selected" : ""}>${size ? "自定义宽高…" : e(customLabel)}</option>` : ""}</select>${controls}</div>`;
   }
   function read(node) {
     const selected = $("[data-choice-select]", node).value;
@@ -3133,6 +3273,11 @@ dialog::backdrop {
   }
   function scalar(key, meta, value, id, options = {}) {
     const kind = options.kind;
+    if (key === "material_model")
+      return choice(value, ["vlm"], { id, label: "识别模型", labels: { vlm: "MaiBot 视觉模型" },
+        placeholder: "填写 MaiBot 中配置的模型名称", customLabel: "指定模型…" }).replace(
+        "data-choice-select", `data-choice-select data-input="${e(key)}"`,
+      );
     if (meta.multiple) return multi(key, meta.choices || [], value || [], id);
     if (key === "request_retry_count" || key.endsWith("_review_retry_count"))
       return `<select id="${id}" data-input="${key}">${[0, 1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${Number(value) === count ? "selected" : ""}>${count === 0 ? "不重试" : `${count} 次${count === Number(meta.default) ? "（默认）" : ""}`}</option>`).join("")}</select>`;
@@ -3768,7 +3913,7 @@ dialog::backdrop {
       if (notice) notice.hidden = false;
       refreshResets();
     };
-    U.bindDirty(root);
+    if (options.trackDirty !== false) U.bindDirty(root);
     return () => read(fields, values, root, options);
   }
   function appendArray(root, key, values, options = {}) {
@@ -3781,7 +3926,7 @@ dialog::backdrop {
   function sections(groups, fields, values, options = {}) {
     return groups.map(group => {
       const selected = Object.fromEntries(Object.entries(fields).filter(([key]) => group.includes(key)));
-      return `<details class="form-section" ${group.open ? "open" : ""}><summary>${e(group.title)}${icon("chevron")}</summary><p class="hint">${e(group.hint)}</p>${fieldsHTML(selected, values, options)}</details>`;
+      return `<details class="form-section" ${group.open ? "open" : ""}><summary>${e(group.title)}${icon("chevron")}</summary>${fieldsHTML(selected, values, options)}</details>`;
     }).join("");
   }
   U.forms = { html: fieldsHTML, sections, bind, read, appendArray };
@@ -3789,22 +3934,142 @@ dialog::backdrop {
 
 (() => {
   "use strict";
+  const U = window.DrawpicUI, { state, $, e, icon, call } = U;
+  const views = new Map();
+  function observe(root, render) {
+    for (const element of views.keys()) if (!element.isConnected) views.delete(element);
+    views.set(root, render);
+  }
+  function refresh() {
+    U.referenceUI.refreshPickers();
+    for (const [root, render] of views) {
+      if (root.isConnected) render();
+      else views.delete(root);
+    }
+  }
+  async function update(operation, item = {}, source = "") {
+    const snapshot = await call("action", "reference_update", {
+      operation, revision: state.data.reference_assets.revision,
+      asset_json: JSON.stringify(item), source_id: source,
+    });
+    state.data.reference_assets = snapshot;
+    refresh();
+    return snapshot;
+  }
+  function toolbar({ kind, beforeUpload = () => {}, onAsset = () => {}, onChoose = null }) {
+    const root = document.createElement("div");
+    root.className = "reference-upload-toolbar";
+    root.innerHTML = `<button type="button" class="button secondary compact" data-upload>${icon("upload")}上传图片</button>${onChoose ? `<button type="button" class="button ghost compact" data-choose>${icon("images")}选择已有图片</button>` : ""}<input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>`;
+    const input = $('input', root), button = $('[data-upload]', root);
+    button.onclick = () => input.click();
+    if (onChoose) $('[data-choose]', root).onclick = onChoose;
+    input.onchange = () => U.buttonAction(button, async () => {
+      const files = Array.from(input.files);
+      try {
+        beforeUpload(files);
+        for (const file of files) {
+          const upload = await call("upload", "source", {}, file);
+          const snapshot = await update("save", { kind, name: file.name.slice(0, 80), tags: [], prompt: "" }, upload.source_id);
+          onAsset(snapshot.assets.at(-1));
+        }
+        if (files.length) U.toast("图片已上传");
+      } finally { input.value = ""; }
+    });
+    return root;
+  }
+  function card(item, { onEdit, onOpen = onEdit, onRemove = null, onDefault = null, onUp = null, isDefault = false, actionLabel = "编辑", prompt = item.prompt || "" } = {}) {
+    const root = document.createElement("article");
+    root.className = "reference-card";
+    root.dataset.asset = item.id;
+    root.innerHTML = `<button type="button" class="reference-card-open" aria-label="${e(actionLabel)}参考图片：${e(item.name)}"><div class="reference-thumbnail"><img alt="" hidden><span class="hint" data-loading>正在读取预览</span></div><strong>${e(item.name)}</strong>${prompt ? `<span class="reference-prompt">${e(prompt)}</span>` : ""}${item.kind === "self" && item.tags.length ? `<span class="hint reference-tags">${e(item.tags.join(" · "))}</span>` : ""}</button>${isDefault ? '<span class="pill">默认自我参考</span>' : ""}<div class="reference-card-actions"><button type="button" class="button secondary compact" data-edit>${e(actionLabel)}</button>${onDefault ? '<button type="button" class="button secondary compact" data-default>设为默认</button>' : ""}${onUp ? '<button type="button" class="icon-button" data-up aria-label="上移图片">↑</button>' : ""}${onRemove ? `<button type="button" class="icon-button" data-remove-image aria-label="移除图片">${icon("close")}</button>` : ""}</div>`;
+    $('.reference-card-open', root).onclick = onOpen;
+    $('[data-edit]', root).onclick = onEdit;
+    if (onRemove) $('[data-remove-image]', root).onclick = onRemove;
+    if (onDefault) $('[data-default]', root).onclick = onDefault;
+    if (onUp) $('[data-up]', root).onclick = onUp;
+    call("query", "reference_image", { asset_id: item.id }).then(result => {
+      if (!root.isConnected) return;
+      $('img', root).src = result.preview;
+      $('img', root).hidden = false;
+      $('[data-loading]', root).hidden = true;
+    }).catch(error => { if (root.isConnected) $('[data-loading]', root).textContent = error.message; });
+    return root;
+  }
+  function editor(item, { prompt = item.prompt || "", onSaved = () => {} } = {}) {
+    const dialog = document.createElement("dialog");
+    dialog.className = "reference-confirm reference-image-editor";
+    dialog.setAttribute("aria-label", "编辑参考图片");
+    const fields = {
+      prompt: { type: "string", default: "", label: "参考提示词（可选）", input_type: "textarea", rows: 3, hint: "填写希望保留的特征，也可以留空。" },
+      name: { type: "string", default: "", label: "图片名称" },
+      ...(item.kind === "self" ? { tags: { type: "string", default: "", label: "Tag（逗号分隔）" } } : {}),
+    };
+    const values = { prompt, name: item.name, ...(item.kind === "self" ? { tags: item.tags.join(", ") } : {}) };
+    const metadata = Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "prompt"));
+    dialog.innerHTML = `<form><div class="modal-header"><h2>编辑参考图片</h2><button type="button" class="icon-button" data-close aria-label="关闭弹窗">${icon("close")}</button></div><div class="reference-dialog-body"><div class="reference-editor-preview"></div><button type="button" class="button secondary compact" data-replace>${icon("upload")}替换图片</button><input type="file" accept="image/png,image/jpeg,image/webp" hidden data-file>${U.forms.html({ prompt: fields.prompt }, values)}<details class="reference-image-info"><summary>图片信息 ${icon("chevron")}</summary>${U.forms.html(metadata, values)}</details><div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button type="submit" class="button">保存图片</button></div></div></form>`;
+    document.body.append(dialog);
+    const form = $('form', dialog), read = U.forms.bind(form, fields, values, { trackDirty: false });
+    const file = $('[data-file]', dialog), preview = $('.reference-editor-preview', dialog);
+    $('[data-input="prompt"]', form).maxLength = 500;
+    $('[data-input="name"]', form).required = true;
+    $('[data-input="name"]', form).maxLength = 80;
+    let localUrl = "";
+    call("query", "reference_image", { asset_id: item.id }).then(result => {
+      if (dialog.isConnected && !file.files.length) preview.innerHTML = `<img src="${e(result.preview)}" alt="参考图片预览">`;
+    }).catch(error => { if (dialog.isConnected && !file.files.length) preview.textContent = error.message; });
+    $('[data-replace]', dialog).onclick = () => file.click();
+    file.onchange = () => {
+      if (localUrl) URL.revokeObjectURL(localUrl);
+      localUrl = file.files.length ? URL.createObjectURL(file.files[0]) : "";
+      if (localUrl) preview.innerHTML = `<img src="${e(localUrl)}" alt="替换图片预览">`;
+    };
+    $('[data-close]', dialog).onclick = $('[data-cancel]', dialog).onclick = () => dialog.close();
+    form.onsubmit = event => {
+      event.preventDefault();
+      U.buttonAction($('[type="submit"]', form), async () => {
+        const value = read();
+        form.inert = true;
+        try {
+          const upload = file.files.length ? await call("upload", "source", {}, file.files[0]) : null;
+          const snapshot = await update("save", { asset_id: item.id, kind: item.kind, name: value.name, prompt: value.prompt,
+            tags: item.kind === "self" ? value.tags.split(/[,，]/).map(tag => tag.trim()).filter(Boolean) : item.tags }, upload?.source_id || "");
+          onSaved(snapshot.assets.find(asset => asset.id === item.id));
+          dialog.close();
+          U.toast("图片已保存");
+        } finally { form.inert = false; }
+      });
+    };
+    dialog.addEventListener("close", () => { if (localUrl) URL.revokeObjectURL(localUrl); dialog.remove(); }, { once: true });
+    U.bindSubmit(form, { shortcutOnly: true });
+    dialog.showModal();
+    U.selects.refresh(dialog);
+  }
+  U.referenceComponents = { observe, refresh, update, toolbar, card, editor };
+})();
+
+(() => {
+  "use strict";
   const U = window.DrawpicUI, { state, $, e, icon, call, toast } = U;
   const notice = "该配置会向绘图模型发送多张参考图。请确认所用服务商及具体模型支持多图参考。插件会校验图生图能力，但不自动探测多图兼容性；切换模型后请重新核实。";
 
-  function confirmMultiple() {
+  function confirmReferenceAction(title, message, detail, confirmText) {
     const dialog = document.createElement("dialog");
     dialog.className = "reference-confirm";
-    const model = state.data?.settings.general.default_model || state.data?.default_model;
-    dialog.innerHTML = `<div class="modal-header"><h2>确认多图参考能力</h2></div><div class="reference-dialog-body"><p>${e(notice)}</p>${model ? `<p class="hint">当前默认模型：${e(model)}</p>` : ""}<div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button type="button" class="button" data-confirm>已确认支持</button></div></div>`;
+    dialog.setAttribute("aria-label", title);
+    dialog.innerHTML = `<div class="modal-header"><h2>${e(title)}</h2></div><div class="reference-dialog-body"><p>${e(message)}</p>${detail ? `<p class="hint">${e(detail)}</p>` : ""}<div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button type="button" class="button" data-confirm>${e(confirmText)}</button></div></div>`;
     document.body.append(dialog);
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       let accepted = false;
       $("[data-cancel]", dialog).onclick = () => dialog.close();
       $("[data-confirm]", dialog).onclick = () => { accepted = true; dialog.close(); };
       dialog.addEventListener("close", () => { dialog.remove(); resolve(accepted); }, { once: true });
       dialog.showModal();
     });
+  }
+
+  function confirmMultiple() {
+    const model = state.data?.settings.general.default_model || state.data?.default_model;
+    return confirmReferenceAction("确认多图参考能力", notice, model ? `当前默认模型：${model}` : "", "已确认支持");
   }
 
   function assets(kind) { return (state.data.reference_assets?.assets || []).filter(item => item.kind === kind); }
@@ -3821,72 +4086,44 @@ dialog::backdrop {
   }
 
   function gallery(root, kind) {
-    let page = 0, version = 0;
-    async function mutate(operation, item = {}, source = "") {
-      const result = await call("action", "reference_update", {
-        operation, revision: state.data.reference_assets.revision,
-        asset_json: JSON.stringify(item), source_id: source,
-      });
-      state.data.reference_assets = result;
-      refreshPickers();
-      render();
-    }
-    function edit(item) {
-      const dialog = document.createElement("dialog");
-      dialog.className = "reference-confirm";
-      dialog.innerHTML = `<form><div class="modal-header"><h2>编辑参考图片</h2></div><div class="reference-dialog-body"><div class="field"><label>图片名称<input name="name" value="${e(item.name)}" maxlength="80" required></label></div><div class="field"><label>Tag（逗号分隔）<input name="tags" value="${e(item.tags.join(", "))}"></label></div><div class="field"><label>替换图片（可选）<input name="replacement" type="file" accept="image/png,image/jpeg,image/webp"></label><p class="hint">替换后保留图片标识、默认项和预设引用；已经开始的任务仍使用读取的版本。</p></div><div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button class="button" type="submit">保存图片信息</button></div></div></form>`;
-      document.body.append(dialog);
-      $("[data-cancel]", dialog).onclick = () => dialog.close();
-      $("form", dialog).onsubmit = event => {
-        event.preventDefault();
-        U.buttonAction($("[type=submit]", dialog), async () => {
-          const file = $('[name="replacement"]', dialog).files[0];
-          const source = file ? (await call("upload", "source", {}, file)).source_id : "";
-          await mutate("save", { asset_id: item.id, kind, name: $("[name=name]", dialog).value,
-            tags: $("[name=tags]", dialog).value.split(/[,，]/).map(value => value.trim()).filter(Boolean) }, source);
-          dialog.close();
-        });
-      };
-      dialog.addEventListener("close", () => dialog.remove(), { once: true });
-      dialog.showModal();
+    const C = U.referenceComponents;
+    let page = 0, query = "";
+    async function mutate(operation, item) {
+      if (operation === "delete") {
+        const name = state.data.reference_assets.assets.find(asset => asset.id === item.asset_id).name;
+        if (!(await confirmReferenceAction("删除参考图片？", `将删除“${name}”。`, "删除后无法撤销。", "删除图片"))) return;
+      }
+      await C.update(operation, item);
     }
     function render() {
-      const current = ++version, entries = assets(kind), snapshot = state.data.reference_assets;
+      const snapshot = state.data.reference_assets;
+      const entries = assets(kind).filter(item => [item.name, ...item.tags].join(" ").toLocaleLowerCase().includes(query));
       page = Math.min(page, Math.max(0, Math.ceil(entries.length / 12) - 1));
-      root.innerHTML = `<div class="reference-gallery-header"><h3>${kind === "self" ? "自我参考图库" : "图生图预设图片"}</h3><button type="button" class="button secondary compact" data-upload>${icon("upload")}上传图片</button><input data-file type="file" accept="image/png,image/jpeg,image/webp" hidden multiple></div><p class="hint">${kind === "self" ? "确认描绘机器人自身后才使用图库。Tag 未命中时使用默认图；已有图库不会自动开启功能。" : "先上传图片，再在图生图预设中选择图片及用途。文生图预设只保存文字模板。"}图片管理单独保存；设置开关与预设编辑仍通过“保存全部设置”生效。</p><div class="reference-gallery">${entries.slice(page * 12, page * 12 + 12).map(item => `<article class="reference-card" data-asset="${e(item.id)}"><div class="reference-thumbnail"><img alt="${e(item.name)}" loading="lazy" hidden><span class="hint" data-loading>正在读取预览</span></div><strong>${e(item.name)}</strong><div class="hint reference-tags">${e(item.tags.join(" · ") || "未设置 tag")}</div>${snapshot.default_reference_id === item.id ? '<span class="pill">默认自我参考</span>' : ""}<div class="reference-card-actions"><button type="button" class="button secondary compact" data-edit>编辑</button>${kind === "self" && snapshot.default_reference_id !== item.id ? '<button type="button" class="button secondary compact" data-default>设为默认</button>' : ""}<button type="button" class="icon-button" data-up aria-label="上移图片">↑</button><button type="button" class="icon-button" data-delete aria-label="删除图片">${icon("close")}</button></div></article>`).join("") || '<p class="muted">尚未上传参考图片。</p>'}</div>${entries.length > 12 ? '<div class="reference-paging"><button type="button" class="button secondary compact" data-prev>上一页</button><span data-page></span><button type="button" class="button secondary compact" data-next>下一页</button></div>' : ""}`;
-      $("[data-upload]", root).onclick = () => $("[data-file]", root).click();
-      $("[data-file]", root).onchange = event => U.buttonAction($("[data-upload]", root), async () => {
-        for (const file of event.target.files) {
-          const uploaded = await call("upload", "source", {}, file);
-          await mutate("save", { name: file.name.slice(0, 80), kind, tags: [] }, uploaded.source_id);
-        }
-        toast("参考图片已保存");
-      });
-      if ($("[data-prev]", root)) {
-        $("[data-page]", root).textContent = `${page + 1} / ${Math.ceil(entries.length / 12)}`;
-        $("[data-prev]", root).disabled = page === 0;
-        $("[data-next]", root).disabled = (page + 1) * 12 >= entries.length;
-        $("[data-prev]", root).onclick = () => { page--; render(); };
-        $("[data-next]", root).onclick = () => { page++; render(); };
+      root.innerHTML = `<div class="reference-gallery-header"><h3>${kind === "self" ? "自我参考图库" : "参考图片"}</h3></div><div class="reference-gallery"></div>${entries.length > 12 ? '<div class="reference-paging"><button type="button" class="button secondary compact" data-prev>上一页</button><span data-page></span><button type="button" class="button secondary compact" data-next>下一页</button></div>' : ""}`;
+      $('.reference-gallery-header', root).append(C.toolbar({ kind }));
+      const grid = $('.reference-gallery', root);
+      for (const item of entries.slice(page * 12, page * 12 + 12)) {
+        const index = snapshot.assets.findIndex(entry => entry.id === item.id);
+        grid.append(C.card(item, {
+          onEdit: () => C.editor(item),
+          onRemove: () => U.buttonAction($(`[data-asset="${item.id}"] [data-remove-image]`, root), () => mutate("delete", { asset_id: item.id })),
+          isDefault: snapshot.default_reference_id === item.id,
+          onDefault: kind === "self" && snapshot.default_reference_id !== item.id ? () => mutate("default", { asset_id: item.id }).catch(U.error) : null,
+          onUp: index > 0 ? () => mutate("move", { asset_id: item.id, position: index - 1 }).catch(U.error) : null,
+        }));
       }
-      root.querySelectorAll("[data-asset]").forEach(card => {
-        const item = entries.find(entry => entry.id === card.dataset.asset);
-        $("[data-edit]", card).onclick = () => edit(item);
-        const run = (button, operation, values) => { button.onclick = () => U.buttonAction(button, () => mutate(operation, values)); };
-        if ($("[data-default]", card)) run($("[data-default]", card), "default", { asset_id: item.id });
-        const index = entries.findIndex(entry => entry.id === item.id);
-        $("[data-up]", card).disabled = index === 0;
-        run($("[data-up]", card), "move", { asset_id: item.id, position: snapshot.assets.findIndex(entry => entry.id === entries[Math.max(0, index - 1)].id) });
-        run($("[data-delete]", card), "delete", { asset_id: item.id });
-        call("query", "reference_image", { asset_id: item.id }).then(result => {
-          if (current !== version || !card.isConnected) return;
-          $("img", card).src = result.preview;
-          $("img", card).hidden = false;
-          $("[data-loading]", card).remove();
-        }).catch(error => { if (current === version && card.isConnected) $("[data-loading]", card).textContent = error.message; });
-      });
+      if (!entries.length) grid.innerHTML = '<p class="muted">尚未上传参考图片</p>';
+      if ($('[data-prev]', root)) {
+        $('[data-page]', root).textContent = `${page + 1} / ${Math.ceil(entries.length / 12)}`;
+        $('[data-prev]', root).disabled = page === 0;
+        $('[data-next]', root).disabled = (page + 1) * 12 >= entries.length;
+        $('[data-prev]', root).onclick = () => { page--; render(); };
+        $('[data-next]', root).onclick = () => { page++; render(); };
+      }
     }
+    C.observe(root, render);
     render();
+    return { filter(value) { query = value.trim().toLocaleLowerCase(); page = 0; render(); } };
   }
 
   function confirmButton(root) {
@@ -3897,7 +4134,7 @@ dialog::backdrop {
     button.type = "button";
     button.className = "button secondary compact";
     button.dataset.referenceConfirmation = "true";
-    button.textContent = "确认与其他图片合用";
+    button.textContent = "确认多图参考";
     button.onclick = async () => {
       if (await confirmMultiple()) {
         $('[data-input="multi_reference_confirmed"]', field).checked = true;
@@ -3908,55 +4145,227 @@ dialog::backdrop {
     field.after(button);
   }
 
+  function presetImages(row) {
+    const C = U.referenceComponents;
+    const field = $('[data-field="reference_bindings"]', row), array = $('[data-array="reference_bindings"]', field);
+    const add = $(':scope > [data-add-array]', array);
+    field.classList.add("preset-reference-field");
+    add.hidden = true;
+    const bindings = () => [...array.children].filter(item => item.hasAttribute("data-array-object"));
+    function appendBinding(id) {
+      if (bindings().length >= 8) throw new Error("一个预设最多使用 8 张参考图");
+      const previous = bindings();
+      add.click();
+      const binding = bindings().find(item => !previous.includes(item));
+      $('[data-input="asset_id"]', binding).value = id;
+      $('[data-input="role"]', binding).value = "base";
+      binding.dispatchEvent(new Event("input", { bubbles: true }));
+      return binding;
+    }
+    function chooseImage() {
+      if (bindings().length >= 8) { U.error(new Error("一个预设最多使用 8 张参考图")); return; }
+      const dialog = document.createElement("dialog");
+      dialog.className = "reference-confirm reference-image-picker";
+      dialog.setAttribute("aria-label", "选择参考图片");
+      dialog.innerHTML = `<div class="modal-header"><h2>选择参考图片</h2><button type="button" class="icon-button" data-close aria-label="关闭弹窗">${icon("close")}</button></div><div class="reference-dialog-body"><div class="reference-gallery"></div></div>`;
+      const grid = $('.reference-gallery', dialog);
+      for (const item of assets("preset")) {
+        const select = () => { if (row.isConnected) appendBinding(item.id); dialog.close(); };
+        grid.append(C.card(item, { onEdit: select, actionLabel: "选择" }));
+      }
+      if (!assets("preset").length) grid.innerHTML = '<p class="hint">尚未上传参考图片</p>';
+      document.body.append(dialog);
+      $('[data-close]', dialog).onclick = () => dialog.close();
+      dialog.addEventListener("close", () => dialog.remove(), { once: true });
+      dialog.showModal();
+    }
+    const toolbar = C.toolbar({ kind: "preset", onChoose: chooseImage,
+      beforeUpload(files) { if (bindings().length + files.length > 8) throw new Error("一个预设最多使用 8 张参考图"); },
+      onAsset(item) { if (row.isConnected) appendBinding(item.id); },
+    });
+    $('.field-heading', field).after(toolbar);
+    const management = document.createElement("details");
+    management.className = "preset-asset-manager";
+    management.innerHTML = `<summary>管理已上传图片 ${icon("chevron")}</summary><div data-preset-assets></div>`;
+    field.append(management);
+    management.ontoggle = () => { if (management.open) gallery($('[data-preset-assets]', management), "preset"); };
+    function render() {
+      for (const binding of bindings()) {
+        binding.classList.add("reference-binding-row");
+        $(':scope > .array-object-header', binding).hidden = true;
+        $(':scope > .form-grid', binding).hidden = true;
+        const id = $('[data-input="asset_id"]', binding).value;
+        const item = assets("preset").find(asset => asset.id === id);
+        const legacyPrompt = $('[data-input="note"]', binding).value;
+        const signature = JSON.stringify([item, legacyPrompt]);
+        if (binding.dataset.cardSignature === signature) continue;
+        binding.dataset.cardSignature = signature;
+        $('.reference-card', binding)?.remove();
+        if (!item) { binding.append(Object.assign(document.createElement("p"), { textContent: "参考图片不可用" })); continue; }
+        const prompt = [...new Set([item.prompt, legacyPrompt].filter(Boolean))].join(", ");
+        binding.append(C.card(item, { prompt,
+          onEdit: () => C.editor(item, { prompt, onSaved() {
+            if (!binding.isConnected) return;
+            const changed = $('[data-input="role"]', binding).value !== "base" || $('[data-input="subject_id"]', binding).value || $('[data-input="note"]', binding).value;
+            $('[data-input="role"]', binding).value = "base";
+            $('[data-input="subject_id"]', binding).value = "";
+            $('[data-input="note"]', binding).value = "";
+            if (changed) binding.dispatchEvent(new Event("input", { bubbles: true }));
+          } }),
+          onRemove: () => $('[data-remove-object]', binding).click(),
+        }));
+      }
+    }
+    array.addEventListener("input", render);
+    array.addEventListener("change", render);
+    new MutationObserver(render).observe(array, { childList: true });
+    C.observe(field, render);
+    render();
+  }
+
   function presetTypes(root) {
     const list = $('[data-array="presets"]', root);
     if (!list) return;
-    let active = state.presetKind || "text_to_image", initialized = false;
-    const toolbar = document.createElement("div");
-    toolbar.className = "reference-preset-tabs";
-    toolbar.innerHTML = '<button type="button" class="button secondary" data-kind="text_to_image">文生图预设</button><button type="button" class="button secondary" data-kind="image_to_image">图生图预设</button>';
-    list.before(toolbar);
+    let active = state.presetKind || "text_to_image", selected = null, displayed = null;
+    const origin = list.closest(".form-grid"), field = list.closest('[data-field="presets"]');
+    const manager = document.createElement("div");
+    manager.className = "preset-manager";
+    manager.innerHTML = `<div class="preset-modebar"><div class="reference-preset-tabs" role="group" aria-label="预设类型"><button type="button" class="button secondary" data-kind="text_to_image">文生图预设</button><button type="button" class="button secondary" data-kind="image_to_image">图生图预设</button></div><span class="hint" data-preset-count></span></div><section class="settings-card preset-defaults"><div class="preset-default-description"><h3 data-default-title></h3></div><div data-preset-defaults></div></section><div class="preset-body"><aside class="settings-card preset-library"><div class="preset-library-heading"><h3>我的预设</h3><button type="button" class="icon-button" data-new-preset aria-label="新建预设" title="新建预设">${icon("plus")}</button></div><label class="preset-search">${icon("search")}<input type="search" data-preset-search placeholder="搜索名称或 tag" aria-label="搜索预设"></label><div class="preset-list" data-preset-list></div></aside><div class="preset-editor" data-preset-editor><div class="settings-card preset-empty" data-preset-empty hidden>${icon("layers")}<h3>还没有预设</h3><p class="hint">保存常用的画面风格，下次创作直接使用。</p><button type="button" class="button secondary" data-empty-new>${icon("plus")}新建预设</button></div></div></div>`;
+    root.prepend(manager);
+    const editor = $('[data-preset-editor]', manager), defaults = $('[data-preset-defaults]', manager);
+    for (const key of ["image_edit_presets_enabled", "default_style", "default_image_edit_preset"]) {
+      const item = $(`[data-field="${key}"]`, origin);
+      if (item) defaults.append(item);
+    }
+    editor.append(field);
+    origin.hidden = true;
+    const search = $('[data-preset-search]', manager), navigation = $('[data-preset-list]', manager);
+    const rows = () => [...list.children].filter(node => node.hasAttribute("data-array-object"));
+    const input = (row, key) => $(`[data-input="${key}"]`, row);
+    const value = (row, key) => input(row, key)?.value || "";
+    const typeOf = row => value(row, "preset_type");
+
+    function decorate(row) {
+      if (row.dataset.referenceBound) return;
+      row.dataset.referenceBound = "true";
+      row.classList.add("preset-detail-card");
+      const grid = $(":scope > .form-grid", row);
+      const fields = [...grid.children];
+      grid.className = "preset-field-sections";
+      const section = (title, keys, name, advanced = false) => {
+        const block = document.createElement(advanced ? "details" : "section");
+        block.className = `preset-field-section ${name}`;
+        block.innerHTML = advanced ? `<summary>${title}${icon("chevron")}</summary><div class="form-grid"></div>` : `<div class="preset-section-heading"><h3>${title}</h3></div><div class="form-grid"></div>`;
+        const target = $(".form-grid", block);
+        keys.map(key => fields.find(field => field.dataset.field === key)).filter(Boolean).forEach(field => target.append(field));
+        grid.append(block);
+      };
+      section("预设信息", ["name", "enabled", "description", "tags", "apply_to_image_edit"], "preset-identity");
+      section("参考图片", ["reference_bindings", "multi_reference_confirmed"], "preset-bindings");
+      section("画面风格", ["positive_prompt_template", "negative_prompt_template"], "preset-prompts");
+      section("预设类型", ["preset_type"], "preset-advanced", true);
+      $('[data-remove-object]', row).innerHTML = `${icon("close")}移除预设`;
+      confirmButton(row);
+    }
+
+    function choose(row, reveal = false) {
+      selected = row;
+      update();
+      if (reveal && window.matchMedia("(max-width: 760px)").matches) row.scrollIntoView({ block: "start", behavior: "instant" });
+    }
     function update() {
       state.presetKind = active;
-      toolbar.querySelectorAll("button").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.kind === active)));
-      for (const row of [...list.children].filter(node => node.hasAttribute("data-array-object"))) {
-        const type = $('[data-input="preset_type"]', row);
-        if (!type) continue;
-        if (!row.dataset.referenceBound) {
-          row.dataset.referenceBound = "true";
-          if (initialized && active === "image_to_image") type.value = active;
-          confirmButton(row);
-          type.addEventListener("change", () => {
-            active = type.value;
-            if (active === "image_to_image") $('[data-input="apply_to_image_edit"]', row).checked = false;
-            update();
-          });
-        }
-        row.hidden = type.value !== active;
-        $('[data-field="apply_to_image_edit"]', row).hidden = type.value !== "text_to_image";
-        const bindings = $('[data-field="reference_bindings"]', row);
-        bindings.hidden = type.value !== "image_to_image" && !bindings.querySelector("[data-array-object]");
-        $('[data-reference-confirmation]', row).hidden = type.value !== "image_to_image";
-      }
-      for (const key of ["image_edit_presets_enabled", "default_image_edit_preset"])
-        $(`[data-field="${key}"]`, root).hidden = active !== "image_to_image";
-      $('[data-field="default_style"]', root).hidden = active !== "text_to_image";
-      const gallery = $(".reference-preset-gallery", root);
-      if (gallery) gallery.hidden = active !== "image_to_image";
-      initialized = true;
+      const all = rows();
+      all.forEach(decorate);
+      const query = search.value.trim().toLocaleLowerCase();
+      const kindRows = all.filter(row => typeOf(row) === active);
+      const matching = kindRows.filter(row => [value(row, "name"), value(row, "description"), ...row.querySelectorAll('[data-array="tags"] [data-value]')].map(item => typeof item === "string" ? item : item.value).join(" ").toLocaleLowerCase().includes(query));
+      if (!matching.includes(selected)) selected = matching.find(row => value(row, "name") === state.presetSelection?.[active]) || matching[0] || null;
+      state.presetSelection = { ...state.presetSelection, [active]: selected ? value(selected, "name") : "" };
+      manager.querySelectorAll('[data-kind]').forEach(button => button.setAttribute("aria-pressed", String(button.dataset.kind === active)));
+      U.motion.segmented($('.reference-preset-tabs', manager));
+      $('[data-preset-count]', manager).textContent = `${kindRows.length} 个${active === "text_to_image" ? "文生图" : "图生图"}预设`;
+      $('[data-default-title]', manager).textContent = active === "text_to_image" ? "文生图的默认选择" : "图生图默认设置";
+      for (const key of ["image_edit_presets_enabled", "default_image_edit_preset"]) $(`[data-field="${key}"]`, defaults).hidden = active !== "image_to_image";
+      $('[data-field="default_style"]', defaults).hidden = active !== "text_to_image";
+      const defaultName = $(`[data-input="${active === "text_to_image" ? "default_style" : "default_image_edit_preset"}"]`, defaults).value;
+      all.forEach(row => {
+        row.hidden = row !== selected;
+        if (row !== selected && $('.preset-asset-manager', row)) $('.preset-asset-manager', row).open = false;
+        row.setAttribute("aria-label", value(row, "name") || "未命名预设");
+        $(':scope > .array-object-header > .muted', row).textContent = value(row, "name") || "未命名预设";
+        $('[data-field="apply_to_image_edit"]', row).hidden = typeOf(row) !== "text_to_image";
+        $(".preset-bindings", row).hidden = typeOf(row) !== "image_to_image" && !$('[data-array="reference_bindings"] [data-array-object]', row);
+        $('[data-reference-confirmation]', row).hidden = typeOf(row) !== "image_to_image";
+      });
+      if (selected && typeOf(selected) === "image_to_image" && !$('.reference-upload-toolbar', selected)) presetImages(selected);
+      if (selected && selected !== displayed) U.motion.enter(selected, 3);
+      displayed = selected;
+      const focused = document.activeElement?.closest('[data-preset-index]');
+      const focusedIndex = focused && navigation.contains(focused) ? focused.dataset.presetIndex : null;
+      navigation.innerHTML = matching.map(row => `<button type="button" class="preset-list-item ${row === selected ? "active" : ""}" aria-pressed="${row === selected}" data-preset-index="${all.indexOf(row)}"><span class="preset-item-icon">${icon(active === "text_to_image" ? "sparkles" : "images")}</span><span><strong>${e(value(row, "name") || "未命名预设")}</strong><small>${e(value(row, "description") || "")}</small></span>${value(row, "name") === defaultName ? '<span class="preset-badge">默认</span>' : !input(row, "enabled").checked ? '<span class="preset-badge">停用</span>' : ""}</button>`).join("") || '<p class="hint preset-no-match">没有匹配的预设</p>';
+      navigation.querySelectorAll('[data-preset-index]').forEach(button => { button.onclick = () => choose(all[Number(button.dataset.presetIndex)], true); });
+      if (focusedIndex !== null) $(`[data-preset-index="${focusedIndex}"]`, navigation)?.focus({ preventScroll: true });
+      const empty = $('[data-preset-empty]', manager);
+      empty.hidden = Boolean(selected);
+      $("h3", empty).textContent = query ? "没有匹配的预设" : "还没有这类预设";
+      $("p", empty).textContent = query ? "试试其他名称或 tag，也可以清空搜索。" : "新建一个预设，保存常用的画面描述。";
     }
-    toolbar.querySelectorAll("button").forEach(button => { button.onclick = () => { active = button.dataset.kind; update(); }; });
+    function addPreset() {
+      search.value = "";
+      const before = rows();
+      $(":scope > [data-add-array]", list).click();
+      const added = rows().find(row => !before.includes(row));
+      if (!added) return;
+      input(added, "preset_type").value = active;
+      let name = "新建预设", index = 2;
+      const names = before.map(row => value(row, "name"));
+      while (names.includes(name)) name = `新建预设 ${index++}`;
+      input(added, "name").value = name;
+      choose(added, true);
+      input(added, "name").dispatchEvent(new Event("input", { bubbles: true }));
+      input(added, "name").focus();
+      input(added, "name").select();
+    }
+    $('[data-new-preset]', manager).onclick = addPreset;
+    $('[data-empty-new]', manager).onclick = addPreset;
+    manager.querySelectorAll('[data-kind]').forEach(button => { button.onclick = () => { active = button.dataset.kind; search.value = ""; selected = null; update(); }; });
+    search.addEventListener("input", event => { event.stopPropagation(); update(); });
+    search.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); } });
+    const changed = event => {
+      const row = event.target.closest('[data-array-object]');
+      if (event.target.dataset.input === "preset_type" && row && row.parentElement === list) {
+        active = event.target.value;
+        if (active === "image_to_image") input(row, "apply_to_image_edit").checked = false;
+        selected = row;
+      }
+      update();
+    };
+    root.addEventListener("input", changed);
+    root.addEventListener("change", changed);
     const observer = new MutationObserver(update);
-    observer.observe(list, { childList: true, subtree: true });
+    observer.observe(list, { childList: true });
     const reset = event => {
-      if (event.detail.key !== "presets") return;
+      if (event.detail.key !== "presets") { update(); return; }
       observer.disconnect();
-      toolbar.remove();
+      root.removeEventListener("input", changed);
+      root.removeEventListener("change", changed);
       root.removeEventListener("fieldreset", reset);
+      for (const key of ["image_edit_presets_enabled", "default_style", "default_image_edit_preset", "presets"]) origin.append($(`[data-field="${key}"]`, manager));
+      manager.remove();
+      origin.hidden = false;
       presetTypes(root);
     };
     root.addEventListener("fieldreset", reset);
+    root.addEventListener("revealpreset", event => {
+      const row = rows().find(item => item.contains(event.target));
+      if (row) { active = typeOf(row); search.value = ""; choose(row); }
+    });
     update();
+  }
+
+  function revealPreset(input) {
+    input.dispatchEvent(new Event("revealpreset", { bubbles: true }));
   }
 
   async function confirmSettings(all, previous) {
@@ -3983,7 +4392,7 @@ dialog::backdrop {
     return true;
   }
 
-  U.referenceUI = { gallery, options, confirmButton, presetTypes, confirmSettings, confirmMultiple };
+  U.referenceUI = { refreshPickers, gallery, options, confirmButton, presetTypes, revealPreset, confirmSettings, confirmMultiple };
 })();
 
 (() => {
@@ -4197,13 +4606,13 @@ dialog::backdrop {
   const U = window.DrawpicUI;
   function html(fields, values) {
     return U.forms.sections([
-      { title: "连接与通用", hint: "地址从 MaiBot 所在机器访问；工作流文件也需放在该机器上。", open: true,
+      { title: "连接设置", hint: "地址从 MaiBot 所在机器访问；工作流文件也需放在该机器上。", open: true,
         includes: key => ["base_url", "negative_prompt_enabled", "negative_prompt", "rewrite_prompt_to_english"].includes(key) },
       { title: "文生图工作流", hint: "使用 ComfyUI 导出的 API 格式 JSON；节点 ID 填 JSON 中的键，不填节点标题。", open: true,
         includes: key => key.startsWith("t2i_") },
       { title: "图生图工作流（可选）", hint: "只使用文生图时无需配置。图生图支持一个 LoadImage 源图节点。", open: Boolean(values.i2i_image_node_id),
         includes: key => key.startsWith("i2i_") || key === "image_input_name" },
-      { title: "节点字段与采样", hint: "标准文本字段为 text，种子字段为 seed；noise_seed 等自定义字段请按工作流填写。", open: false,
+      { title: "节点采样", hint: "标准文本字段为 text，种子字段为 seed；noise_seed 等自定义字段请按工作流填写。", open: false,
         includes: key => ["prompt_input_name", "seed", "seed_input_name", "poll_interval_seconds"].includes(key) },
     ], fields, values, { platform: true, kind: "comfyui" });
   }
@@ -4254,7 +4663,7 @@ dialog::backdrop {
     const fieldsHTML = kind === "comfyui" ? U.comfyuiForm.html(fields, values) : U.forms.html(fields, values, { platform: true, kind });
     const node = modal(
       record ? "编辑绘图平台" : "添加绘图平台",
-      `<form id="provider-form"><div class="provider-form-body"><p class="hint" style="margin:0 0 20px">${e(catalog.name)} · 先填写连接信息和模型，其他选项可按需调整。保存后应用到新任务。</p><div class="field"><label for="provider-name">平台名称</label><input id="provider-name" maxlength="80" required pattern="[^\\s]+" aria-describedby="provider-name-hint" value="${e(record?.name || defaultName)}" placeholder="例如 OpenAI_Compatible、日常绘图、备用_API"><p class="hint" id="provider-name-hint">支持中文、英文，名称不能包含空格，可使用下划线 _。</p></div>${fieldsHTML}</div><div class="modal-footer provider-footer"><div class="provider-footer-reset"><button type="button" id="reset-provider" class="button secondary">${icon("refresh")}恢复默认参数</button><span data-unsaved class="unsaved" hidden>有未保存的修改</span></div><div class="provider-footer-actions"><button type="button" id="provider-back" class="button secondary">取消</button><button type="submit" class="button">${icon("check")}保存平台</button></div></div></form>`,
+      `<form id="provider-form"><div class="provider-form-body"><div class="field"><label for="provider-name">平台名称</label><input id="provider-name" maxlength="80" required pattern="[^\\s]+" aria-describedby="provider-name-hint" value="${e(record?.name || defaultName)}" placeholder="例如 OpenAI_Compatible、日常绘图、备用_API"><p class="hint" id="provider-name-hint">支持中文、英文，名称不能包含空格，可使用下划线 _。</p></div>${fieldsHTML}</div><div class="modal-footer provider-footer"><div class="provider-footer-reset"><button type="button" id="reset-provider" class="button secondary">${icon("refresh")}恢复默认参数</button><span data-unsaved class="unsaved" hidden>有未保存的修改</span></div><div class="provider-footer-actions"><button type="button" id="provider-back" class="button secondary">取消</button><button type="submit" class="button">${icon("check")}保存平台</button></div></div></form>`,
     );
     const form = $("#provider-form", node),
       read = U.forms.bind(form, fields, values, { platform: true, kind });
@@ -4350,10 +4759,10 @@ dialog::backdrop {
   function addPlatform() {
     const node = modal(
       "选择绘图平台",
-      `<p class="muted" style="margin-bottom:20px">所有类型都可以添加多个实例。请使用不同名称，区分账号、服务或工作流。</p><div class="catalog-grid">${state.data.catalog
+      `<div class="catalog-grid">${state.data.catalog
         .map((item) => {
           const added = false;
-          return `<button class="catalog-option" data-kind="${e(item.kind)}" ${added ? "disabled" : ""}><span class="provider-icon">${e(item.name.slice(0, 1))}</span><span>${e(item.name)}<small>${added ? "已添加，可在平台卡片中编辑" : item.kind === "openai" ? "OpenAI、New API 与其他兼容服务" : "添加并配置模型"}</small></span></button>`;
+          return `<button class="catalog-option" data-kind="${e(item.kind)}" ${added ? "disabled" : ""}><span class="provider-icon">${e(item.name.slice(0, 1))}</span><span>${e(item.name)}<small>${added ? "已添加，可在平台卡片中编辑" : item.kind === "openai" ? "OpenAI、New API 等兼容服务" : "添加并配置模型"}</small></span></button>`;
         })
         .join("")}</div>`,
     );
@@ -4365,7 +4774,7 @@ dialog::backdrop {
     const items = state.data.providers;
     const revision = state.data.revision;
     $("#workspace-content").innerHTML =
-      `<div class="toolbar"><span class="muted">已添加 ${items.length} 个平台 · 仅启用的平台会出现在模型列表</span><button id="add-platform" class="button">${icon("plus")}添加平台</button></div><div class="card-grid">${items
+      `<div class="toolbar"><span class="muted">已添加 ${items.length} 个平台</span><button id="add-platform" class="button">${icon("plus")}添加平台</button></div><div class="card-grid">${items
         .map((item) => {
           const kind = state.data.catalog.find((c) => c.kind === item.kind);
           const models =
@@ -4381,7 +4790,7 @@ dialog::backdrop {
             .map((model) => `<span class="pill">${e(model)}</span>`)
             .join(
               "",
-            )}${models.length > 4 ? `<span class="pill">+${models.length - 4}</span>` : ""}</div><p class="hint">${item.kind === "comfyui" ? "从标准数据目录加载工作流" : item.has_api_key ? "密钥已配置，页面不回传明文" : "尚未填写 API Key"}</p><div class="actions"><button class="button secondary compact" data-edit>编辑配置</button><button class="button ghost compact" data-delete>移除</button></div></article>`;
+            )}${models.length > 4 ? `<span class="pill">+${models.length - 4}</span>` : ""}</div><p class="hint">${item.kind === "comfyui" ? "ComfyUI 工作流" : item.has_api_key ? "密钥已配置" : "尚未填写 API Key"}</p><div class="actions"><button class="button secondary compact" data-edit>编辑配置</button><button class="button ghost compact" data-delete>移除</button></div></article>`;
         })
         .join(
           "",
@@ -4544,7 +4953,7 @@ dialog::backdrop {
           index: 0,
         });
         if (!current()) return;
-        node.innerHTML = `<img class="preview-image" src="${e(preview.data_url)}" alt="生成的图片"><div class="result-meta"><span class="pill ${e(result.status)}">${e(U.statusLabel(result.status))}</span><span class="pill">${e(preview.width)} × ${e(preview.height)}</span></div><p class="hint">${e(result.message)}</p><button id="studio-detail" class="button secondary wide" style="margin-top:16px">查看任务与全部图片 ${icon("arrow")}</button>`;
+        node.innerHTML = `<img class="preview-image" src="${e(preview.data_url)}" alt="生成的图片"><div class="result-meta"><span class="pill ${e(result.status)}">${e(U.statusLabel(result.status))}</span><span class="pill">${e(preview.width)} × ${e(preview.height)}</span></div><p class="hint">${e(result.message)}</p><button id="studio-detail" class="button secondary wide" style="margin-top:16px">查看全部图片 ${icon("arrow")}</button>`;
         $("#studio-detail").onclick = () => U.openTask(result.task_id);
       } else {
         node.innerHTML = `<div class="placeholder-art">${icon(result.status === "running" ? "clock" : "images")}<span>${e(U.statusLabel(result.status))}</span><small>${e(result.message)}</small></div><div class="result-meta"><span class="pill">${e(result.model)}</span><span class="pill">${e(result.task_id)}</span></div>`;
@@ -4597,7 +5006,7 @@ dialog::backdrop {
       renderSubmissions();
     }
   }
-  U.views.studio = async (previousMode = null) => {
+  U.views.studio = async (transition = null) => {
     clearTimeout(pollTimer);
     resultVersion++;
     if (!state.data.models.length) {
@@ -4614,18 +5023,45 @@ dialog::backdrop {
     const styles = state.data.settings.style;
     const inherited = state.data.presets.find(preset => preset.name === styles.default_style && preset.apply_to_image_edit);
     const defaultPreset = mode === "draw" ? styles.default_style : styles.default_image_edit_preset || inherited?.name;
-    const presetCaption = mode === "edit_image" && !styles.image_edit_presets_enabled ? "图生图预设已关闭" : `跟随当前模式默认预设${defaultPreset ? `（${defaultPreset}）` : "（未设置）"}`;
+    const presetCaption = mode === "edit_image" && !styles.image_edit_presets_enabled ? "图生图预设已关闭" : `自动匹配${defaultPreset ? ` · 默认：${defaultPreset}` : " · 未设置默认"}`;
 
-    const referenceControls = mode === "edit_image" ? `<fieldset class="reference-request"><legend>本次参考与素材</legend><div class="field"><label for="reference-self">机器人自身</label><select id="reference-self" ${refs.self_reference_enabled ? "" : "disabled"}><option value="off">不使用自我参考</option><option value="auto" ${refs.self_reference_enabled ? "selected" : ""}>根据本次原始描述识别</option><option value="required">明确描绘机器人自身</option></select></div><div class="field"><label for="reference-tags">自我参考 Tag（可选）</label><input id="reference-tags" placeholder="例如：冬装，居家"></div><label class="reference-source-option"><span>从当前选定聊天查找缺少的素材</span><input id="reference-chat" type="checkbox" role="switch" class="toggle" ${refs.allow_chat_material_search ? "" : "disabled"}></label><label class="reference-source-option"><span>联网查找缺少的素材</span><input id="reference-web" type="checkbox" role="switch" class="toggle" ${refs.allow_web_material_search ? "" : "disabled"}></label><p class="hint">自我图库、预设图或合格素材可提供真实源图。聊天取材需要在结果去向中选择对应会话；全局关闭的来源不可使用。</p><button type="button" class="button ghost compact" id="studio-references">管理参考与素材 ${icon("arrow")}</button></fieldset>` : "";
-    $("#workspace-content").innerHTML =
-      `<div class="studio-grid"><section class="panel"><div class="panel-header"><div class="section-label">${icon("sparkles")}<h2>创作新的画面</h2></div><span class="pill">后台执行</span></div><div class="mode-switch" data-mode="${mode}" role="group" aria-label="绘图模式"><span class="mode-indicator" aria-hidden="true"></span><button id="mode-draw" aria-pressed="${mode === "draw"}" class="${mode === "draw" ? "active" : ""}">文生图</button><button id="mode-edit" aria-pressed="${mode === "edit_image"}" class="${mode === "edit_image" ? "active" : ""}">图生图</button></div><form id="draw-form"><div class="field"><label for="draw-prompt">你想画什么？</label><textarea id="draw-prompt" class="prompt-input" maxlength="16000" required placeholder="描述主体、构图、光线和风格。例如：一只橘猫坐在窗边，午后阳光照进房间，水彩质感。"></textarea></div><div class="field-row"><div class="field"><label for="draw-model">绘图模型</label><select id="draw-model" required${state.data.default_model_error ? ' aria-describedby="draw-model-error"' : ""}>${modelOptions()}</select>${state.data.default_model_error ? `<p id="draw-model-error" class="hint" role="status">${e(state.data.default_model_error)}。请选择完整的“平台实例 / 模型”名称；可在偏好与预设中更新默认模型。</p>` : ""}</div><div class="field"><label for="draw-style">绘图预设</label><select id="draw-style"><option value="">${e(presetCaption)}</option><option value="none">不使用预设</option>${state.data.presets
-        .filter((item) => item.enabled && (mode === "draw" ? item.preset_type === "text_to_image" : state.data.settings.style.image_edit_presets_enabled && (item.preset_type === "image_to_image" || item.apply_to_image_edit)))
-        .map(
-          (item) => `<option value="${e(item.name)}">${e(item.name)}</option>`,
-        )
-        .join(
-          "",
-        )}</select></div></div>${mode === "edit_image" ? `<div class="field"><label>源图片</label><div class="upload-zone" id="upload-zone">${icon("upload")}<p>拖放图片到这里，或选择文件</p><button type="button" id="source-button" class="button secondary compact">${icon("upload")}选择源图片</button><input type="file" id="source-file" accept="image/png,image/jpeg,image/webp" multiple hidden></div><div class="source-list" id="source-list"></div><p class="hint">上传真实源图；最终支持数量以模型为准。需要公网原图 URL 的模型不支持直接使用网页上传的本地图片。</p></div>` : ""}${referenceControls}<details><summary class="muted" style="cursor:pointer;margin-bottom:15px">反向提示词与发送选项</summary><div class="field"><label for="draw-negative">反向提示词</label><textarea id="draw-negative" rows="2" maxlength="16000" placeholder="不希望出现在画面中的内容"></textarea></div><div class="field"><label for="draw-delivery">结果去向</label><select id="draw-delivery"><option value="web">仅在工作台查看</option><option value="chat">同时发送到聊天</option></select></div><div id="delivery-fields" hidden><div class="field-row"><div class="field"><label for="chat-platform">聊天平台标识</label><input id="chat-platform" value="qq" maxlength="80"></div><div class="field"><label>&nbsp;</label><button type="button" id="load-streams" class="button secondary wide">加载聊天会话</button></div></div><div class="field"><label for="draw-stream">目标会话</label><select id="draw-stream"><option value="">请先加载会话</option></select><p class="hint">使用实际聊天流；发送到聊天时沿用群聊或私聊额度。网页专用任务由当前实例管理，不计入聊天额度。</p></div></div></details><div class="sticky-save"><span class="hint">模型校验 · 提示词与图片审核</span><button type="submit" class="button" id="start-drawing">${icon("sparkles")}开始绘图</button></div></form></section><aside class="stack"><section class="panel"><div class="panel-header"><h3>创作结果</h3>${icon("images")}</div><div id="studio-submissions" aria-live="polite"></div><div id="studio-result"><div class="placeholder-art">${icon("sparkles")}<span>想象，正在等待落笔</span><small>任务提交后，会在这里显示进度与生成图片。</small></div></div></section><div class="panel"><h3>让画面更接近你的想法</h3><p class="hint">描述具体的主体、环境和光线。试试绘图预设，把常用的画面语言保存下来。</p><button class="button ghost compact" id="studio-presets" style="margin-top:8px">管理预设 ${icon("arrow")}</button></div></aside></div>`;
+    const presetOptions = state.data.presets
+      .filter(item => item.enabled && (mode === "draw" ? item.preset_type === "text_to_image" : styles.image_edit_presets_enabled && (item.preset_type === "image_to_image" || item.apply_to_image_edit)))
+      .map(item => `<option value="${e(item.name)}">${e(item.name)}</option>`).join("");
+    const referenceControls = mode === "edit_image" ? `
+      <details class="control-disclosure" id="reference-options">
+        <summary><span>${icon("layers")}参考素材</span><span class="disclosure-note">按需使用 ${icon("chevron")}</span></summary>
+        <div class="disclosure-body">
+          <div class="field"><label for="reference-self">机器人自身</label><select id="reference-self" ${refs.self_reference_enabled ? "" : "disabled"}><option value="off">不使用自我参考</option><option value="auto" ${refs.self_reference_enabled ? "selected" : ""}>根据原始描述识别</option><option value="required">明确描绘机器人自身</option></select>${!refs.self_reference_enabled ? '<p class="hint">请先在“预设参考 → 自我参考”中开启。</p>' : ""}</div>
+          <div class="field"><label for="reference-tags">参考图 tag <span class="label-optional">可选</span></label><input id="reference-tags" placeholder="例如：冬装，居家"><p class="hint">未命中 tag 时使用图库默认图。</p></div>
+          <label class="reference-source-option"><span><strong>从聊天取材</strong><small>${refs.allow_chat_material_search ? `最多检查 ${e(refs.chat_material_search_limit)} 条近期消息` : "请先在“预设参考 → 素材来源”中开启"}</small></span><input id="reference-chat" type="checkbox" role="switch" class="toggle" ${refs.allow_chat_material_search ? "" : "disabled"}></label>
+          <label class="reference-source-option"><span><strong>从网络取材</strong><small>${refs.allow_web_material_search ? "使用 MaiBot 的联网搜索服务" : "请先在“预设参考 → 素材来源”中开启"}</small></span><input id="reference-web" type="checkbox" role="switch" class="toggle" ${refs.allow_web_material_search ? "" : "disabled"}></label>
+
+          <button type="button" class="button ghost compact" id="studio-references">管理预设参考 ${icon("arrow")}</button>
+        </div>
+      </details>` : "";
+    $("#workspace-content").innerHTML = `
+      <div class="studio-grid">
+        <section class="panel studio-controls" aria-label="绘图设置">
+          <div class="studio-heading"><div><span class="section-kicker">创作设置</span><h2>绘图设置</h2></div>${icon("sparkles")}</div>
+          <div class="mode-switch" data-mode="${mode}" role="group" aria-label="绘图模式"><span class="mode-indicator" aria-hidden="true"></span><button id="mode-draw" aria-pressed="${mode === "draw"}" class="${mode === "draw" ? "active" : ""}">文生图</button><button id="mode-edit" aria-pressed="${mode === "edit_image"}" class="${mode === "edit_image" ? "active" : ""}">图生图</button></div>
+          <form id="draw-form">
+            <div class="field prompt-field"><div class="studio-label"><label for="draw-prompt">${mode === "draw" ? "画面描述" : "希望怎样修改画面？"}</label><span class="label-optional">主体 · 环境 · 光线</span></div><textarea id="draw-prompt" class="prompt-input" maxlength="16000" required placeholder="${mode === "draw" ? "例如：橘猫坐在窗边，午后阳光落在木地板上，柔和的水彩质感。" : "例如：保留人物和姿态，把背景换成傍晚的海边，使用柔和暖光。"}"></textarea></div>
+            <div class="studio-models">
+              <div class="field"><label for="draw-model">绘图模型</label><select id="draw-model" required${state.data.default_model_error ? ' aria-describedby="draw-model-error"' : ""}>${modelOptions()}</select>${state.data.default_model_error ? `<p id="draw-model-error" class="hint" role="status">${e(state.data.default_model_error)}。请选择完整的“平台实例 / 模型”名称；可在插件设置中更新默认模型。</p>` : ""}</div>
+              <div class="field"><div class="studio-label"><label for="draw-style">绘图预设</label><button type="button" id="studio-presets" class="button ghost compact">管理 ${icon("arrow")}</button></div><select id="draw-style"><option value="">${e(presetCaption)}</option><option value="none">不使用预设</option>${presetOptions}</select><p class="hint" id="studio-preset-description" hidden></p></div>
+            </div>
+            ${mode === "edit_image" ? `<section class="studio-source"><div class="studio-label"><h3>参考图片</h3><span class="label-optional">最多 8 张，依模型支持</span></div><div class="upload-zone" id="upload-zone">${icon("upload")}<div><strong>拖放图片到这里</strong><small>也可从设备选择 PNG、JPG 或 WebP</small></div><button type="button" id="source-button" class="button secondary compact">选择图片</button><input type="file" id="source-file" accept="image/png,image/jpeg,image/webp" multiple hidden></div><div class="source-list" id="source-list"></div></section>` : ""}
+            ${referenceControls}
+            <details class="control-disclosure" id="negative-options"><summary><span>${icon("sliders")}反向提示词</span><span class="disclosure-note">可选 ${icon("chevron")}</span></summary><div class="disclosure-body"><div class="field"><label for="draw-negative">不希望出现的内容</label><textarea id="draw-negative" rows="3" maxlength="16000" placeholder="例如：模糊、水印、过度曝光"></textarea></div></div></details>
+            <section class="studio-delivery"><div class="field"><label for="draw-delivery">结果处理</label><select id="draw-delivery"><option value="web">仅在工作台查看</option><option value="chat">同时发送到聊天</option></select></div><div id="delivery-fields" hidden><div class="field-row"><div class="field"><label for="chat-platform">聊天平台</label><input id="chat-platform" value="qq" maxlength="80"></div><div class="field stream-load"><button type="button" id="load-streams" class="button secondary wide">加载会话</button></div></div><div class="field"><label for="draw-stream">发送到</label><select id="draw-stream"><option value="">请先加载会话</option></select><p class="hint">发送到聊天时沿用该会话额度；仅在工作台查看不占聊天额度。</p></div></div></section>
+            <div class="sticky-save studio-submit"><span class="hint">Ctrl / ⌘ + Enter</span><button type="submit" class="button" id="start-drawing">${icon("sparkles")}开始绘图</button></div>
+          </form>
+        </section>
+        <aside class="studio-preview" aria-label="绘图结果">
+          <section class="panel studio-canvas-panel"><div class="panel-header"><div><h2>创作结果</h2></div><button type="button" class="button ghost compact" id="studio-tasks">全部任务 ${icon("arrow")}</button></div><div id="studio-submissions" aria-live="polite"></div><div id="studio-result"><div class="placeholder-art studio-empty"><div class="empty-canvas" aria-hidden="true">${icon("images")}<span></span></div><span>暂无结果</span></div></div></section>
+        </aside>
+      </div>`;
     for (const [id, value] of Object.entries(draft)) {
       const input = $("#" + id);
       if (
@@ -4641,44 +5077,34 @@ dialog::backdrop {
       if (mode === next) return;
       saveDraft();
       state.requestId = null;
-      const previous = mode;
+      const transform = getComputedStyle($(".mode-indicator")).transform;
       mode = next;
-      U.views.studio(previous).catch(U.error);
+      U.views.studio({ transform }).catch(U.error);
     }
     $("#mode-draw").onclick = () => changeMode("draw");
     $("#mode-edit").onclick = () => changeMode("edit_image");
-    if (
-      previousMode !== null &&
-      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      $(".mode-indicator").animate(
-        [
-          {
-            transform:
-              previousMode === "edit_image"
-                ? "translateX(100%)"
-                : "translateX(0)",
-          },
-          {
-            transform:
-              mode === "edit_image" ? "translateX(100%)" : "translateX(0)",
-          },
-        ],
-        { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" },
-      );
-    }
+    U.motion.segmented($(".mode-switch"), transition?.transform);
+    if (transition) U.motion.enter($("#draw-form"), 3);
     $("#draw-delivery").onchange = () => {
       $("#delivery-fields").hidden = $("#draw-delivery").value !== "chat";
     };
     if ($("#studio-references")) {
-      $("#studio-references").onclick = () => { state.settingsSection = "references"; U.navigate("settings"); };
+      $("#studio-references").onclick = () => { state.librarySection = "references"; U.navigate("library"); };
       const updateTags = () => { $("#reference-tags").disabled = $("#reference-self").value === "off"; };
       $("#reference-self").onchange = updateTags;
       updateTags();
     }
+    $("#studio-tasks").onclick = () => U.navigate("tasks");
+    const describePreset = () => {
+      const selected = state.data.presets.find(item => item.name === $("#draw-style").value);
+      $("#studio-preset-description").textContent = selected?.description || "";
+      $("#studio-preset-description").hidden = !selected?.description;
+    };
+    $("#draw-style").onchange = describePreset;
+    describePreset();
     $("#studio-presets").onclick = () => {
-      state.settingsSection = "style";
-      U.navigate("settings");
+      state.librarySection = "style";
+      U.navigate("library");
     };
     $("#load-streams").onclick = (event) =>
       buttonAction(event.currentTarget, async () => {
@@ -4716,7 +5142,7 @@ dialog::backdrop {
       state.requestId = null;
       saveDraft();
     };
-    U.bindSubmit($("#draw-form"));
+    U.bindSubmit($("#draw-form"), { shortcutOnly: true });
     $("#draw-form").onsubmit = (event) => {
       event.preventDefault();
       buttonAction($("#start-drawing"), async () => {
@@ -4793,7 +5219,7 @@ dialog::backdrop {
     const url = URL.createObjectURL(new Blob(parts, { type: info.mime }));
     const node = U.modal(
       "原图预览",
-      `<img class="detail-image" src="${e(url)}" alt="生成的原图"><p class="hint">${e(info.filename)} · ${(info.size / 1024 / 1024).toFixed(2)} MiB · 原文件位于插件图片缓存目录，会按容量和保留期清理。</p>`,
+      `<img class="detail-image" src="${e(url)}" alt="生成的原图"><p class="hint">${e(info.filename)} · ${(info.size / 1024 / 1024).toFixed(2)} MiB</p>`,
       () => URL.revokeObjectURL(url),
     );
     node.scrollTop = 0;
@@ -4846,7 +5272,7 @@ dialog::backdrop {
       )
         return;
       $("#detail-preview", node).innerHTML =
-        `<img class="detail-image" src="${e(image.data_url)}" alt="任务生成图片 ${index + 1}"><p class="hint">${image.width} × ${image.height} · ${(image.size / 1024 / 1024).toFixed(2)} MiB · 页面先显示压缩预览，原文件独立保存。</p>`;
+        `<img class="detail-image" src="${e(image.data_url)}" alt="任务生成图片 ${index + 1}"><p class="hint">${image.width} × ${image.height} · ${(image.size / 1024 / 1024).toFixed(2)} MiB</p>`;
       $("#view-original", node).onclick = (event) =>
         buttonAction(event.currentTarget, () =>
           original(taskId, index, event.currentTarget),
@@ -4911,7 +5337,7 @@ dialog::backdrop {
         )
         .join(
           "",
-        )}</select><input id="task-search-text" class="search-input" value="${e(state.taskSearch)}" placeholder="搜索模型、任务 ID 或失败原因" aria-label="搜索任务"><button type="submit" class="button secondary">搜索</button></div><span class="hint">${active ? "任务进行中，每 5 秒刷新" : "最近保留 500 个任务记录"}</span></form>${result.items.length ? `<div class="card-grid">${result.items.map((item) => `<button class="panel task-card" data-task="${e(item.task_id)}" aria-label="查看 ${e(item.model)} 任务详情">${item.thumbnail ? `<img class="task-art" src="${e(item.thumbnail)}" alt="绘图任务缩略图">` : `<div class="task-no-image">${icon(["pending", "running"].includes(item.status) ? "clock" : "images")}<span>${e(U.statusLabel(item.status))}</span></div>`}<div class="task-body"><span class="pill ${e(item.status)}">${e(U.statusLabel(item.status))}</span><h3>${e(item.model)}</h3><p class="task-message">${e(item.message)}</p><div class="task-bottom"><span>${{ webui: "网页创作", plugin: "插件联动", chat: "聊天绘图" }[item.origin] || "绘图任务"} · ${item.image_count} 张</span><span>${e(U.date(item.created_at))}</span></div></div></button>`).join("")}</div>` : U.empty("这里还没有任务", "开始一幅新的作品，或者调整搜索和筛选条件。")}<div class="actions pagination"><button id="previous-page" class="button secondary compact" ${state.taskPage <= 1 ? "disabled" : ""}>上一页</button><span class="muted">${state.taskPage} / ${Math.max(1, Math.ceil(result.total / result.page_size))}</span><button id="next-page" class="button secondary compact" ${state.taskPage * result.page_size >= result.total ? "disabled" : ""}>下一页</button></div>`;
+        )}</select><input id="task-search-text" class="search-input" value="${e(state.taskSearch)}" placeholder="搜索模型、任务 ID 或失败原因" aria-label="搜索任务"><button type="submit" class="button secondary">搜索</button></div></form>${result.items.length ? `<div class="card-grid">${result.items.map((item) => `<button class="panel task-card" data-task="${e(item.task_id)}" aria-label="查看 ${e(item.model)} 任务详情">${item.thumbnail ? `<img class="task-art" src="${e(item.thumbnail)}" alt="绘图任务缩略图">` : `<div class="task-no-image">${icon(["pending", "running"].includes(item.status) ? "clock" : "images")}<span>${e(U.statusLabel(item.status))}</span></div>`}<div class="task-body"><span class="pill ${e(item.status)}">${e(U.statusLabel(item.status))}</span><h3>${e(item.model)}</h3><p class="task-message">${e(item.message)}</p><div class="task-bottom"><span>${{ webui: "网页创作", plugin: "插件联动", chat: "聊天绘图" }[item.origin] || "绘图任务"} · ${item.image_count} 张</span><span>${e(U.date(item.created_at))}</span></div></div></button>`).join("")}</div>` : U.empty("这里还没有任务", "开始一幅新的作品，或者调整搜索和筛选条件。")}<div class="actions pagination"><button id="previous-page" class="button secondary compact" ${state.taskPage <= 1 ? "disabled" : ""}>上一页</button><span class="muted">${state.taskPage} / ${Math.max(1, Math.ceil(result.total / result.page_size))}</span><button id="next-page" class="button secondary compact" ${state.taskPage * result.page_size >= result.total ? "disabled" : ""}>下一页</button></div>`;
     document.querySelectorAll("[data-task]").forEach((button) => {
       button.onclick = () => openTask(button.dataset.task).catch(U.error);
     });
@@ -4945,32 +5371,65 @@ dialog::backdrop {
 (() => {
   "use strict";
   const U = window.DrawpicUI,
-    { state, $, call, buttonAction, toast } = U;
-  const sections = { general: "通用配置", review: "审核配置", access: "黑白名单", style: "绘图预设", references: "参考与素材" };
-  const sourceSection = (name) => ["review", "access", "references"].includes(name) ? "general" : name;
-  const reviewField = (key) => /^(prompt|image)_review_/.test(key);
-  const accessField = (key) => /^(group|private)_access_/.test(key);
+    { state, $, e, icon, call, buttonAction, toast } = U;
+  const sections = { style: "绘图预设", references: "自我参考", materials: "素材来源", general: "运行设置", review: "内容审核", access: "权限额度" };
+  const sectionIcons = { style: "sparkles", references: "images", materials: "search", general: "sliders", review: "eye", access: "layers" };
+  const sourceSection = name => ["review", "access", "references", "materials"].includes(name) ? "general" : name;
+  const reviewField = key => /^(prompt|image)_review_/.test(key);
+  const accessField = key => /^(group|private)_access_/.test(key) || /quota/.test(key) || ["admin_user_ids", "permission_enabled"].includes(key);
   const belongsToSection = (name, key) => name === "style" ||
     (name === "references" ? key === "references" : key !== "references") &&
     (name === "review" ? reviewField(key) : name === "access" ? accessField(key) : !reviewField(key) && !accessField(key));
-  U.views.settings = async () => {
-    let selected = Object.hasOwn(sections, state.settingsSection)
-      ? state.settingsSection
-      : "general";
+
+  function fieldGroups(name, fields, values) {
+    const used = new Set();
+    const group = (title, match, collapsed = false) => {
+      const selected = Object.fromEntries(Object.entries(fields).filter(([key]) => !used.has(key) && match(key)));
+      Object.keys(selected).forEach(key => used.add(key));
+      if (!Object.keys(selected).length) return "";
+      const content = U.forms.html(selected, values);
+      return collapsed
+        ? `<details class="settings-card settings-disclosure"><summary><span>${e(title)}</span>${icon("chevron")}</summary><div class="settings-card-body">${content}</div></details>`
+        : `<section class="settings-card"><div class="settings-card-heading"><h3>${e(title)}</h3></div>${content}</section>`;
+    };
+    let html = "";
+    if (name === "general") {
+      html += group("默认任务", key => ["default_model", "fallback_model", "fallback_models", "request_retry_count", "request_timeout_seconds"].includes(key));
+      html += group("聊天回传", key => ["command_reply_mode", "sync_generated_images_to_history", "failure_reason_enabled"].includes(key));
+      html += group("插件联动", key => key === "integration_api_enabled");
+      html += group("高级设置", key => /unsupported_models$/.test(key) || key === "skip_image_url_ip_check", true);
+    } else if (name === "review") {
+      html += group("提示词审核", key => key.startsWith("prompt_review_"));
+      html += group("生成图片审核", key => key.startsWith("image_review_"));
+    } else if (name === "access") {
+      html += group("群聊访问", key => key.startsWith("group_access_"));
+      html += group("私聊访问", key => key.startsWith("private_access_"));
+      html += group("使用额度", key => /quota/.test(key));
+      html += group("管理员", key => ["permission_enabled", "admin_user_ids"].includes(key));
+    }
+    html += group("其他设置", () => true);
+    return html;
+  }
+
+  function referenceFields(fields, values) {
+    const pick = keys => Object.fromEntries(Object.entries(fields).filter(([key]) => keys.includes(key)));
+    return `<section class="settings-card"><div class="settings-card-heading"><h3>自身识别</h3></div>${U.forms.html(pick(["self_reference_enabled", "self_names"]), values)}<details class="recognition-hints"><summary>自定义识别线索 ${icon("chevron")}</summary>${U.forms.html(pick(["self_keywords"]), values)}</details></section>
+      <section class="settings-card reference-library-card"><div data-self-gallery></div></section>
+      <details class="settings-card settings-disclosure"><summary><span>固定参考组合</span><span class="disclosure-note">可选 ${icon("chevron")}</span></summary><div class="settings-card-body">${U.forms.html(pick(["self_reference_ids", "multi_reference_confirmed"]), values)}</div></details>`;
+  }
+  function materialFields(fields, values) {
+    return `<section class="settings-card">${U.forms.html(fields, values)}</section>`;
+  }
+  async function showSettings(view) {
+    const keys = view === "library" ? ["style", "references", "materials"] : ["general", "review", "access"];
+    const preferred = view === "library" ? state.librarySection : state.settingsSection;
+    let selected = keys.includes(preferred) ? preferred : keys[0];
     const revision = state.data.revision;
+    const working = structuredClone(state.data.settings), baseline = working;
     const readers = {};
     const save = $("#save-settings");
-    $("#workspace-content").innerHTML =
-      `<div class="settings-layout"><div class="settings-tabs" role="tablist" aria-label="配置分类">${Object.entries(
-        sections,
-      )
-        .map(
-          ([name, title]) =>
-            `<button id="settings-tab-${name}" class="settings-tab" data-section="${name}" role="tab" aria-controls="settings-panel-${name}">${title}</button>`,
-        )
-        .join(
-          "",
-        )}</div><section class="panel"><div class="panel-header"><div><h2 id="settings-heading"></h2><p class="hint" id="settings-description"></p></div><button type="button" id="reset-settings" class="button secondary compact">恢复当前分类默认</button></div><form id="settings-form"></form></section></div>`;
+    const navigation = (keys, caption) => `<span class="settings-nav-caption" aria-hidden="true">${caption}</span>${keys.map(name => `<button id="settings-tab-${name}" class="settings-tab" data-section="${name}" role="tab" aria-controls="settings-panel-${name}">${icon(sectionIcons[name])}<span>${e(sections[name])}</span>${icon("chevron")}</button>`).join("")}`;
+    $("#workspace-content").innerHTML = `<div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="配置分类">${navigation(keys, view === "library" ? "创作资源" : "运行管理")}</nav><section class="settings-workspace"><div class="settings-page-heading"><h2 id="settings-heading"></h2><button type="button" id="reset-settings" class="button secondary compact">${icon("reset")}恢复本类默认</button></div><form id="settings-form"></form></section></div>`;
     const form = $("#settings-form");
     let requiresRefresh = false;
     function renderSection(name, values) {
@@ -4980,50 +5439,42 @@ dialog::backdrop {
       panel.setAttribute("role", "tabpanel");
       panel.setAttribute("aria-labelledby", `settings-tab-${name}`);
       panel.hidden = name !== selected;
-      const fields = name === "references" ? state.data.reference_fields : Object.fromEntries(
+      const materialField = key => key.startsWith("allow_") || ["chat_material_search_limit", "material_model"].includes(key);
+      const fields = ["references", "materials"].includes(name) ? Object.fromEntries(Object.entries(state.data.reference_fields).filter(([key]) => name === "materials" ? materialField(key) : !materialField(key))) : Object.fromEntries(
         Object.entries(state.data.schema.sections[sourceSection(name)].fields)
           .filter(([key]) => belongsToSection(name, key)),
       );
       if (name === "references") {
         values = values.references;
-        const selfFields = Object.fromEntries(Object.entries(fields).filter(([key]) => !key.startsWith("allow_")));
-        const sourceFields = Object.fromEntries(Object.entries(fields).filter(([key]) => key.startsWith("allow_")));
-        panel.innerHTML = `<h3>自我参考</h3><p class="hint">默认关闭。开启后依据用户原始请求识别是否描绘机器人；不明确时需要补充主体说明。填写当前机器人的名称及常用称呼。</p>${U.forms.html(selfFields, values)}<div data-self-gallery></div><h3 class="reference-source-title">素材来源</h3><p class="hint">两个来源独立开启。仅查找当前任务缺少的素材；用户本条附图与明确引用的图片不受这两个开关限制。</p>${U.forms.html(sourceFields, values)}`;
-      } else panel.innerHTML = U.forms.html(fields, values);
+        panel.innerHTML = referenceFields(fields, values);
+      } else if (name === "materials") {
+        values = values.references;
+        panel.innerHTML = materialFields(fields, values);
+      } else panel.innerHTML = name === "style" ? U.forms.html(fields, values) : fieldGroups(name, fields, values);
       const old = $(`#${panel.id}`, form);
       if (old) old.replaceWith(panel);
       else form.append(panel);
       const read = U.forms.bind(panel, fields, values);
-      // 通用、审核和黑白名单共享持久化配置，只读取当前分类的字段，避免覆盖其他分类草稿。
+      // 各分类只读取所属字段，再合并为同一份持久配置。
       readers[name] = () => {
         const result = read();
-        return name === "references" ? { references: result } : Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
+        return Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
       };
       if (name === "references") {
         U.referenceUI.confirmButton(panel);
         U.referenceUI.gallery($("[data-self-gallery]", panel), "self");
       } else if (name === "style") {
         U.referenceUI.presetTypes(panel);
-        const gallery = document.createElement("div");
-        gallery.className = "reference-preset-gallery";
-        gallery.hidden = true;
-        panel.append(gallery);
-        U.referenceUI.gallery(gallery, "preset");
       }
     }
-    for (const name of Object.keys(sections))
-      renderSection(name, structuredClone(state.data.settings[sourceSection(name)]));
+    for (const name of keys)
+      renderSection(name, structuredClone(working[sourceSection(name)]));
     function activate(name, reveal = false) {
-      selected = state.settingsSection = name;
+      const changed = selected !== name;
+      selected = name;
+      if (view === "library") state.librarySection = name;
+      else state.settingsSection = name;
       $("#settings-heading").textContent = sections[name];
-      $("#settings-description").textContent =
-        name === "style"
-          ? "文生图和图生图分别选择预设。图生图预设默认关闭；文生图预设可逐条勾选同时应用到图生图。"
-          : name === "review"
-            ? "分别设置提示词审核和生成图片审核，使用 MaiBot 配置的审核模型。切换分类保留草稿。"
-          : name === "access"
-            ? "分别设置群聊和私聊的访问规则。填写群号、QQ 号或 QQ 官方 OpenID，无需会话哈希；保存后对新的命令、AI 工具和指定会话的任务生效。"
-          : "切换分类会保留草稿，点击右下角“保存全部设置”统一保存。";
       for (const tab of document.querySelectorAll("[data-section]")) {
         const active = tab.dataset.section === name;
         tab.classList.toggle("active", active);
@@ -5032,6 +5483,7 @@ dialog::backdrop {
       }
       for (const panel of form.children)
         panel.hidden = panel.dataset.settingsPanel !== name;
+      if (changed) U.motion.enter($(`#settings-panel-${name}`, form));
       if (reveal) $("#settings-heading").scrollIntoView({ block: "start", behavior: "instant" });
     }
     const tabs = [...document.querySelectorAll("[data-section]")];
@@ -5064,43 +5516,54 @@ dialog::backdrop {
     };
     const submitAll = () => {
       const invalid = form.querySelector(":invalid");
-      if (invalid)
-        activate(
-          invalid.closest("[data-settings-panel]").dataset.settingsPanel,
-        );
+      if (invalid) {
+        activate(invalid.closest("[data-settings-panel]").dataset.settingsPanel);
+        U.referenceUI.revealPreset?.(invalid);
+        let parent = invalid.parentElement;
+        while (parent && parent !== form) {
+          if (parent.tagName === "DETAILS") parent.open = true;
+          parent = parent.parentElement;
+        }
+      }
       U.submitForm(form);
     };
     save.onclick = submitAll;
     form.addEventListener("keydown", (event) => {
-      if (
-        event.key === "Enter" &&
-        event.target.tagName === "INPUT" &&
-        !event.isComposing
-      ) {
+      if (event.key !== "Enter" || event.isComposing) return;
+      if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
         submitAll();
+      } else if (event.target.tagName === "INPUT") {
+        event.preventDefault();
       }
     });
+    const readSettings = () => {
+      const all = structuredClone(working);
+      for (const name of ["general", "review", "access"]) if (readers[name]) Object.assign(all.general, readers[name]());
+      for (const name of ["references", "materials"]) if (readers[name]) Object.assign(all.general.references, readers[name]());
+      if (readers.style) all.style = readers.style();
+      return all;
+    };
     form.onsubmit = (event) => {
       event.preventDefault();
       if (form.inert || requiresRefresh || save.disabled) return;
       buttonAction(save, async () => {
-        const all = {
-          general: { ...state.data.settings.general, ...readers.general(), ...readers.review(), ...readers.access(), ...readers.references() },
-          style: readers.style(),
-        };
-        if (!(await U.referenceUI.confirmSettings(all, state.data.settings))) {
+        const all = readSettings();
+        if (view === "library" && !(await U.referenceUI.confirmSettings(all, baseline))) {
           renderSection("references", { references: all.general.references });
+          renderSection("materials", { references: all.general.references });
           renderSection("style", all.style);
           state.dirty = true;
           updateNotice();
           return;
         }
-        $('[data-input="multi_reference_confirmed"]', $("#settings-panel-references")).checked = all.general.references.multi_reference_confirmed;
-        const presetRows = $('[data-array="presets"]', $("#settings-panel-style"));
-        [...presetRows.children].filter(node => node.hasAttribute("data-array-object")).forEach((row, index) => {
-          $('[data-input="multi_reference_confirmed"]', row).checked = all.style.presets[index].multi_reference_confirmed;
-        });
+        if (view === "library") {
+          $('[data-input="multi_reference_confirmed"]', $("#settings-panel-references")).checked = all.general.references.multi_reference_confirmed;
+          const presetRows = $('[data-array="presets"]', $("#settings-panel-style"));
+          [...presetRows.children].filter(node => node.hasAttribute("data-array-object")).forEach((row, index) => {
+            $('[data-input="multi_reference_confirmed"]', row).checked = all.style.presets[index].multi_reference_confirmed;
+          });
+        }
         form.inert = true;
         $("#reset-settings").disabled = true;
         try {
@@ -5115,7 +5578,7 @@ dialog::backdrop {
           let refreshError = null;
           try {
             await U.bootstrap();
-            if (form.isConnected && state.view === "settings") await U.render();
+            if (form.isConnected && state.view === view) await U.render();
           } catch (error) {
             refreshError = error;
             requiresRefresh = true;
@@ -5133,7 +5596,9 @@ dialog::backdrop {
     };
     activate(selected);
     updateNotice();
-  };
+  }
+  U.views.settings = () => showSettings("settings");
+  U.views.library = () => showSettings("library");
 })();
 
 (() => {

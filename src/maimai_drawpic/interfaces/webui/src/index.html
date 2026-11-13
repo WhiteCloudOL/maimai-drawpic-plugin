@@ -16,7 +16,7 @@
             alt=""
             width="44"
             height="44"
-          /><span>麦麦绘图<small>把想象变成画面</small></span></a
+          /><span>麦麦绘图</span></a
         >
         <div class="nav-caption">工作台</div>
         <nav id="navigation">
@@ -30,11 +30,14 @@
               hidden
             ></span>
           </button>
+          <button data-view="library" class="nav-item">
+            <span data-icon="images"></span>预设参考
+          </button>
           <button data-view="platforms" class="nav-item">
             <span data-icon="layers"></span>绘图平台
           </button>
           <button data-view="settings" class="nav-item">
-            <span data-icon="sliders"></span>偏好与预设
+            <span data-icon="sliders"></span>插件设置
           </button>
           <button data-view="logs" class="nav-item">
             <span data-icon="terminal"></span>运行日志
@@ -48,9 +51,8 @@
       <main>
         <header class="page-header">
           <div>
-            <div class="eyebrow">MAIMAI / DRAWING WORKSPACE</div>
+
             <h1 id="page-title">开始创作</h1>
-            <p id="page-description">从一个想法开始，剩下的交给画笔。</p>
           </div>
           <div class="page-actions">
             <span id="settings-unsaved" class="unsaved" hidden
@@ -81,7 +83,6 @@
             <span class="spinner"></span>正在准备绘图工作台…
           </div>
         </div>
-        <footer>麦麦绘图<span>配置和作品保存在当前 MaiBot 实例</span></footer>
       </main>
     </div>
     <dialog id="modal" aria-labelledby="modal-title">

@@ -359,7 +359,7 @@
       if (notice) notice.hidden = false;
       refreshResets();
     };
-    U.bindDirty(root);
+    if (options.trackDirty !== false) U.bindDirty(root);
     return () => read(fields, values, root, options);
   }
   function appendArray(root, key, values, options = {}) {
@@ -372,7 +372,7 @@
   function sections(groups, fields, values, options = {}) {
     return groups.map(group => {
       const selected = Object.fromEntries(Object.entries(fields).filter(([key]) => group.includes(key)));
-      return `<details class="form-section" ${group.open ? "open" : ""}><summary>${e(group.title)}${icon("chevron")}</summary><p class="hint">${e(group.hint)}</p>${fieldsHTML(selected, values, options)}</details>`;
+      return `<details class="form-section" ${group.open ? "open" : ""}><summary>${e(group.title)}${icon("chevron")}</summary>${fieldsHTML(selected, values, options)}</details>`;
     }).join("");
   }
   U.forms = { html: fieldsHTML, sections, bind, read, appendArray };

@@ -29,7 +29,7 @@
     const url = URL.createObjectURL(new Blob(parts, { type: info.mime }));
     const node = U.modal(
       "原图预览",
-      `<img class="detail-image" src="${e(url)}" alt="生成的原图"><p class="hint">${e(info.filename)} · ${(info.size / 1024 / 1024).toFixed(2)} MiB · 原文件位于插件图片缓存目录，会按容量和保留期清理。</p>`,
+      `<img class="detail-image" src="${e(url)}" alt="生成的原图"><p class="hint">${e(info.filename)} · ${(info.size / 1024 / 1024).toFixed(2)} MiB</p>`,
       () => URL.revokeObjectURL(url),
     );
     node.scrollTop = 0;
@@ -82,7 +82,7 @@
       )
         return;
       $("#detail-preview", node).innerHTML =
-        `<img class="detail-image" src="${e(image.data_url)}" alt="任务生成图片 ${index + 1}"><p class="hint">${image.width} × ${image.height} · ${(image.size / 1024 / 1024).toFixed(2)} MiB · 页面先显示压缩预览，原文件独立保存。</p>`;
+        `<img class="detail-image" src="${e(image.data_url)}" alt="任务生成图片 ${index + 1}"><p class="hint">${image.width} × ${image.height} · ${(image.size / 1024 / 1024).toFixed(2)} MiB</p>`;
       $("#view-original", node).onclick = (event) =>
         buttonAction(event.currentTarget, () =>
           original(taskId, index, event.currentTarget),
@@ -147,7 +147,7 @@
         )
         .join(
           "",
-        )}</select><input id="task-search-text" class="search-input" value="${e(state.taskSearch)}" placeholder="搜索模型、任务 ID 或失败原因" aria-label="搜索任务"><button type="submit" class="button secondary">搜索</button></div><span class="hint">${active ? "任务进行中，每 5 秒刷新" : "最近保留 500 个任务记录"}</span></form>${result.items.length ? `<div class="card-grid">${result.items.map((item) => `<button class="panel task-card" data-task="${e(item.task_id)}" aria-label="查看 ${e(item.model)} 任务详情">${item.thumbnail ? `<img class="task-art" src="${e(item.thumbnail)}" alt="绘图任务缩略图">` : `<div class="task-no-image">${icon(["pending", "running"].includes(item.status) ? "clock" : "images")}<span>${e(U.statusLabel(item.status))}</span></div>`}<div class="task-body"><span class="pill ${e(item.status)}">${e(U.statusLabel(item.status))}</span><h3>${e(item.model)}</h3><p class="task-message">${e(item.message)}</p><div class="task-bottom"><span>${{ webui: "网页创作", plugin: "插件联动", chat: "聊天绘图" }[item.origin] || "绘图任务"} · ${item.image_count} 张</span><span>${e(U.date(item.created_at))}</span></div></div></button>`).join("")}</div>` : U.empty("这里还没有任务", "开始一幅新的作品，或者调整搜索和筛选条件。")}<div class="actions pagination"><button id="previous-page" class="button secondary compact" ${state.taskPage <= 1 ? "disabled" : ""}>上一页</button><span class="muted">${state.taskPage} / ${Math.max(1, Math.ceil(result.total / result.page_size))}</span><button id="next-page" class="button secondary compact" ${state.taskPage * result.page_size >= result.total ? "disabled" : ""}>下一页</button></div>`;
+        )}</select><input id="task-search-text" class="search-input" value="${e(state.taskSearch)}" placeholder="搜索模型、任务 ID 或失败原因" aria-label="搜索任务"><button type="submit" class="button secondary">搜索</button></div></form>${result.items.length ? `<div class="card-grid">${result.items.map((item) => `<button class="panel task-card" data-task="${e(item.task_id)}" aria-label="查看 ${e(item.model)} 任务详情">${item.thumbnail ? `<img class="task-art" src="${e(item.thumbnail)}" alt="绘图任务缩略图">` : `<div class="task-no-image">${icon(["pending", "running"].includes(item.status) ? "clock" : "images")}<span>${e(U.statusLabel(item.status))}</span></div>`}<div class="task-body"><span class="pill ${e(item.status)}">${e(U.statusLabel(item.status))}</span><h3>${e(item.model)}</h3><p class="task-message">${e(item.message)}</p><div class="task-bottom"><span>${{ webui: "网页创作", plugin: "插件联动", chat: "聊天绘图" }[item.origin] || "绘图任务"} · ${item.image_count} 张</span><span>${e(U.date(item.created_at))}</span></div></div></button>`).join("")}</div>` : U.empty("这里还没有任务", "开始一幅新的作品，或者调整搜索和筛选条件。")}<div class="actions pagination"><button id="previous-page" class="button secondary compact" ${state.taskPage <= 1 ? "disabled" : ""}>上一页</button><span class="muted">${state.taskPage} / ${Math.max(1, Math.ceil(result.total / result.page_size))}</span><button id="next-page" class="button secondary compact" ${state.taskPage * result.page_size >= result.total ? "disabled" : ""}>下一页</button></div>`;
     document.querySelectorAll("[data-task]").forEach((button) => {
       button.onclick = () => openTask(button.dataset.task).catch(U.error);
     });

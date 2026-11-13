@@ -101,7 +101,7 @@
           index: 0,
         });
         if (!current()) return;
-        node.innerHTML = `<img class="preview-image" src="${e(preview.data_url)}" alt="生成的图片"><div class="result-meta"><span class="pill ${e(result.status)}">${e(U.statusLabel(result.status))}</span><span class="pill">${e(preview.width)} × ${e(preview.height)}</span></div><p class="hint">${e(result.message)}</p><button id="studio-detail" class="button secondary wide" style="margin-top:16px">查看任务与全部图片 ${icon("arrow")}</button>`;
+        node.innerHTML = `<img class="preview-image" src="${e(preview.data_url)}" alt="生成的图片"><div class="result-meta"><span class="pill ${e(result.status)}">${e(U.statusLabel(result.status))}</span><span class="pill">${e(preview.width)} × ${e(preview.height)}</span></div><p class="hint">${e(result.message)}</p><button id="studio-detail" class="button secondary wide" style="margin-top:16px">查看全部图片 ${icon("arrow")}</button>`;
         $("#studio-detail").onclick = () => U.openTask(result.task_id);
       } else {
         node.innerHTML = `<div class="placeholder-art">${icon(result.status === "running" ? "clock" : "images")}<span>${e(U.statusLabel(result.status))}</span><small>${e(result.message)}</small></div><div class="result-meta"><span class="pill">${e(result.model)}</span><span class="pill">${e(result.task_id)}</span></div>`;
@@ -154,7 +154,7 @@
       renderSubmissions();
     }
   }
-  U.views.studio = async (previousMode = null) => {
+  U.views.studio = async (transition = null) => {
     clearTimeout(pollTimer);
     resultVersion++;
     if (!state.data.models.length) {
@@ -171,18 +171,45 @@
     const styles = state.data.settings.style;
     const inherited = state.data.presets.find(preset => preset.name === styles.default_style && preset.apply_to_image_edit);
     const defaultPreset = mode === "draw" ? styles.default_style : styles.default_image_edit_preset || inherited?.name;
-    const presetCaption = mode === "edit_image" && !styles.image_edit_presets_enabled ? "图生图预设已关闭" : `跟随当前模式默认预设${defaultPreset ? `（${defaultPreset}）` : "（未设置）"}`;
+    const presetCaption = mode === "edit_image" && !styles.image_edit_presets_enabled ? "图生图预设已关闭" : `自动匹配${defaultPreset ? ` · 默认：${defaultPreset}` : " · 未设置默认"}`;
 
-    const referenceControls = mode === "edit_image" ? `<fieldset class="reference-request"><legend>本次参考与素材</legend><div class="field"><label for="reference-self">机器人自身</label><select id="reference-self" ${refs.self_reference_enabled ? "" : "disabled"}><option value="off">不使用自我参考</option><option value="auto" ${refs.self_reference_enabled ? "selected" : ""}>根据本次原始描述识别</option><option value="required">明确描绘机器人自身</option></select></div><div class="field"><label for="reference-tags">自我参考 Tag（可选）</label><input id="reference-tags" placeholder="例如：冬装，居家"></div><label class="reference-source-option"><span>从当前选定聊天查找缺少的素材</span><input id="reference-chat" type="checkbox" role="switch" class="toggle" ${refs.allow_chat_material_search ? "" : "disabled"}></label><label class="reference-source-option"><span>联网查找缺少的素材</span><input id="reference-web" type="checkbox" role="switch" class="toggle" ${refs.allow_web_material_search ? "" : "disabled"}></label><p class="hint">自我图库、预设图或合格素材可提供真实源图。聊天取材需要在结果去向中选择对应会话；全局关闭的来源不可使用。</p><button type="button" class="button ghost compact" id="studio-references">管理参考与素材 ${icon("arrow")}</button></fieldset>` : "";
-    $("#workspace-content").innerHTML =
-      `<div class="studio-grid"><section class="panel"><div class="panel-header"><div class="section-label">${icon("sparkles")}<h2>创作新的画面</h2></div><span class="pill">后台执行</span></div><div class="mode-switch" data-mode="${mode}" role="group" aria-label="绘图模式"><span class="mode-indicator" aria-hidden="true"></span><button id="mode-draw" aria-pressed="${mode === "draw"}" class="${mode === "draw" ? "active" : ""}">文生图</button><button id="mode-edit" aria-pressed="${mode === "edit_image"}" class="${mode === "edit_image" ? "active" : ""}">图生图</button></div><form id="draw-form"><div class="field"><label for="draw-prompt">你想画什么？</label><textarea id="draw-prompt" class="prompt-input" maxlength="16000" required placeholder="描述主体、构图、光线和风格。例如：一只橘猫坐在窗边，午后阳光照进房间，水彩质感。"></textarea></div><div class="field-row"><div class="field"><label for="draw-model">绘图模型</label><select id="draw-model" required${state.data.default_model_error ? ' aria-describedby="draw-model-error"' : ""}>${modelOptions()}</select>${state.data.default_model_error ? `<p id="draw-model-error" class="hint" role="status">${e(state.data.default_model_error)}。请选择完整的“平台实例 / 模型”名称；可在偏好与预设中更新默认模型。</p>` : ""}</div><div class="field"><label for="draw-style">绘图预设</label><select id="draw-style"><option value="">${e(presetCaption)}</option><option value="none">不使用预设</option>${state.data.presets
-        .filter((item) => item.enabled && (mode === "draw" ? item.preset_type === "text_to_image" : state.data.settings.style.image_edit_presets_enabled && (item.preset_type === "image_to_image" || item.apply_to_image_edit)))
-        .map(
-          (item) => `<option value="${e(item.name)}">${e(item.name)}</option>`,
-        )
-        .join(
-          "",
-        )}</select></div></div>${mode === "edit_image" ? `<div class="field"><label>源图片</label><div class="upload-zone" id="upload-zone">${icon("upload")}<p>拖放图片到这里，或选择文件</p><button type="button" id="source-button" class="button secondary compact">${icon("upload")}选择源图片</button><input type="file" id="source-file" accept="image/png,image/jpeg,image/webp" multiple hidden></div><div class="source-list" id="source-list"></div><p class="hint">上传真实源图；最终支持数量以模型为准。需要公网原图 URL 的模型不支持直接使用网页上传的本地图片。</p></div>` : ""}${referenceControls}<details><summary class="muted" style="cursor:pointer;margin-bottom:15px">反向提示词与发送选项</summary><div class="field"><label for="draw-negative">反向提示词</label><textarea id="draw-negative" rows="2" maxlength="16000" placeholder="不希望出现在画面中的内容"></textarea></div><div class="field"><label for="draw-delivery">结果去向</label><select id="draw-delivery"><option value="web">仅在工作台查看</option><option value="chat">同时发送到聊天</option></select></div><div id="delivery-fields" hidden><div class="field-row"><div class="field"><label for="chat-platform">聊天平台标识</label><input id="chat-platform" value="qq" maxlength="80"></div><div class="field"><label>&nbsp;</label><button type="button" id="load-streams" class="button secondary wide">加载聊天会话</button></div></div><div class="field"><label for="draw-stream">目标会话</label><select id="draw-stream"><option value="">请先加载会话</option></select><p class="hint">使用实际聊天流；发送到聊天时沿用群聊或私聊额度。网页专用任务由当前实例管理，不计入聊天额度。</p></div></div></details><div class="sticky-save"><span class="hint">模型校验 · 提示词与图片审核</span><button type="submit" class="button" id="start-drawing">${icon("sparkles")}开始绘图</button></div></form></section><aside class="stack"><section class="panel"><div class="panel-header"><h3>创作结果</h3>${icon("images")}</div><div id="studio-submissions" aria-live="polite"></div><div id="studio-result"><div class="placeholder-art">${icon("sparkles")}<span>想象，正在等待落笔</span><small>任务提交后，会在这里显示进度与生成图片。</small></div></div></section><div class="panel"><h3>让画面更接近你的想法</h3><p class="hint">描述具体的主体、环境和光线。试试绘图预设，把常用的画面语言保存下来。</p><button class="button ghost compact" id="studio-presets" style="margin-top:8px">管理预设 ${icon("arrow")}</button></div></aside></div>`;
+    const presetOptions = state.data.presets
+      .filter(item => item.enabled && (mode === "draw" ? item.preset_type === "text_to_image" : styles.image_edit_presets_enabled && (item.preset_type === "image_to_image" || item.apply_to_image_edit)))
+      .map(item => `<option value="${e(item.name)}">${e(item.name)}</option>`).join("");
+    const referenceControls = mode === "edit_image" ? `
+      <details class="control-disclosure" id="reference-options">
+        <summary><span>${icon("layers")}参考素材</span><span class="disclosure-note">按需使用 ${icon("chevron")}</span></summary>
+        <div class="disclosure-body">
+          <div class="field"><label for="reference-self">机器人自身</label><select id="reference-self" ${refs.self_reference_enabled ? "" : "disabled"}><option value="off">不使用自我参考</option><option value="auto" ${refs.self_reference_enabled ? "selected" : ""}>根据原始描述识别</option><option value="required">明确描绘机器人自身</option></select>${!refs.self_reference_enabled ? '<p class="hint">请先在“预设参考 → 自我参考”中开启。</p>' : ""}</div>
+          <div class="field"><label for="reference-tags">参考图 tag <span class="label-optional">可选</span></label><input id="reference-tags" placeholder="例如：冬装，居家"><p class="hint">未命中 tag 时使用图库默认图。</p></div>
+          <label class="reference-source-option"><span><strong>从聊天取材</strong><small>${refs.allow_chat_material_search ? `最多检查 ${e(refs.chat_material_search_limit)} 条近期消息` : "请先在“预设参考 → 素材来源”中开启"}</small></span><input id="reference-chat" type="checkbox" role="switch" class="toggle" ${refs.allow_chat_material_search ? "" : "disabled"}></label>
+          <label class="reference-source-option"><span><strong>从网络取材</strong><small>${refs.allow_web_material_search ? "使用 MaiBot 的联网搜索服务" : "请先在“预设参考 → 素材来源”中开启"}</small></span><input id="reference-web" type="checkbox" role="switch" class="toggle" ${refs.allow_web_material_search ? "" : "disabled"}></label>
+
+          <button type="button" class="button ghost compact" id="studio-references">管理预设参考 ${icon("arrow")}</button>
+        </div>
+      </details>` : "";
+    $("#workspace-content").innerHTML = `
+      <div class="studio-grid">
+        <section class="panel studio-controls" aria-label="绘图设置">
+          <div class="studio-heading"><div><span class="section-kicker">创作设置</span><h2>绘图设置</h2></div>${icon("sparkles")}</div>
+          <div class="mode-switch" data-mode="${mode}" role="group" aria-label="绘图模式"><span class="mode-indicator" aria-hidden="true"></span><button id="mode-draw" aria-pressed="${mode === "draw"}" class="${mode === "draw" ? "active" : ""}">文生图</button><button id="mode-edit" aria-pressed="${mode === "edit_image"}" class="${mode === "edit_image" ? "active" : ""}">图生图</button></div>
+          <form id="draw-form">
+            <div class="field prompt-field"><div class="studio-label"><label for="draw-prompt">${mode === "draw" ? "画面描述" : "希望怎样修改画面？"}</label><span class="label-optional">主体 · 环境 · 光线</span></div><textarea id="draw-prompt" class="prompt-input" maxlength="16000" required placeholder="${mode === "draw" ? "例如：橘猫坐在窗边，午后阳光落在木地板上，柔和的水彩质感。" : "例如：保留人物和姿态，把背景换成傍晚的海边，使用柔和暖光。"}"></textarea></div>
+            <div class="studio-models">
+              <div class="field"><label for="draw-model">绘图模型</label><select id="draw-model" required${state.data.default_model_error ? ' aria-describedby="draw-model-error"' : ""}>${modelOptions()}</select>${state.data.default_model_error ? `<p id="draw-model-error" class="hint" role="status">${e(state.data.default_model_error)}。请选择完整的“平台实例 / 模型”名称；可在插件设置中更新默认模型。</p>` : ""}</div>
+              <div class="field"><div class="studio-label"><label for="draw-style">绘图预设</label><button type="button" id="studio-presets" class="button ghost compact">管理 ${icon("arrow")}</button></div><select id="draw-style"><option value="">${e(presetCaption)}</option><option value="none">不使用预设</option>${presetOptions}</select><p class="hint" id="studio-preset-description" hidden></p></div>
+            </div>
+            ${mode === "edit_image" ? `<section class="studio-source"><div class="studio-label"><h3>参考图片</h3><span class="label-optional">最多 8 张，依模型支持</span></div><div class="upload-zone" id="upload-zone">${icon("upload")}<div><strong>拖放图片到这里</strong><small>也可从设备选择 PNG、JPG 或 WebP</small></div><button type="button" id="source-button" class="button secondary compact">选择图片</button><input type="file" id="source-file" accept="image/png,image/jpeg,image/webp" multiple hidden></div><div class="source-list" id="source-list"></div></section>` : ""}
+            ${referenceControls}
+            <details class="control-disclosure" id="negative-options"><summary><span>${icon("sliders")}反向提示词</span><span class="disclosure-note">可选 ${icon("chevron")}</span></summary><div class="disclosure-body"><div class="field"><label for="draw-negative">不希望出现的内容</label><textarea id="draw-negative" rows="3" maxlength="16000" placeholder="例如：模糊、水印、过度曝光"></textarea></div></div></details>
+            <section class="studio-delivery"><div class="field"><label for="draw-delivery">结果处理</label><select id="draw-delivery"><option value="web">仅在工作台查看</option><option value="chat">同时发送到聊天</option></select></div><div id="delivery-fields" hidden><div class="field-row"><div class="field"><label for="chat-platform">聊天平台</label><input id="chat-platform" value="qq" maxlength="80"></div><div class="field stream-load"><button type="button" id="load-streams" class="button secondary wide">加载会话</button></div></div><div class="field"><label for="draw-stream">发送到</label><select id="draw-stream"><option value="">请先加载会话</option></select><p class="hint">发送到聊天时沿用该会话额度；仅在工作台查看不占聊天额度。</p></div></div></section>
+            <div class="sticky-save studio-submit"><span class="hint">Ctrl / ⌘ + Enter</span><button type="submit" class="button" id="start-drawing">${icon("sparkles")}开始绘图</button></div>
+          </form>
+        </section>
+        <aside class="studio-preview" aria-label="绘图结果">
+          <section class="panel studio-canvas-panel"><div class="panel-header"><div><h2>创作结果</h2></div><button type="button" class="button ghost compact" id="studio-tasks">全部任务 ${icon("arrow")}</button></div><div id="studio-submissions" aria-live="polite"></div><div id="studio-result"><div class="placeholder-art studio-empty"><div class="empty-canvas" aria-hidden="true">${icon("images")}<span></span></div><span>暂无结果</span></div></div></section>
+        </aside>
+      </div>`;
     for (const [id, value] of Object.entries(draft)) {
       const input = $("#" + id);
       if (
@@ -198,44 +225,34 @@
       if (mode === next) return;
       saveDraft();
       state.requestId = null;
-      const previous = mode;
+      const transform = getComputedStyle($(".mode-indicator")).transform;
       mode = next;
-      U.views.studio(previous).catch(U.error);
+      U.views.studio({ transform }).catch(U.error);
     }
     $("#mode-draw").onclick = () => changeMode("draw");
     $("#mode-edit").onclick = () => changeMode("edit_image");
-    if (
-      previousMode !== null &&
-      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      $(".mode-indicator").animate(
-        [
-          {
-            transform:
-              previousMode === "edit_image"
-                ? "translateX(100%)"
-                : "translateX(0)",
-          },
-          {
-            transform:
-              mode === "edit_image" ? "translateX(100%)" : "translateX(0)",
-          },
-        ],
-        { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" },
-      );
-    }
+    U.motion.segmented($(".mode-switch"), transition?.transform);
+    if (transition) U.motion.enter($("#draw-form"), 3);
     $("#draw-delivery").onchange = () => {
       $("#delivery-fields").hidden = $("#draw-delivery").value !== "chat";
     };
     if ($("#studio-references")) {
-      $("#studio-references").onclick = () => { state.settingsSection = "references"; U.navigate("settings"); };
+      $("#studio-references").onclick = () => { state.librarySection = "references"; U.navigate("library"); };
       const updateTags = () => { $("#reference-tags").disabled = $("#reference-self").value === "off"; };
       $("#reference-self").onchange = updateTags;
       updateTags();
     }
+    $("#studio-tasks").onclick = () => U.navigate("tasks");
+    const describePreset = () => {
+      const selected = state.data.presets.find(item => item.name === $("#draw-style").value);
+      $("#studio-preset-description").textContent = selected?.description || "";
+      $("#studio-preset-description").hidden = !selected?.description;
+    };
+    $("#draw-style").onchange = describePreset;
+    describePreset();
     $("#studio-presets").onclick = () => {
-      state.settingsSection = "style";
-      U.navigate("settings");
+      state.librarySection = "style";
+      U.navigate("library");
     };
     $("#load-streams").onclick = (event) =>
       buttonAction(event.currentTarget, async () => {
@@ -273,7 +290,7 @@
       state.requestId = null;
       saveDraft();
     };
-    U.bindSubmit($("#draw-form"));
+    U.bindSubmit($("#draw-form"), { shortcutOnly: true });
     $("#draw-form").onsubmit = (event) => {
       event.preventDefault();
       buttonAction($("#start-drawing"), async () => {

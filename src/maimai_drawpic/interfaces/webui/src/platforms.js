@@ -30,7 +30,7 @@
     const fieldsHTML = kind === "comfyui" ? U.comfyuiForm.html(fields, values) : U.forms.html(fields, values, { platform: true, kind });
     const node = modal(
       record ? "编辑绘图平台" : "添加绘图平台",
-      `<form id="provider-form"><div class="provider-form-body"><p class="hint" style="margin:0 0 20px">${e(catalog.name)} · 先填写连接信息和模型，其他选项可按需调整。保存后应用到新任务。</p><div class="field"><label for="provider-name">平台名称</label><input id="provider-name" maxlength="80" required pattern="[^\\s]+" aria-describedby="provider-name-hint" value="${e(record?.name || defaultName)}" placeholder="例如 OpenAI_Compatible、日常绘图、备用_API"><p class="hint" id="provider-name-hint">支持中文、英文，名称不能包含空格，可使用下划线 _。</p></div>${fieldsHTML}</div><div class="modal-footer provider-footer"><div class="provider-footer-reset"><button type="button" id="reset-provider" class="button secondary">${icon("refresh")}恢复默认参数</button><span data-unsaved class="unsaved" hidden>有未保存的修改</span></div><div class="provider-footer-actions"><button type="button" id="provider-back" class="button secondary">取消</button><button type="submit" class="button">${icon("check")}保存平台</button></div></div></form>`,
+      `<form id="provider-form"><div class="provider-form-body"><div class="field"><label for="provider-name">平台名称</label><input id="provider-name" maxlength="80" required pattern="[^\\s]+" aria-describedby="provider-name-hint" value="${e(record?.name || defaultName)}" placeholder="例如 OpenAI_Compatible、日常绘图、备用_API"><p class="hint" id="provider-name-hint">支持中文、英文，名称不能包含空格，可使用下划线 _。</p></div>${fieldsHTML}</div><div class="modal-footer provider-footer"><div class="provider-footer-reset"><button type="button" id="reset-provider" class="button secondary">${icon("refresh")}恢复默认参数</button><span data-unsaved class="unsaved" hidden>有未保存的修改</span></div><div class="provider-footer-actions"><button type="button" id="provider-back" class="button secondary">取消</button><button type="submit" class="button">${icon("check")}保存平台</button></div></div></form>`,
     );
     const form = $("#provider-form", node),
       read = U.forms.bind(form, fields, values, { platform: true, kind });
@@ -126,10 +126,10 @@
   function addPlatform() {
     const node = modal(
       "选择绘图平台",
-      `<p class="muted" style="margin-bottom:20px">所有类型都可以添加多个实例。请使用不同名称，区分账号、服务或工作流。</p><div class="catalog-grid">${state.data.catalog
+      `<div class="catalog-grid">${state.data.catalog
         .map((item) => {
           const added = false;
-          return `<button class="catalog-option" data-kind="${e(item.kind)}" ${added ? "disabled" : ""}><span class="provider-icon">${e(item.name.slice(0, 1))}</span><span>${e(item.name)}<small>${added ? "已添加，可在平台卡片中编辑" : item.kind === "openai" ? "OpenAI、New API 与其他兼容服务" : "添加并配置模型"}</small></span></button>`;
+          return `<button class="catalog-option" data-kind="${e(item.kind)}" ${added ? "disabled" : ""}><span class="provider-icon">${e(item.name.slice(0, 1))}</span><span>${e(item.name)}<small>${added ? "已添加，可在平台卡片中编辑" : item.kind === "openai" ? "OpenAI、New API 等兼容服务" : "添加并配置模型"}</small></span></button>`;
         })
         .join("")}</div>`,
     );
@@ -141,7 +141,7 @@
     const items = state.data.providers;
     const revision = state.data.revision;
     $("#workspace-content").innerHTML =
-      `<div class="toolbar"><span class="muted">已添加 ${items.length} 个平台 · 仅启用的平台会出现在模型列表</span><button id="add-platform" class="button">${icon("plus")}添加平台</button></div><div class="card-grid">${items
+      `<div class="toolbar"><span class="muted">已添加 ${items.length} 个平台</span><button id="add-platform" class="button">${icon("plus")}添加平台</button></div><div class="card-grid">${items
         .map((item) => {
           const kind = state.data.catalog.find((c) => c.kind === item.kind);
           const models =
@@ -157,7 +157,7 @@
             .map((model) => `<span class="pill">${e(model)}</span>`)
             .join(
               "",
-            )}${models.length > 4 ? `<span class="pill">+${models.length - 4}</span>` : ""}</div><p class="hint">${item.kind === "comfyui" ? "从标准数据目录加载工作流" : item.has_api_key ? "密钥已配置，页面不回传明文" : "尚未填写 API Key"}</p><div class="actions"><button class="button secondary compact" data-edit>编辑配置</button><button class="button ghost compact" data-delete>移除</button></div></article>`;
+            )}${models.length > 4 ? `<span class="pill">+${models.length - 4}</span>` : ""}</div><p class="hint">${item.kind === "comfyui" ? "ComfyUI 工作流" : item.has_api_key ? "密钥已配置" : "尚未填写 API Key"}</p><div class="actions"><button class="button secondary compact" data-edit>编辑配置</button><button class="button ghost compact" data-delete>移除</button></div></article>`;
         })
         .join(
           "",

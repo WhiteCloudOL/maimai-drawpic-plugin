@@ -39,11 +39,12 @@
   };
   const views = {};
   const titles = {
-    studio: ["开始创作", "从一个想法开始，剩下的交给画笔。"],
-    tasks: ["绘图任务", "每一次创作，都可以在这里找到。"],
-    platforms: ["绘图平台", "用到哪个，就添加哪个。让每个模型各展所长。"],
-    settings: ["偏好与预设", "把常用的选择，变成顺手的习惯。"],
-    logs: ["运行日志", "沿着任务链路，找到问题发生的位置。"],
+    studio: "开始创作",
+    tasks: "绘图任务",
+    library: "预设参考",
+    platforms: "绘图平台",
+    settings: "插件设置",
+    logs: "运行日志",
   };
   const $ = (selector, root = document) => root.querySelector(selector);
   const e = (value) =>
@@ -161,9 +162,9 @@
   $("#modal-close").onclick = () => closeModal();
   async function bootstrap() {
     state.data = await call("query", "bootstrap");
-    $("#connection").textContent = "已连接当前实例";
+    $("#connection").textContent = "已连接";
     const notice = state.data.config_update_pending
-      ? "配置更新仍在处理中，提交与运行配置刷新尚未确认完成。请稍后刷新查看状态，无需重复提交。"
+      ? "设置仍在生效中，请稍后刷新，无需重复保存。"
       : state.data.runtime_refresh_pending
         ? "运行配置刷新尚未完成。页面刷新只重新查询状态，不会重复保存或自动修复运行配置。"
         : "";
@@ -191,11 +192,10 @@
   }
   async function render() {
     state.renderVersion = (state.renderVersion || 0) + 1;
-    $("#save-settings").hidden = state.view !== "settings";
-    $("#settings-unsaved").hidden = state.view !== "settings" || !state.dirty;
-    const [title, description] = titles[state.view];
-    $("#page-title").textContent = title;
-    $("#page-description").textContent = description;
+    const version = state.renderVersion, content = $("#workspace-content");
+    $("#save-settings").hidden = !["settings", "library"].includes(state.view);
+    $("#settings-unsaved").hidden = !["settings", "library"].includes(state.view) || !state.dirty;
+    $("#page-title").textContent = titles[state.view];
     document.querySelectorAll("[data-view]").forEach((node) => {
       node.classList.toggle("active", node.dataset.view === state.view);
       node.setAttribute(
@@ -204,7 +204,13 @@
       );
     });
     updateNavigationIndicator();
-    await views[state.view]();
+    window.DrawpicUI.motion.loading(content, true);
+    try {
+      await views[state.view]();
+      if (version === state.renderVersion) window.DrawpicUI.motion.enter(content);
+    } finally {
+      if (version === state.renderVersion) window.DrawpicUI.motion.loading(content, false);
+    }
   }
   function updateNavigationIndicator() {
     const nav = $("#navigation"),
@@ -292,7 +298,7 @@
       );
     }
   }
-  function bindSubmit(form) {
+  function bindSubmit(form, { shortcutOnly = false } = {}) {
     // 宿主 sandbox 没有 allow-forms：使用受校验的事件处理，不进行原生表单导航。
     form.querySelectorAll('[type="submit"]').forEach((button) => {
       button.onclick = (event) => {
@@ -301,9 +307,13 @@
       };
     });
     form.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && event.target.tagName === "INPUT") {
+      if (event.key !== "Enter" || event.isComposing) return;
+      if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
         submitForm(form);
+      } else if (event.target.tagName === "INPUT") {
+        event.preventDefault();
+        if (!shortcutOnly) submitForm(form);
       }
     });
   }

@@ -1,32 +1,65 @@
 (() => {
   "use strict";
   const U = window.DrawpicUI,
-    { state, $, call, buttonAction, toast } = U;
-  const sections = { general: "通用配置", review: "审核配置", access: "黑白名单", style: "绘图预设", references: "参考与素材" };
-  const sourceSection = (name) => ["review", "access", "references"].includes(name) ? "general" : name;
-  const reviewField = (key) => /^(prompt|image)_review_/.test(key);
-  const accessField = (key) => /^(group|private)_access_/.test(key);
+    { state, $, e, icon, call, buttonAction, toast } = U;
+  const sections = { style: "绘图预设", references: "自我参考", materials: "素材来源", general: "运行设置", review: "内容审核", access: "权限额度" };
+  const sectionIcons = { style: "sparkles", references: "images", materials: "search", general: "sliders", review: "eye", access: "layers" };
+  const sourceSection = name => ["review", "access", "references", "materials"].includes(name) ? "general" : name;
+  const reviewField = key => /^(prompt|image)_review_/.test(key);
+  const accessField = key => /^(group|private)_access_/.test(key) || /quota/.test(key) || ["admin_user_ids", "permission_enabled"].includes(key);
   const belongsToSection = (name, key) => name === "style" ||
     (name === "references" ? key === "references" : key !== "references") &&
     (name === "review" ? reviewField(key) : name === "access" ? accessField(key) : !reviewField(key) && !accessField(key));
-  U.views.settings = async () => {
-    let selected = Object.hasOwn(sections, state.settingsSection)
-      ? state.settingsSection
-      : "general";
+
+  function fieldGroups(name, fields, values) {
+    const used = new Set();
+    const group = (title, match, collapsed = false) => {
+      const selected = Object.fromEntries(Object.entries(fields).filter(([key]) => !used.has(key) && match(key)));
+      Object.keys(selected).forEach(key => used.add(key));
+      if (!Object.keys(selected).length) return "";
+      const content = U.forms.html(selected, values);
+      return collapsed
+        ? `<details class="settings-card settings-disclosure"><summary><span>${e(title)}</span>${icon("chevron")}</summary><div class="settings-card-body">${content}</div></details>`
+        : `<section class="settings-card"><div class="settings-card-heading"><h3>${e(title)}</h3></div>${content}</section>`;
+    };
+    let html = "";
+    if (name === "general") {
+      html += group("默认任务", key => ["default_model", "fallback_model", "fallback_models", "request_retry_count", "request_timeout_seconds"].includes(key));
+      html += group("聊天回传", key => ["command_reply_mode", "sync_generated_images_to_history", "failure_reason_enabled"].includes(key));
+      html += group("插件联动", key => key === "integration_api_enabled");
+      html += group("高级设置", key => /unsupported_models$/.test(key) || key === "skip_image_url_ip_check", true);
+    } else if (name === "review") {
+      html += group("提示词审核", key => key.startsWith("prompt_review_"));
+      html += group("生成图片审核", key => key.startsWith("image_review_"));
+    } else if (name === "access") {
+      html += group("群聊访问", key => key.startsWith("group_access_"));
+      html += group("私聊访问", key => key.startsWith("private_access_"));
+      html += group("使用额度", key => /quota/.test(key));
+      html += group("管理员", key => ["permission_enabled", "admin_user_ids"].includes(key));
+    }
+    html += group("其他设置", () => true);
+    return html;
+  }
+
+  function referenceFields(fields, values) {
+    const pick = keys => Object.fromEntries(Object.entries(fields).filter(([key]) => keys.includes(key)));
+    return `<section class="settings-card"><div class="settings-card-heading"><h3>自身识别</h3></div>${U.forms.html(pick(["self_reference_enabled", "self_names"]), values)}<details class="recognition-hints"><summary>自定义识别线索 ${icon("chevron")}</summary>${U.forms.html(pick(["self_keywords"]), values)}</details></section>
+      <section class="settings-card reference-library-card"><div data-self-gallery></div></section>
+      <details class="settings-card settings-disclosure"><summary><span>固定参考组合</span><span class="disclosure-note">可选 ${icon("chevron")}</span></summary><div class="settings-card-body">${U.forms.html(pick(["self_reference_ids", "multi_reference_confirmed"]), values)}</div></details>`;
+  }
+  function materialFields(fields, values) {
+    return `<section class="settings-card">${U.forms.html(fields, values)}</section>`;
+  }
+  async function showSettings(view) {
+    const keys = view === "library" ? ["style", "references", "materials"] : ["general", "review", "access"];
+    const preferred = view === "library" ? state.librarySection : state.settingsSection;
+    let selected = keys.includes(preferred) ? preferred : keys[0];
     const revision = state.data.revision;
+    const working = structuredClone(state.data.settings), baseline = working;
     const readers = {};
     const save = $("#save-settings");
-    $("#workspace-content").innerHTML =
-      `<div class="settings-layout"><div class="settings-tabs" role="tablist" aria-label="配置分类">${Object.entries(
-        sections,
-      )
-        .map(
-          ([name, title]) =>
-            `<button id="settings-tab-${name}" class="settings-tab" data-section="${name}" role="tab" aria-controls="settings-panel-${name}">${title}</button>`,
-        )
-        .join(
-          "",
-        )}</div><section class="panel"><div class="panel-header"><div><h2 id="settings-heading"></h2><p class="hint" id="settings-description"></p></div><button type="button" id="reset-settings" class="button secondary compact">恢复当前分类默认</button></div><form id="settings-form"></form></section></div>`;
+    const navigation = (keys, caption) => `<span class="settings-nav-caption" aria-hidden="true">${caption}</span>${keys.map(name => `<button id="settings-tab-${name}" class="settings-tab" data-section="${name}" role="tab" aria-controls="settings-panel-${name}">${icon(sectionIcons[name])}<span>${e(sections[name])}</span>${icon("chevron")}</button>`).join("")}`;
+    $("#workspace-content").innerHTML = `<div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="配置分类">${navigation(keys, view === "library" ? "创作资源" : "运行管理")}</nav><section class="settings-workspace"><div class="settings-page-heading"><h2 id="settings-heading"></h2><button type="button" id="reset-settings" class="button secondary compact">${icon("reset")}恢复本类默认</button></div><form id="settings-form"></form></section></div>`;
     const form = $("#settings-form");
     let requiresRefresh = false;
     function renderSection(name, values) {
@@ -36,50 +69,42 @@
       panel.setAttribute("role", "tabpanel");
       panel.setAttribute("aria-labelledby", `settings-tab-${name}`);
       panel.hidden = name !== selected;
-      const fields = name === "references" ? state.data.reference_fields : Object.fromEntries(
+      const materialField = key => key.startsWith("allow_") || ["chat_material_search_limit", "material_model"].includes(key);
+      const fields = ["references", "materials"].includes(name) ? Object.fromEntries(Object.entries(state.data.reference_fields).filter(([key]) => name === "materials" ? materialField(key) : !materialField(key))) : Object.fromEntries(
         Object.entries(state.data.schema.sections[sourceSection(name)].fields)
           .filter(([key]) => belongsToSection(name, key)),
       );
       if (name === "references") {
         values = values.references;
-        const selfFields = Object.fromEntries(Object.entries(fields).filter(([key]) => !key.startsWith("allow_")));
-        const sourceFields = Object.fromEntries(Object.entries(fields).filter(([key]) => key.startsWith("allow_")));
-        panel.innerHTML = `<h3>自我参考</h3><p class="hint">默认关闭。开启后依据用户原始请求识别是否描绘机器人；不明确时需要补充主体说明。填写当前机器人的名称及常用称呼。</p>${U.forms.html(selfFields, values)}<div data-self-gallery></div><h3 class="reference-source-title">素材来源</h3><p class="hint">两个来源独立开启。仅查找当前任务缺少的素材；用户本条附图与明确引用的图片不受这两个开关限制。</p>${U.forms.html(sourceFields, values)}`;
-      } else panel.innerHTML = U.forms.html(fields, values);
+        panel.innerHTML = referenceFields(fields, values);
+      } else if (name === "materials") {
+        values = values.references;
+        panel.innerHTML = materialFields(fields, values);
+      } else panel.innerHTML = name === "style" ? U.forms.html(fields, values) : fieldGroups(name, fields, values);
       const old = $(`#${panel.id}`, form);
       if (old) old.replaceWith(panel);
       else form.append(panel);
       const read = U.forms.bind(panel, fields, values);
-      // 通用、审核和黑白名单共享持久化配置，只读取当前分类的字段，避免覆盖其他分类草稿。
+      // 各分类只读取所属字段，再合并为同一份持久配置。
       readers[name] = () => {
         const result = read();
-        return name === "references" ? { references: result } : Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
+        return Object.fromEntries(Object.keys(fields).map((key) => [key, result[key]]));
       };
       if (name === "references") {
         U.referenceUI.confirmButton(panel);
         U.referenceUI.gallery($("[data-self-gallery]", panel), "self");
       } else if (name === "style") {
         U.referenceUI.presetTypes(panel);
-        const gallery = document.createElement("div");
-        gallery.className = "reference-preset-gallery";
-        gallery.hidden = true;
-        panel.append(gallery);
-        U.referenceUI.gallery(gallery, "preset");
       }
     }
-    for (const name of Object.keys(sections))
-      renderSection(name, structuredClone(state.data.settings[sourceSection(name)]));
+    for (const name of keys)
+      renderSection(name, structuredClone(working[sourceSection(name)]));
     function activate(name, reveal = false) {
-      selected = state.settingsSection = name;
+      const changed = selected !== name;
+      selected = name;
+      if (view === "library") state.librarySection = name;
+      else state.settingsSection = name;
       $("#settings-heading").textContent = sections[name];
-      $("#settings-description").textContent =
-        name === "style"
-          ? "文生图和图生图分别选择预设。图生图预设默认关闭；文生图预设可逐条勾选同时应用到图生图。"
-          : name === "review"
-            ? "分别设置提示词审核和生成图片审核，使用 MaiBot 配置的审核模型。切换分类保留草稿。"
-          : name === "access"
-            ? "分别设置群聊和私聊的访问规则。填写群号、QQ 号或 QQ 官方 OpenID，无需会话哈希；保存后对新的命令、AI 工具和指定会话的任务生效。"
-          : "切换分类会保留草稿，点击右下角“保存全部设置”统一保存。";
       for (const tab of document.querySelectorAll("[data-section]")) {
         const active = tab.dataset.section === name;
         tab.classList.toggle("active", active);
@@ -88,6 +113,7 @@
       }
       for (const panel of form.children)
         panel.hidden = panel.dataset.settingsPanel !== name;
+      if (changed) U.motion.enter($(`#settings-panel-${name}`, form));
       if (reveal) $("#settings-heading").scrollIntoView({ block: "start", behavior: "instant" });
     }
     const tabs = [...document.querySelectorAll("[data-section]")];
@@ -120,43 +146,54 @@
     };
     const submitAll = () => {
       const invalid = form.querySelector(":invalid");
-      if (invalid)
-        activate(
-          invalid.closest("[data-settings-panel]").dataset.settingsPanel,
-        );
+      if (invalid) {
+        activate(invalid.closest("[data-settings-panel]").dataset.settingsPanel);
+        U.referenceUI.revealPreset?.(invalid);
+        let parent = invalid.parentElement;
+        while (parent && parent !== form) {
+          if (parent.tagName === "DETAILS") parent.open = true;
+          parent = parent.parentElement;
+        }
+      }
       U.submitForm(form);
     };
     save.onclick = submitAll;
     form.addEventListener("keydown", (event) => {
-      if (
-        event.key === "Enter" &&
-        event.target.tagName === "INPUT" &&
-        !event.isComposing
-      ) {
+      if (event.key !== "Enter" || event.isComposing) return;
+      if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
         submitAll();
+      } else if (event.target.tagName === "INPUT") {
+        event.preventDefault();
       }
     });
+    const readSettings = () => {
+      const all = structuredClone(working);
+      for (const name of ["general", "review", "access"]) if (readers[name]) Object.assign(all.general, readers[name]());
+      for (const name of ["references", "materials"]) if (readers[name]) Object.assign(all.general.references, readers[name]());
+      if (readers.style) all.style = readers.style();
+      return all;
+    };
     form.onsubmit = (event) => {
       event.preventDefault();
       if (form.inert || requiresRefresh || save.disabled) return;
       buttonAction(save, async () => {
-        const all = {
-          general: { ...state.data.settings.general, ...readers.general(), ...readers.review(), ...readers.access(), ...readers.references() },
-          style: readers.style(),
-        };
-        if (!(await U.referenceUI.confirmSettings(all, state.data.settings))) {
+        const all = readSettings();
+        if (view === "library" && !(await U.referenceUI.confirmSettings(all, baseline))) {
           renderSection("references", { references: all.general.references });
+          renderSection("materials", { references: all.general.references });
           renderSection("style", all.style);
           state.dirty = true;
           updateNotice();
           return;
         }
-        $('[data-input="multi_reference_confirmed"]', $("#settings-panel-references")).checked = all.general.references.multi_reference_confirmed;
-        const presetRows = $('[data-array="presets"]', $("#settings-panel-style"));
-        [...presetRows.children].filter(node => node.hasAttribute("data-array-object")).forEach((row, index) => {
-          $('[data-input="multi_reference_confirmed"]', row).checked = all.style.presets[index].multi_reference_confirmed;
-        });
+        if (view === "library") {
+          $('[data-input="multi_reference_confirmed"]', $("#settings-panel-references")).checked = all.general.references.multi_reference_confirmed;
+          const presetRows = $('[data-array="presets"]', $("#settings-panel-style"));
+          [...presetRows.children].filter(node => node.hasAttribute("data-array-object")).forEach((row, index) => {
+            $('[data-input="multi_reference_confirmed"]', row).checked = all.style.presets[index].multi_reference_confirmed;
+          });
+        }
         form.inert = true;
         $("#reset-settings").disabled = true;
         try {
@@ -171,7 +208,7 @@
           let refreshError = null;
           try {
             await U.bootstrap();
-            if (form.isConnected && state.view === "settings") await U.render();
+            if (form.isConnected && state.view === view) await U.render();
           } catch (error) {
             refreshError = error;
             requiresRefresh = true;
@@ -189,5 +226,7 @@
     };
     activate(selected);
     updateNotice();
-  };
+  }
+  U.views.settings = () => showSettings("settings");
+  U.views.library = () => showSettings("library");
 })();

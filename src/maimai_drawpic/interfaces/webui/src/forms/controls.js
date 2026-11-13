@@ -4,18 +4,18 @@
     { e, $ } = U;
   let sequence = 0;
   const custom = "__workspace_custom__";
-  function optionsHTML(choices, selected) {
+  function optionsHTML(choices, selected, labels = {}) {
     return choices
       .map(
         (value) =>
-          `<option value="${e(value)}" ${value === selected ? "selected" : ""}>${e(U.formOptions.label(value))}</option>`,
+          `<option value="${e(value)}" ${value === selected ? "selected" : ""}>${e(labels[value] || U.formOptions.label(value))}</option>`,
       )
       .join("");
   }
   function choice(
     value,
     choices,
-    { id, label, size = false, kind = "", allowCustom = true } = {},
+    { id, label, size = false, kind = "", allowCustom = true, labels = {}, placeholder = "填写服务要求的值…", customLabel = "自定义值…" } = {},
   ) {
     const known = choices.includes(value),
       selected = known ? value : custom;
@@ -25,10 +25,10 @@
     const active = !known && !legacySize;
     const controls = size
       ? `<div class="dimension-inputs" data-custom-panel ${active ? "" : "hidden"}><label>宽度（px）<input data-width type="number" min="1" step="1" value="${e(parts?.[1] || "")}" ${active ? "required" : "disabled"}></label><span aria-hidden="true">×</span><label>高度（px）<input data-height type="number" min="1" step="1" value="${e(parts?.[2] || "")}" ${active ? "required" : "disabled"}></label></div>`
-      : `<input data-custom-value aria-label="自定义${e(label || "参数值")}" value="${e(known ? "" : value)}" placeholder="填写服务要求的值…" autocomplete="off" ${active ? "required" : "hidden disabled"}>`;
+      : `<input data-custom-value aria-label="自定义${e(label || "参数值")}" value="${e(known ? "" : value)}" placeholder="${e(placeholder)}" autocomplete="off" ${active ? "required" : "hidden disabled"}>`;
     // 无法解析的旧尺寸仍作为独立选项保留，不打开空的宽高输入覆盖原值。
     const items = legacySize ? [value, ...choices] : choices;
-    return `<div data-control="${size ? "dimension" : "choice"}" data-kind="${e(kind)}"><select id="${identity}" data-choice-select aria-label="${e(label || "参数值")}">${optionsHTML(items, legacySize ? value : selected)}${allowCustom || !known ? `<option value="${custom}" ${selected === custom && !legacySize ? "selected" : ""}>${size ? "自定义宽高…" : "自定义值…"}</option>` : ""}</select>${controls}</div>`;
+    return `<div data-control="${size ? "dimension" : "choice"}" data-kind="${e(kind)}"><select id="${identity}" data-choice-select aria-label="${e(label || "参数值")}">${optionsHTML(items, legacySize ? value : selected, labels)}${allowCustom || !known ? `<option value="${custom}" ${selected === custom && !legacySize ? "selected" : ""}>${size ? "自定义宽高…" : e(customLabel)}</option>` : ""}</select>${controls}</div>`;
   }
   function read(node) {
     const selected = $("[data-choice-select]", node).value;
@@ -52,6 +52,11 @@
   }
   function scalar(key, meta, value, id, options = {}) {
     const kind = options.kind;
+    if (key === "material_model")
+      return choice(value, ["vlm"], { id, label: "识别模型", labels: { vlm: "MaiBot 视觉模型" },
+        placeholder: "填写 MaiBot 中配置的模型名称", customLabel: "指定模型…" }).replace(
+        "data-choice-select", `data-choice-select data-input="${e(key)}"`,
+      );
     if (meta.multiple) return multi(key, meta.choices || [], value || [], id);
     if (key === "request_retry_count" || key.endsWith("_review_retry_count"))
       return `<select id="${id}" data-input="${key}">${[0, 1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${Number(value) === count ? "selected" : ""}>${count === 0 ? "不重试" : `${count} 次${count === Number(meta.default) ? "（默认）" : ""}`}</option>`).join("")}</select>`;

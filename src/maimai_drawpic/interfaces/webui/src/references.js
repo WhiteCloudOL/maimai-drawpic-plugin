@@ -3,19 +3,24 @@
   const U = window.DrawpicUI, { state, $, e, icon, call, toast } = U;
   const notice = "该配置会向绘图模型发送多张参考图。请确认所用服务商及具体模型支持多图参考。插件会校验图生图能力，但不自动探测多图兼容性；切换模型后请重新核实。";
 
-  function confirmMultiple() {
+  function confirmReferenceAction(title, message, detail, confirmText) {
     const dialog = document.createElement("dialog");
     dialog.className = "reference-confirm";
-    const model = state.data?.settings.general.default_model || state.data?.default_model;
-    dialog.innerHTML = `<div class="modal-header"><h2>确认多图参考能力</h2></div><div class="reference-dialog-body"><p>${e(notice)}</p>${model ? `<p class="hint">当前默认模型：${e(model)}</p>` : ""}<div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button type="button" class="button" data-confirm>已确认支持</button></div></div>`;
+    dialog.setAttribute("aria-label", title);
+    dialog.innerHTML = `<div class="modal-header"><h2>${e(title)}</h2></div><div class="reference-dialog-body"><p>${e(message)}</p>${detail ? `<p class="hint">${e(detail)}</p>` : ""}<div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button type="button" class="button" data-confirm>${e(confirmText)}</button></div></div>`;
     document.body.append(dialog);
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       let accepted = false;
       $("[data-cancel]", dialog).onclick = () => dialog.close();
       $("[data-confirm]", dialog).onclick = () => { accepted = true; dialog.close(); };
       dialog.addEventListener("close", () => { dialog.remove(); resolve(accepted); }, { once: true });
       dialog.showModal();
     });
+  }
+
+  function confirmMultiple() {
+    const model = state.data?.settings.general.default_model || state.data?.default_model;
+    return confirmReferenceAction("确认多图参考能力", notice, model ? `当前默认模型：${model}` : "", "已确认支持");
   }
 
   function assets(kind) { return (state.data.reference_assets?.assets || []).filter(item => item.kind === kind); }
@@ -32,72 +37,44 @@
   }
 
   function gallery(root, kind) {
-    let page = 0, version = 0;
-    async function mutate(operation, item = {}, source = "") {
-      const result = await call("action", "reference_update", {
-        operation, revision: state.data.reference_assets.revision,
-        asset_json: JSON.stringify(item), source_id: source,
-      });
-      state.data.reference_assets = result;
-      refreshPickers();
-      render();
-    }
-    function edit(item) {
-      const dialog = document.createElement("dialog");
-      dialog.className = "reference-confirm";
-      dialog.innerHTML = `<form><div class="modal-header"><h2>编辑参考图片</h2></div><div class="reference-dialog-body"><div class="field"><label>图片名称<input name="name" value="${e(item.name)}" maxlength="80" required></label></div><div class="field"><label>Tag（逗号分隔）<input name="tags" value="${e(item.tags.join(", "))}"></label></div><div class="field"><label>替换图片（可选）<input name="replacement" type="file" accept="image/png,image/jpeg,image/webp"></label><p class="hint">替换后保留图片标识、默认项和预设引用；已经开始的任务仍使用读取的版本。</p></div><div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button class="button" type="submit">保存图片信息</button></div></div></form>`;
-      document.body.append(dialog);
-      $("[data-cancel]", dialog).onclick = () => dialog.close();
-      $("form", dialog).onsubmit = event => {
-        event.preventDefault();
-        U.buttonAction($("[type=submit]", dialog), async () => {
-          const file = $('[name="replacement"]', dialog).files[0];
-          const source = file ? (await call("upload", "source", {}, file)).source_id : "";
-          await mutate("save", { asset_id: item.id, kind, name: $("[name=name]", dialog).value,
-            tags: $("[name=tags]", dialog).value.split(/[,，]/).map(value => value.trim()).filter(Boolean) }, source);
-          dialog.close();
-        });
-      };
-      dialog.addEventListener("close", () => dialog.remove(), { once: true });
-      dialog.showModal();
+    const C = U.referenceComponents;
+    let page = 0, query = "";
+    async function mutate(operation, item) {
+      if (operation === "delete") {
+        const name = state.data.reference_assets.assets.find(asset => asset.id === item.asset_id).name;
+        if (!(await confirmReferenceAction("删除参考图片？", `将删除“${name}”。`, "删除后无法撤销。", "删除图片"))) return;
+      }
+      await C.update(operation, item);
     }
     function render() {
-      const current = ++version, entries = assets(kind), snapshot = state.data.reference_assets;
+      const snapshot = state.data.reference_assets;
+      const entries = assets(kind).filter(item => [item.name, ...item.tags].join(" ").toLocaleLowerCase().includes(query));
       page = Math.min(page, Math.max(0, Math.ceil(entries.length / 12) - 1));
-      root.innerHTML = `<div class="reference-gallery-header"><h3>${kind === "self" ? "自我参考图库" : "图生图预设图片"}</h3><button type="button" class="button secondary compact" data-upload>${icon("upload")}上传图片</button><input data-file type="file" accept="image/png,image/jpeg,image/webp" hidden multiple></div><p class="hint">${kind === "self" ? "确认描绘机器人自身后才使用图库。Tag 未命中时使用默认图；已有图库不会自动开启功能。" : "先上传图片，再在图生图预设中选择图片及用途。文生图预设只保存文字模板。"}图片管理单独保存；设置开关与预设编辑仍通过“保存全部设置”生效。</p><div class="reference-gallery">${entries.slice(page * 12, page * 12 + 12).map(item => `<article class="reference-card" data-asset="${e(item.id)}"><div class="reference-thumbnail"><img alt="${e(item.name)}" loading="lazy" hidden><span class="hint" data-loading>正在读取预览</span></div><strong>${e(item.name)}</strong><div class="hint reference-tags">${e(item.tags.join(" · ") || "未设置 tag")}</div>${snapshot.default_reference_id === item.id ? '<span class="pill">默认自我参考</span>' : ""}<div class="reference-card-actions"><button type="button" class="button secondary compact" data-edit>编辑</button>${kind === "self" && snapshot.default_reference_id !== item.id ? '<button type="button" class="button secondary compact" data-default>设为默认</button>' : ""}<button type="button" class="icon-button" data-up aria-label="上移图片">↑</button><button type="button" class="icon-button" data-delete aria-label="删除图片">${icon("close")}</button></div></article>`).join("") || '<p class="muted">尚未上传参考图片。</p>'}</div>${entries.length > 12 ? '<div class="reference-paging"><button type="button" class="button secondary compact" data-prev>上一页</button><span data-page></span><button type="button" class="button secondary compact" data-next>下一页</button></div>' : ""}`;
-      $("[data-upload]", root).onclick = () => $("[data-file]", root).click();
-      $("[data-file]", root).onchange = event => U.buttonAction($("[data-upload]", root), async () => {
-        for (const file of event.target.files) {
-          const uploaded = await call("upload", "source", {}, file);
-          await mutate("save", { name: file.name.slice(0, 80), kind, tags: [] }, uploaded.source_id);
-        }
-        toast("参考图片已保存");
-      });
-      if ($("[data-prev]", root)) {
-        $("[data-page]", root).textContent = `${page + 1} / ${Math.ceil(entries.length / 12)}`;
-        $("[data-prev]", root).disabled = page === 0;
-        $("[data-next]", root).disabled = (page + 1) * 12 >= entries.length;
-        $("[data-prev]", root).onclick = () => { page--; render(); };
-        $("[data-next]", root).onclick = () => { page++; render(); };
+      root.innerHTML = `<div class="reference-gallery-header"><h3>${kind === "self" ? "自我参考图库" : "参考图片"}</h3></div><div class="reference-gallery"></div>${entries.length > 12 ? '<div class="reference-paging"><button type="button" class="button secondary compact" data-prev>上一页</button><span data-page></span><button type="button" class="button secondary compact" data-next>下一页</button></div>' : ""}`;
+      $('.reference-gallery-header', root).append(C.toolbar({ kind }));
+      const grid = $('.reference-gallery', root);
+      for (const item of entries.slice(page * 12, page * 12 + 12)) {
+        const index = snapshot.assets.findIndex(entry => entry.id === item.id);
+        grid.append(C.card(item, {
+          onEdit: () => C.editor(item),
+          onRemove: () => U.buttonAction($(`[data-asset="${item.id}"] [data-remove-image]`, root), () => mutate("delete", { asset_id: item.id })),
+          isDefault: snapshot.default_reference_id === item.id,
+          onDefault: kind === "self" && snapshot.default_reference_id !== item.id ? () => mutate("default", { asset_id: item.id }).catch(U.error) : null,
+          onUp: index > 0 ? () => mutate("move", { asset_id: item.id, position: index - 1 }).catch(U.error) : null,
+        }));
       }
-      root.querySelectorAll("[data-asset]").forEach(card => {
-        const item = entries.find(entry => entry.id === card.dataset.asset);
-        $("[data-edit]", card).onclick = () => edit(item);
-        const run = (button, operation, values) => { button.onclick = () => U.buttonAction(button, () => mutate(operation, values)); };
-        if ($("[data-default]", card)) run($("[data-default]", card), "default", { asset_id: item.id });
-        const index = entries.findIndex(entry => entry.id === item.id);
-        $("[data-up]", card).disabled = index === 0;
-        run($("[data-up]", card), "move", { asset_id: item.id, position: snapshot.assets.findIndex(entry => entry.id === entries[Math.max(0, index - 1)].id) });
-        run($("[data-delete]", card), "delete", { asset_id: item.id });
-        call("query", "reference_image", { asset_id: item.id }).then(result => {
-          if (current !== version || !card.isConnected) return;
-          $("img", card).src = result.preview;
-          $("img", card).hidden = false;
-          $("[data-loading]", card).remove();
-        }).catch(error => { if (current === version && card.isConnected) $("[data-loading]", card).textContent = error.message; });
-      });
+      if (!entries.length) grid.innerHTML = '<p class="muted">尚未上传参考图片</p>';
+      if ($('[data-prev]', root)) {
+        $('[data-page]', root).textContent = `${page + 1} / ${Math.ceil(entries.length / 12)}`;
+        $('[data-prev]', root).disabled = page === 0;
+        $('[data-next]', root).disabled = (page + 1) * 12 >= entries.length;
+        $('[data-prev]', root).onclick = () => { page--; render(); };
+        $('[data-next]', root).onclick = () => { page++; render(); };
+      }
     }
+    C.observe(root, render);
     render();
+    return { filter(value) { query = value.trim().toLocaleLowerCase(); page = 0; render(); } };
   }
 
   function confirmButton(root) {
@@ -108,7 +85,7 @@
     button.type = "button";
     button.className = "button secondary compact";
     button.dataset.referenceConfirmation = "true";
-    button.textContent = "确认与其他图片合用";
+    button.textContent = "确认多图参考";
     button.onclick = async () => {
       if (await confirmMultiple()) {
         $('[data-input="multi_reference_confirmed"]', field).checked = true;
@@ -119,55 +96,227 @@
     field.after(button);
   }
 
+  function presetImages(row) {
+    const C = U.referenceComponents;
+    const field = $('[data-field="reference_bindings"]', row), array = $('[data-array="reference_bindings"]', field);
+    const add = $(':scope > [data-add-array]', array);
+    field.classList.add("preset-reference-field");
+    add.hidden = true;
+    const bindings = () => [...array.children].filter(item => item.hasAttribute("data-array-object"));
+    function appendBinding(id) {
+      if (bindings().length >= 8) throw new Error("一个预设最多使用 8 张参考图");
+      const previous = bindings();
+      add.click();
+      const binding = bindings().find(item => !previous.includes(item));
+      $('[data-input="asset_id"]', binding).value = id;
+      $('[data-input="role"]', binding).value = "base";
+      binding.dispatchEvent(new Event("input", { bubbles: true }));
+      return binding;
+    }
+    function chooseImage() {
+      if (bindings().length >= 8) { U.error(new Error("一个预设最多使用 8 张参考图")); return; }
+      const dialog = document.createElement("dialog");
+      dialog.className = "reference-confirm reference-image-picker";
+      dialog.setAttribute("aria-label", "选择参考图片");
+      dialog.innerHTML = `<div class="modal-header"><h2>选择参考图片</h2><button type="button" class="icon-button" data-close aria-label="关闭弹窗">${icon("close")}</button></div><div class="reference-dialog-body"><div class="reference-gallery"></div></div>`;
+      const grid = $('.reference-gallery', dialog);
+      for (const item of assets("preset")) {
+        const select = () => { if (row.isConnected) appendBinding(item.id); dialog.close(); };
+        grid.append(C.card(item, { onEdit: select, actionLabel: "选择" }));
+      }
+      if (!assets("preset").length) grid.innerHTML = '<p class="hint">尚未上传参考图片</p>';
+      document.body.append(dialog);
+      $('[data-close]', dialog).onclick = () => dialog.close();
+      dialog.addEventListener("close", () => dialog.remove(), { once: true });
+      dialog.showModal();
+    }
+    const toolbar = C.toolbar({ kind: "preset", onChoose: chooseImage,
+      beforeUpload(files) { if (bindings().length + files.length > 8) throw new Error("一个预设最多使用 8 张参考图"); },
+      onAsset(item) { if (row.isConnected) appendBinding(item.id); },
+    });
+    $('.field-heading', field).after(toolbar);
+    const management = document.createElement("details");
+    management.className = "preset-asset-manager";
+    management.innerHTML = `<summary>管理已上传图片 ${icon("chevron")}</summary><div data-preset-assets></div>`;
+    field.append(management);
+    management.ontoggle = () => { if (management.open) gallery($('[data-preset-assets]', management), "preset"); };
+    function render() {
+      for (const binding of bindings()) {
+        binding.classList.add("reference-binding-row");
+        $(':scope > .array-object-header', binding).hidden = true;
+        $(':scope > .form-grid', binding).hidden = true;
+        const id = $('[data-input="asset_id"]', binding).value;
+        const item = assets("preset").find(asset => asset.id === id);
+        const legacyPrompt = $('[data-input="note"]', binding).value;
+        const signature = JSON.stringify([item, legacyPrompt]);
+        if (binding.dataset.cardSignature === signature) continue;
+        binding.dataset.cardSignature = signature;
+        $('.reference-card', binding)?.remove();
+        if (!item) { binding.append(Object.assign(document.createElement("p"), { textContent: "参考图片不可用" })); continue; }
+        const prompt = [...new Set([item.prompt, legacyPrompt].filter(Boolean))].join(", ");
+        binding.append(C.card(item, { prompt,
+          onEdit: () => C.editor(item, { prompt, onSaved() {
+            if (!binding.isConnected) return;
+            const changed = $('[data-input="role"]', binding).value !== "base" || $('[data-input="subject_id"]', binding).value || $('[data-input="note"]', binding).value;
+            $('[data-input="role"]', binding).value = "base";
+            $('[data-input="subject_id"]', binding).value = "";
+            $('[data-input="note"]', binding).value = "";
+            if (changed) binding.dispatchEvent(new Event("input", { bubbles: true }));
+          } }),
+          onRemove: () => $('[data-remove-object]', binding).click(),
+        }));
+      }
+    }
+    array.addEventListener("input", render);
+    array.addEventListener("change", render);
+    new MutationObserver(render).observe(array, { childList: true });
+    C.observe(field, render);
+    render();
+  }
+
   function presetTypes(root) {
     const list = $('[data-array="presets"]', root);
     if (!list) return;
-    let active = state.presetKind || "text_to_image", initialized = false;
-    const toolbar = document.createElement("div");
-    toolbar.className = "reference-preset-tabs";
-    toolbar.innerHTML = '<button type="button" class="button secondary" data-kind="text_to_image">文生图预设</button><button type="button" class="button secondary" data-kind="image_to_image">图生图预设</button>';
-    list.before(toolbar);
+    let active = state.presetKind || "text_to_image", selected = null, displayed = null;
+    const origin = list.closest(".form-grid"), field = list.closest('[data-field="presets"]');
+    const manager = document.createElement("div");
+    manager.className = "preset-manager";
+    manager.innerHTML = `<div class="preset-modebar"><div class="reference-preset-tabs" role="group" aria-label="预设类型"><button type="button" class="button secondary" data-kind="text_to_image">文生图预设</button><button type="button" class="button secondary" data-kind="image_to_image">图生图预设</button></div><span class="hint" data-preset-count></span></div><section class="settings-card preset-defaults"><div class="preset-default-description"><h3 data-default-title></h3></div><div data-preset-defaults></div></section><div class="preset-body"><aside class="settings-card preset-library"><div class="preset-library-heading"><h3>我的预设</h3><button type="button" class="icon-button" data-new-preset aria-label="新建预设" title="新建预设">${icon("plus")}</button></div><label class="preset-search">${icon("search")}<input type="search" data-preset-search placeholder="搜索名称或 tag" aria-label="搜索预设"></label><div class="preset-list" data-preset-list></div></aside><div class="preset-editor" data-preset-editor><div class="settings-card preset-empty" data-preset-empty hidden>${icon("layers")}<h3>还没有预设</h3><p class="hint">保存常用的画面风格，下次创作直接使用。</p><button type="button" class="button secondary" data-empty-new>${icon("plus")}新建预设</button></div></div></div>`;
+    root.prepend(manager);
+    const editor = $('[data-preset-editor]', manager), defaults = $('[data-preset-defaults]', manager);
+    for (const key of ["image_edit_presets_enabled", "default_style", "default_image_edit_preset"]) {
+      const item = $(`[data-field="${key}"]`, origin);
+      if (item) defaults.append(item);
+    }
+    editor.append(field);
+    origin.hidden = true;
+    const search = $('[data-preset-search]', manager), navigation = $('[data-preset-list]', manager);
+    const rows = () => [...list.children].filter(node => node.hasAttribute("data-array-object"));
+    const input = (row, key) => $(`[data-input="${key}"]`, row);
+    const value = (row, key) => input(row, key)?.value || "";
+    const typeOf = row => value(row, "preset_type");
+
+    function decorate(row) {
+      if (row.dataset.referenceBound) return;
+      row.dataset.referenceBound = "true";
+      row.classList.add("preset-detail-card");
+      const grid = $(":scope > .form-grid", row);
+      const fields = [...grid.children];
+      grid.className = "preset-field-sections";
+      const section = (title, keys, name, advanced = false) => {
+        const block = document.createElement(advanced ? "details" : "section");
+        block.className = `preset-field-section ${name}`;
+        block.innerHTML = advanced ? `<summary>${title}${icon("chevron")}</summary><div class="form-grid"></div>` : `<div class="preset-section-heading"><h3>${title}</h3></div><div class="form-grid"></div>`;
+        const target = $(".form-grid", block);
+        keys.map(key => fields.find(field => field.dataset.field === key)).filter(Boolean).forEach(field => target.append(field));
+        grid.append(block);
+      };
+      section("预设信息", ["name", "enabled", "description", "tags", "apply_to_image_edit"], "preset-identity");
+      section("参考图片", ["reference_bindings", "multi_reference_confirmed"], "preset-bindings");
+      section("画面风格", ["positive_prompt_template", "negative_prompt_template"], "preset-prompts");
+      section("预设类型", ["preset_type"], "preset-advanced", true);
+      $('[data-remove-object]', row).innerHTML = `${icon("close")}移除预设`;
+      confirmButton(row);
+    }
+
+    function choose(row, reveal = false) {
+      selected = row;
+      update();
+      if (reveal && window.matchMedia("(max-width: 760px)").matches) row.scrollIntoView({ block: "start", behavior: "instant" });
+    }
     function update() {
       state.presetKind = active;
-      toolbar.querySelectorAll("button").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.kind === active)));
-      for (const row of [...list.children].filter(node => node.hasAttribute("data-array-object"))) {
-        const type = $('[data-input="preset_type"]', row);
-        if (!type) continue;
-        if (!row.dataset.referenceBound) {
-          row.dataset.referenceBound = "true";
-          if (initialized && active === "image_to_image") type.value = active;
-          confirmButton(row);
-          type.addEventListener("change", () => {
-            active = type.value;
-            if (active === "image_to_image") $('[data-input="apply_to_image_edit"]', row).checked = false;
-            update();
-          });
-        }
-        row.hidden = type.value !== active;
-        $('[data-field="apply_to_image_edit"]', row).hidden = type.value !== "text_to_image";
-        const bindings = $('[data-field="reference_bindings"]', row);
-        bindings.hidden = type.value !== "image_to_image" && !bindings.querySelector("[data-array-object]");
-        $('[data-reference-confirmation]', row).hidden = type.value !== "image_to_image";
-      }
-      for (const key of ["image_edit_presets_enabled", "default_image_edit_preset"])
-        $(`[data-field="${key}"]`, root).hidden = active !== "image_to_image";
-      $('[data-field="default_style"]', root).hidden = active !== "text_to_image";
-      const gallery = $(".reference-preset-gallery", root);
-      if (gallery) gallery.hidden = active !== "image_to_image";
-      initialized = true;
+      const all = rows();
+      all.forEach(decorate);
+      const query = search.value.trim().toLocaleLowerCase();
+      const kindRows = all.filter(row => typeOf(row) === active);
+      const matching = kindRows.filter(row => [value(row, "name"), value(row, "description"), ...row.querySelectorAll('[data-array="tags"] [data-value]')].map(item => typeof item === "string" ? item : item.value).join(" ").toLocaleLowerCase().includes(query));
+      if (!matching.includes(selected)) selected = matching.find(row => value(row, "name") === state.presetSelection?.[active]) || matching[0] || null;
+      state.presetSelection = { ...state.presetSelection, [active]: selected ? value(selected, "name") : "" };
+      manager.querySelectorAll('[data-kind]').forEach(button => button.setAttribute("aria-pressed", String(button.dataset.kind === active)));
+      U.motion.segmented($('.reference-preset-tabs', manager));
+      $('[data-preset-count]', manager).textContent = `${kindRows.length} 个${active === "text_to_image" ? "文生图" : "图生图"}预设`;
+      $('[data-default-title]', manager).textContent = active === "text_to_image" ? "文生图的默认选择" : "图生图默认设置";
+      for (const key of ["image_edit_presets_enabled", "default_image_edit_preset"]) $(`[data-field="${key}"]`, defaults).hidden = active !== "image_to_image";
+      $('[data-field="default_style"]', defaults).hidden = active !== "text_to_image";
+      const defaultName = $(`[data-input="${active === "text_to_image" ? "default_style" : "default_image_edit_preset"}"]`, defaults).value;
+      all.forEach(row => {
+        row.hidden = row !== selected;
+        if (row !== selected && $('.preset-asset-manager', row)) $('.preset-asset-manager', row).open = false;
+        row.setAttribute("aria-label", value(row, "name") || "未命名预设");
+        $(':scope > .array-object-header > .muted', row).textContent = value(row, "name") || "未命名预设";
+        $('[data-field="apply_to_image_edit"]', row).hidden = typeOf(row) !== "text_to_image";
+        $(".preset-bindings", row).hidden = typeOf(row) !== "image_to_image" && !$('[data-array="reference_bindings"] [data-array-object]', row);
+        $('[data-reference-confirmation]', row).hidden = typeOf(row) !== "image_to_image";
+      });
+      if (selected && typeOf(selected) === "image_to_image" && !$('.reference-upload-toolbar', selected)) presetImages(selected);
+      if (selected && selected !== displayed) U.motion.enter(selected, 3);
+      displayed = selected;
+      const focused = document.activeElement?.closest('[data-preset-index]');
+      const focusedIndex = focused && navigation.contains(focused) ? focused.dataset.presetIndex : null;
+      navigation.innerHTML = matching.map(row => `<button type="button" class="preset-list-item ${row === selected ? "active" : ""}" aria-pressed="${row === selected}" data-preset-index="${all.indexOf(row)}"><span class="preset-item-icon">${icon(active === "text_to_image" ? "sparkles" : "images")}</span><span><strong>${e(value(row, "name") || "未命名预设")}</strong><small>${e(value(row, "description") || "")}</small></span>${value(row, "name") === defaultName ? '<span class="preset-badge">默认</span>' : !input(row, "enabled").checked ? '<span class="preset-badge">停用</span>' : ""}</button>`).join("") || '<p class="hint preset-no-match">没有匹配的预设</p>';
+      navigation.querySelectorAll('[data-preset-index]').forEach(button => { button.onclick = () => choose(all[Number(button.dataset.presetIndex)], true); });
+      if (focusedIndex !== null) $(`[data-preset-index="${focusedIndex}"]`, navigation)?.focus({ preventScroll: true });
+      const empty = $('[data-preset-empty]', manager);
+      empty.hidden = Boolean(selected);
+      $("h3", empty).textContent = query ? "没有匹配的预设" : "还没有这类预设";
+      $("p", empty).textContent = query ? "试试其他名称或 tag，也可以清空搜索。" : "新建一个预设，保存常用的画面描述。";
     }
-    toolbar.querySelectorAll("button").forEach(button => { button.onclick = () => { active = button.dataset.kind; update(); }; });
+    function addPreset() {
+      search.value = "";
+      const before = rows();
+      $(":scope > [data-add-array]", list).click();
+      const added = rows().find(row => !before.includes(row));
+      if (!added) return;
+      input(added, "preset_type").value = active;
+      let name = "新建预设", index = 2;
+      const names = before.map(row => value(row, "name"));
+      while (names.includes(name)) name = `新建预设 ${index++}`;
+      input(added, "name").value = name;
+      choose(added, true);
+      input(added, "name").dispatchEvent(new Event("input", { bubbles: true }));
+      input(added, "name").focus();
+      input(added, "name").select();
+    }
+    $('[data-new-preset]', manager).onclick = addPreset;
+    $('[data-empty-new]', manager).onclick = addPreset;
+    manager.querySelectorAll('[data-kind]').forEach(button => { button.onclick = () => { active = button.dataset.kind; search.value = ""; selected = null; update(); }; });
+    search.addEventListener("input", event => { event.stopPropagation(); update(); });
+    search.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); } });
+    const changed = event => {
+      const row = event.target.closest('[data-array-object]');
+      if (event.target.dataset.input === "preset_type" && row && row.parentElement === list) {
+        active = event.target.value;
+        if (active === "image_to_image") input(row, "apply_to_image_edit").checked = false;
+        selected = row;
+      }
+      update();
+    };
+    root.addEventListener("input", changed);
+    root.addEventListener("change", changed);
     const observer = new MutationObserver(update);
-    observer.observe(list, { childList: true, subtree: true });
+    observer.observe(list, { childList: true });
     const reset = event => {
-      if (event.detail.key !== "presets") return;
+      if (event.detail.key !== "presets") { update(); return; }
       observer.disconnect();
-      toolbar.remove();
+      root.removeEventListener("input", changed);
+      root.removeEventListener("change", changed);
       root.removeEventListener("fieldreset", reset);
+      for (const key of ["image_edit_presets_enabled", "default_style", "default_image_edit_preset", "presets"]) origin.append($(`[data-field="${key}"]`, manager));
+      manager.remove();
+      origin.hidden = false;
       presetTypes(root);
     };
     root.addEventListener("fieldreset", reset);
+    root.addEventListener("revealpreset", event => {
+      const row = rows().find(item => item.contains(event.target));
+      if (row) { active = typeOf(row); search.value = ""; choose(row); }
+    });
     update();
+  }
+
+  function revealPreset(input) {
+    input.dispatchEvent(new Event("revealpreset", { bubbles: true }));
   }
 
   async function confirmSettings(all, previous) {
@@ -194,5 +343,5 @@
     return true;
   }
 
-  U.referenceUI = { gallery, options, confirmButton, presetTypes, confirmSettings, confirmMultiple };
+  U.referenceUI = { refreshPickers, gallery, options, confirmButton, presetTypes, revealPreset, confirmSettings, confirmMultiple };
 })();
