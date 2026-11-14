@@ -6,7 +6,9 @@
 
 ## 复制使用
 
-把本目录的 **`maimai_drawing_client/` 整个目录**复制到调用插件的 `vendor/` 中，保留随包的 AGPL-3.0 许可证：
+独立客户端 `maimai_drawing_client/` 单独采用 [MIT 协议](maimai_drawing_client/LICENSE)，绘图插件主体采用 AGPL-3.0。
+
+把本目录的 **`maimai_drawing_client/` 整个目录**复制到调用插件的 `vendor/` 中，保留随包的 MIT 许可证和版权声明：
 
 ```text
 my_plugin/

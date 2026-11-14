@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 WhiteCloudOL
+# SPDX-License-Identifier: MIT
+
 """有界等待的正式客户端，所有路径共用 submit/task/image 幂等任务协议。"""
 
 from pathlib import Path

@@ -44,7 +44,7 @@
 
 需要发现接口时再加入 `api.get`、`api.list`。例如读取 `maimai-drawpic-plugin.drawpic_references_v2` 的元信息，可以判断目标主线是否提供新参考目录；不存在时明确提示升级，不剥掉参考选项重试，也不降级成另一种绘图。
 
-推荐整体复制 [clients/maimai_drawing_client](../clients/maimai_drawing_client) 到调用插件的 `vendor/`，保留许可证：
+独立 DrawingClient 单独采用 [MIT 协议](../clients/maimai_drawing_client/LICENSE)。推荐整体复制 [clients/maimai_drawing_client](../clients/maimai_drawing_client) 到调用插件的 `vendor/`，保留许可证和版权声明；绘图插件主体采用 AGPL-3.0。
 
 ```python
 from .vendor.maimai_drawing_client import DrawingClient, DrawingError

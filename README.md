@@ -162,4 +162,5 @@ git clone https://github.com/WhiteCloudOL/maimai-drawpic-plugin.git
 
 ## 开源协议
 
-采用 [AGPL-3.0](LICENSE) 协议发布
+- 插件主体采用 [AGPL-3.0](LICENSE) 协议。
+- 独立客户端 `clients/maimai_drawing_client/` 单独采用 [MIT](clients/maimai_drawing_client/LICENSE) 协议，复制使用时保留许可证和版权声明。

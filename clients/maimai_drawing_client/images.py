@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 WhiteCloudOL
+# SPDX-License-Identifier: MIT
+
 """严格校验分块协议，保存路径由调用插件明确提供。"""
 
 from pathlib import Path

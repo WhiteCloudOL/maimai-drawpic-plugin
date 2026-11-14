@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 WhiteCloudOL
+# SPDX-License-Identifier: MIT
+
 """客户端结果类型；不依赖绘图插件内部代码或第三方库。"""
 
 from dataclasses import dataclass, field

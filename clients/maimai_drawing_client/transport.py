@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 WhiteCloudOL
+# SPDX-License-Identifier: MIT
+
 """每次 SDK 调用独立限时；不设置宿主能力超时或创建后台任务。"""
 
 from typing import Any, Dict, Protocol
