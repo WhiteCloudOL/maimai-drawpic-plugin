@@ -2254,6 +2254,15 @@ body:has(.settings-layout) #toast { bottom: 100px; }
 .recognition-hints { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
 .recognition-hints > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 12px; color: var(--muted); margin-bottom: 14px; }
 .recognition-hints > summary svg { width: 15px; height: 15px; }
+.tag-input { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 46px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.tag-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent); }
+.tag-input > input[data-tag-entry] { flex: 1 1 150px; width: 120px; min-width: 80px; min-height: 32px; padding: 4px; border: 0; background: transparent; box-shadow: none; }
+.input-tag { display: inline-flex; align-items: center; max-width: 100%; padding-left: 10px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); font-size: 12px; }
+.input-tag > span { min-width: 0; overflow-wrap: anywhere; }
+.input-tag > button { display: grid; place-items: center; flex: 0 0 32px; height: 32px; padding: 8px; border: 0; border-radius: 7px; background: none; color: inherit; cursor: pointer; }
+.input-tag > button:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.input-tag > button svg { width: 14px; height: 14px; }
+@media (pointer: coarse) { .input-tag > button { flex-basis: 44px; height: 44px; } }
 @media (max-width: 640px) {
   .sidebar { padding-inline: 12px; }
   #navigation { gap: 2px; }

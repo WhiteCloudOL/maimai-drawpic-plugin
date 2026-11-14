@@ -307,7 +307,7 @@
       };
     });
     form.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" || event.isComposing) return;
+      if (event.defaultPrevented || event.key !== "Enter" || event.isComposing) return;
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
         submitForm(form);

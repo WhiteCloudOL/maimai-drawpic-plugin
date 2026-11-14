@@ -68,9 +68,9 @@
     const fields = {
       prompt: { type: "string", default: "", label: "参考提示词（可选）", input_type: "textarea", rows: 3, hint: "填写希望保留的特征，也可以留空。" },
       name: { type: "string", default: "", label: "图片名称" },
-      ...(item.kind === "self" ? { tags: { type: "string", default: "", label: "Tag（逗号分隔）" } } : {}),
+      ...(item.kind === "self" ? { tags: { type: "array", item_type: "string", default: [], label: "图片 tag" } } : {}),
     };
-    const values = { prompt, name: item.name, ...(item.kind === "self" ? { tags: item.tags.join(", ") } : {}) };
+    const values = { prompt, name: item.name, ...(item.kind === "self" ? { tags: item.tags } : {}) };
     const metadata = Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "prompt"));
     dialog.innerHTML = `<form><div class="modal-header"><h2>编辑参考图片</h2><button type="button" class="icon-button" data-close aria-label="关闭弹窗">${icon("close")}</button></div><div class="reference-dialog-body"><div class="reference-editor-preview"></div><button type="button" class="button secondary compact" data-replace>${icon("upload")}替换图片</button><input type="file" accept="image/png,image/jpeg,image/webp" hidden data-file>${U.forms.html({ prompt: fields.prompt }, values)}<details class="reference-image-info"><summary>图片信息 ${icon("chevron")}</summary>${U.forms.html(metadata, values)}</details><div class="modal-footer"><button type="button" class="button secondary" data-cancel>取消</button><button type="submit" class="button">保存图片</button></div></div></form>`;
     document.body.append(dialog);
@@ -98,7 +98,7 @@
         try {
           const upload = file.files.length ? await call("upload", "source", {}, file.files[0]) : null;
           const snapshot = await update("save", { asset_id: item.id, kind: item.kind, name: value.name, prompt: value.prompt,
-            tags: item.kind === "self" ? value.tags.split(/[,，]/).map(tag => tag.trim()).filter(Boolean) : item.tags }, upload?.source_id || "");
+            tags: item.kind === "self" ? value.tags : item.tags }, upload?.source_id || "");
           onSaved(snapshot.assets.find(asset => asset.id === item.id));
           dialog.close();
           U.toast("图片已保存");

@@ -233,7 +233,7 @@
       template.innerHTML = fieldsHTML({ [key]: meta }, { [key]: value }, options);
       const replacement = template.content.querySelector("[data-array], [data-control], [data-multiple]");
       // 数组保留字段外壳和模型工具栏；复合控件保留标签与说明的关联。
-      if (meta.type !== "array") {
+      if (!component.hasAttribute("data-array")) {
         const previous = component.id ? component : component.querySelector("[id]");
         const next = replacement.id ? replacement : replacement.querySelector("[id]");
         next.id = previous.id;

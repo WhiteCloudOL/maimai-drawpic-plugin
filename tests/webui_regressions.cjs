@@ -489,6 +489,7 @@ test('submit: ordinary input Enter and IME never start a drawing in shortcut-onl
     [{ shortcutOnly: true }, { ctrlKey: true, isComposing: true }, 'INPUT', 0],
     [{}, {}, 'INPUT', 1],
     [{}, { isComposing: true }, 'INPUT', 0],
+    [{}, { defaultPrevented: true }, 'INPUT', 0],
   ]) {
     let submissions = 0, keydown;
     const form = { querySelectorAll: () => [], addEventListener: (_name, handler) => { keydown = handler; } };
@@ -497,6 +498,45 @@ test('submit: ordinary input Enter and IME never start a drawing in shortcut-onl
     keydown({ key: 'Enter', target: { tagName }, preventDefault() {}, ...keys });
     assert.equal(submissions, expected, JSON.stringify({ options, keys, tagName }));
   }
+});
+
+test('tag control: IME stays intact, Enter commits unique tags, limits preserve the pending draft', () => {
+  const h = harness('forms');
+  let values = ['自拍'], inputEvents = 0;
+  const input = node({ value: '画,自拍，绘图', validationMessage: '',
+    setCustomValidity(value) { this.validationMessage = value; }, reportValidity() {},
+    insertAdjacentHTML(_position, html) { values.push(html.match(/data-tag-value value="([^"]*)"/)[1]); },
+    closest: () => input });
+  const control = node({ dataset: { control: 'tags', limit: '3', maxLength: '80' },
+    dispatchEvent() { inputEvents++; }, querySelectorAll: () => values.map(value => ({ value })) });
+  input.parentElement = control;
+  h.nodes.set('[data-tag-entry]', input);
+  const listeners = {};
+  h.U.formControls.bind({ addEventListener(name, fn) { listeners[name] = fn; } });
+  let prevented = 0;
+  const key = { target: input, key: 'Enter', preventDefault() { prevented++; } };
+  listeners.keydown({ ...key, isComposing: true });
+  assert.equal(input.value, '画,自拍，绘图'); assert.equal(prevented, 0);
+  listeners.keydown({ ...key, ctrlKey: true });
+  assert.equal(prevented, 0);
+  h.context.Event = class Event {};
+  listeners.keydown(key);
+  assert.deepEqual(values, ['自拍', '画', '绘图']); assert.equal(input.value, '');
+  assert.equal(prevented, 1); assert.equal(inputEvents, 1);
+  input.value = '多余项';
+  assert.throws(() => h.U.formControls.read(control), /最多 3 项/);
+  assert.equal(input.value, '多余项'); assert.deepEqual(values, ['自拍', '画', '绘图']);
+  input.value = ''; values.pop(); input.value = '重绘';
+  assert.deepEqual([...h.U.formControls.read(control)], ['自拍', '画', '重绘']);
+});
+
+test('recognition model control distinguishes the default task from a concrete model with the same name', () => {
+  const h = harness('forms'), control = { dataset: { control: 'recognition-model' } };
+  h.get('[data-choice-select]').value = '__workspace_custom__';
+  h.get('[data-custom-value]').value = ' vlm ';
+  assert.equal(h.U.formControls.read(control), 'model:vlm');
+  h.get('[data-choice-select]').value = 'vlm';
+  assert.equal(h.U.formControls.read(control), 'vlm');
 });
 
 // Use the actual production bridge queue: ordering bugs must not be tested with

@@ -43,7 +43,7 @@
 
   function referenceFields(fields, values) {
     const pick = keys => Object.fromEntries(Object.entries(fields).filter(([key]) => keys.includes(key)));
-    return `<section class="settings-card"><div class="settings-card-heading"><h3>自身识别</h3></div>${U.forms.html(pick(["self_reference_enabled", "self_names"]), values)}<details class="recognition-hints"><summary>自定义识别线索 ${icon("chevron")}</summary>${U.forms.html(pick(["self_keywords"]), values)}</details></section>
+    return `<section class="settings-card"><div class="settings-card-heading"><h3>绘图识别</h3></div>${U.forms.html(pick(["self_keywords", "self_reference_enabled", "self_names"]), values)}</section>
       <section class="settings-card reference-library-card"><div data-self-gallery></div></section>
       <details class="settings-card settings-disclosure"><summary><span>固定参考组合</span><span class="disclosure-note">可选 ${icon("chevron")}</span></summary><div class="settings-card-body">${U.forms.html(pick(["self_reference_ids", "multi_reference_confirmed"]), values)}</div></details>`;
   }
