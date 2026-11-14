@@ -26,12 +26,14 @@
 
 ## ✨ 工作台预览
 
-![麦麦绘图插件扩展WebUI](assets/previews/workspace-desktop.png)
+截图中的模型配置仅作示例。
+
+![麦麦绘图桌面工作台](assets/previews/workspace-desktop.webp)
 
 <details>
 <summary>📱 查看移动端预览</summary>
 
-<img src="assets/previews/workspace-mobile.png" alt="麦麦绘图移动端工作台" width="390">
+<img src="assets/previews/workspace-mobile.webp" alt="麦麦绘图移动端工作台" width="390">
 
 </details>
 
