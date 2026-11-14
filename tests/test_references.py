@@ -37,7 +37,7 @@ def test_tool_self_reference_recovers_to_auto_after_host_schema_validation(suppl
             module("domain.references").ReferenceOptions.model_validate({"self_reference": supplied, "user_request": "原话"})
 
 
-def test_auto_recognition_uses_custom_hints_without_turning_them_into_actions(monkeypatch):
+def test_auto_recognition_uses_bot_names_without_treating_drawing_words_as_identity(monkeypatch):
     async def run():
         recognition = module("application.references.recognition")
         captured = []
@@ -48,10 +48,10 @@ def test_auto_recognition_uses_custom_hints_without_turning_them_into_actions(mo
 
         monkeypatch.setattr(recognition.ReferenceRecognizer, "_json", response)
         classifier = recognition.ReferenceRecognizer(SimpleNamespace())
-        assert await classifier.self_subject("不要画你的自拍，画我的照片", ["麦麦", "小麦"], ["你的自拍"]) == "other"
-        assert "不要画你的自拍，画我的照片" in captured[0] and "不能命中即认定" in captured[0]
+        assert await classifier.self_subject("不要画你的自拍，画我的照片", ["麦麦", "小麦"]) == "other"
+        assert "不要画你的自拍，画我的照片" in captured[0] and "不能仅凭" in captured[0]
         for prompts in module("application.references.prompts").PROMPTS.values():
-            assert "麦麦" in prompts["self"].format(request="用户原话", names="麦麦", keywords="你的自拍")
+            assert "麦麦" in prompts["self"].format(request="用户原话", names="麦麦")
 
     asyncio.run(run())
 
@@ -117,7 +117,7 @@ def test_cached_chat_description_reuses_text_before_viewing_image(status, expect
         prompts = []
 
         async def generate(prompt, **kwargs):
-            assert kwargs["model"] == "fast-multimodal"
+            assert kwargs["task_name"] == "vlm" and kwargs["model_name"] == "fast-multimodal"
             prompts.append(prompt)
             return {"content": json.dumps({"result": status} if len(prompts) == 1 else {"matches": True})}
 

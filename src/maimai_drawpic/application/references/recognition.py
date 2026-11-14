@@ -43,7 +43,10 @@ class ReferenceRecognizer:
             messages = await asyncio.to_thread(encode)
         try:
             async with asyncio.timeout(20):
-                response = await self.ctx.llm.generate(messages, model=self.model,
+                route = {"task_name": "vlm"}
+                if self.model != "vlm":
+                    route["model_name"] = self.model.removeprefix("model:")
+                response = await self.ctx.llm.generate(messages, **route,
                                                      temperature=0.0, max_tokens=900, rpc_timeout_ms=20000)
             value = json.loads(response["content"])
             if not isinstance(value, dict):
@@ -54,9 +57,8 @@ class ReferenceRecognizer:
         except Exception as exc:
             raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", f"参考素材识别失败（{type(exc).__name__}）") from exc
 
-    async def self_subject(self, request: str, names: List[str], keywords: Optional[List[str]] = None) -> str:
-        value = await self._json(PROMPTS["zh-CN"]["self"].format(request=request, names=json.dumps(names, ensure_ascii=False),
-                                                             keywords=json.dumps(keywords if keywords is not None else [], ensure_ascii=False)))
+    async def self_subject(self, request: str, names: List[str]) -> str:
+        value = await self._json(PROMPTS["zh-CN"]["self"].format(request=request, names=json.dumps(names, ensure_ascii=False)))
         if set(value) != {"subject"} or not isinstance(value["subject"], str) or value["subject"] not in {"self", "other", "uncertain"}:
             raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "自身识别返回了无效分类")
         return value["subject"]

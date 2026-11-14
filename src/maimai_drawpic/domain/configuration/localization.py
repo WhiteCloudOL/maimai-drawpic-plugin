@@ -482,9 +482,9 @@ _OPENAI_MODE_HINTS = (
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
     "ReferenceConfig.material_model": (
-        "A fast multimodal model is recommended.",
-        "高速なマルチモーダルモデルを推奨します。",
-        "빠른 멀티모달 모델을 권장합니다.",
+        "A fast multimodal model is recommended. For a specific model, enter its configured MaiBot name.",
+        "高速なマルチモーダルモデルを推奨します。指定する場合はMaiBotに設定済みのモデル名を入力してください。",
+        "빠른 멀티모달 모델을 권장합니다. 직접 지정하려면 MaiBot에 설정된 모델 이름을 입력하세요.",
     ),
     "ReferenceConfig.allow_chat_material_search": (
         "Read prior images only for clear follow-up edits or regeneration requests.",
@@ -517,9 +517,9 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "지정 캐릭터, 특정 물건 또는 명시적인 참고 이미지 요청만 검색합니다. 서비스는 MaiBot 설정을 따릅니다.",
     ),
     "ReferenceConfig.self_keywords": (
-        "Optional hints such as your selfie or draw yourself. Interpret negation, quotations and the speaker; a keyword hit alone never selects the bot. Leave empty to use the original request and bot names.",
-        "あなたの自撮り等の任意の手掛かりです。否定・引用・話者も判断し、単語の一致だけでボットを選びません。空欄では元の依頼と名前を使います。",
-        "너의 셀카 등 선택적인 단서입니다. 부정, 인용 및 화자를 함께 판단하며 키워드 일치만으로 봇을 선택하지 않습니다. 비우면 원래 요청과 이름을 사용합니다.",
+        "For example: selfie, draw, drawing. Matching tags remind the planner to consider drawing; bot identity still depends on meaning. Add with Enter or commas; leave empty to disable reminders.",
+        "例：自撮り、描いて、作画。一致したら描画の判断を促し、自身かどうかは文意で判断します。Enterまたはカンマで追加、空欄で通知を無効にします。",
+        "예: 셀카, 그려, 그림. 일치하면 그림 요청인지 판단하도록 알리며 봇 자신인지는 의미로 구분합니다. Enter 또는 쉼표로 추가하고 비우면 알림을 끕니다.",
     ),
     "SiliconFlowModelConfig.watermark_enabled": (
         "Enabled by default. The invisible watermark remains when disabled.",
@@ -787,7 +787,7 @@ _SECTION_TEXTS.update({
 })
 _FIELD_LABELS.update({
     "material_model": ("Recognition model", "識別モデル", "인식 모델"),
-    "self_keywords": ("Self-reference keywords", "自身を指すキーワード", "자신을 가리키는 키워드"),
+    "self_keywords": ("Trigger keywords", "トリガーキーワード", "트리거 키워드"),
     "references": ("References and materials", "参照と素材", "참조 및 소재"),
     "self_reference_enabled": ("Enable self references", "自身の参照を有効化", "자신의 참조 활성화"),
     "self_names": ("Bot names and aliases", "ボットの名前と別名", "봇 이름 및 별칭"),

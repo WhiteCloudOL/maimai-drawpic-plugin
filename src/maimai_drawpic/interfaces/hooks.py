@@ -2,14 +2,44 @@
 
 from maibot_sdk import HookHandler
 from maibot_sdk.types import HookMode
-from typing import Any
+from typing import Any, Dict, List
 
-from ..application.access import ChatAccessDenied, require_chat_access
+from ..application.access import ChatAccessDenied, access_restricted, require_chat_access
+from ..application.references.planner import drawing_reminder_items
 from .chat.message_images import cache_source_image_from_message
 
 
 class HookMixin:
     """runtime/hooks.py 对应的插件行为。"""
+
+    @HookHandler(
+        "maisaka.planner.before_request",
+        name="drawing_keyword_reminder",
+        description="在宿主放行的规划请求中，按触发关键词提醒判断绘图意图",
+    )
+    async def handle_drawing_keyword_reminder(
+        self, items: List[Dict[str, Any]], tool_definitions: List[Dict[str, Any]],
+        item_schema_version: int, session_id: str, **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """不监听消息触发规划，不直接调用模型或绘图工具。"""
+        result = {"success": True, "action": "continue"}
+        if not self.config.plugin.enabled:
+            return result
+        if item_schema_version != 1:
+            raise ValueError(f"不支持的规划上下文版本：{item_schema_version}")
+        updated = drawing_reminder_items(items, tool_definitions, self.config.general.references.self_keywords)
+        if updated is None:
+            return result
+        if access_restricted(self.config.general):
+            context = await self._require_stream_service().existing_stream_context(session_id)
+            try:
+                require_chat_access(self.config.general, context, self.ctx.logger)
+            except ChatAccessDenied:
+                return result
+        return {**result, "modified_kwargs": {
+            **kwargs, "items": updated, "tool_definitions": tool_definitions,
+            "item_schema_version": item_schema_version, "session_id": session_id,
+        }}
 
     @HookHandler(
         "chat.receive.before_process",

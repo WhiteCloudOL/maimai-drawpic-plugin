@@ -53,7 +53,7 @@ class ReferencePreparation:
         images = list(self.images)
         if refs.self_reference_enabled and self.options.self_reference != "off":
             subject = "self" if self.options.self_reference == "required" else await self.recognizer.self_subject(
-                self.options.user_request, refs.self_names, refs.self_keywords)
+                self.options.user_request, refs.self_names)
             if subject == "uncertain":
                 raise TaskRequestError("SELF_SUBJECT_UNCERTAIN", "无法确定要描绘谁，请明确是否描绘机器人自身")
             if subject == "self":
