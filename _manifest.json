@@ -22,7 +22,7 @@
   },
   "sdk": {
     "min_version": "2.20.0",
-    "max_version": "2.22.1"
+    "max_version": "2.23.0"
   },
   "dependencies": [
     {
