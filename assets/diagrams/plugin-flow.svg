@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="1520" viewBox="0 0 1840 1520" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">麦麦绘图插件处理流程</title>
+  <desc id="flow-desc">聊天由 MaiBot 的 planner 决定是否绘图；命令、WebUI 和外部 API 直接进入统一受理。任务按设置准备自我参考和预设，仅在明确接续时读取聊天前图，仅在需要具体素材且允许联网、已有图片不足时搜索网页并逐张检查图片。合并参考后校验能力、审核提示词，再执行绘图、审核结果、保存和交付。失败保留状态并返回原因，取消仅停止本地等待。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#737380"/></marker>
+    <marker id="arrow-rose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b14d66"/></marker>
+    <style>
+      text { font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; fill: #292833; }
+      .box { fill: #fff; stroke: #bcb9c3; stroke-width: 2; }
+      .entry { fill: #f2f5fc; stroke: #8196bf; }
+      .reference { fill: #fcf0f4; stroke: #bd7187; }
+      .decision { fill: #fff7e6; stroke: #c79b48; stroke-width: 2; }
+      .success { fill: #edf7f1; stroke: #6a9b7e; }
+      .failure { fill: #fff0ef; stroke: #c98079; }
+      .muted { fill: #f3f3f6; stroke: #aaa7b2; }
+      .title { font-size: 23px; font-weight: 600; }
+      .detail { font-size: 19px; fill: #514e5c; }
+      .small { font-size: 17px; fill: #625d6c; }
+      .edge { fill: none; stroke: #737380; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+      .rose { stroke: #b14d66; }
+      .label { font-size: 19px; fill: #514e5c; paint-order: stroke; stroke: #faf9fb; stroke-width: 7px; stroke-linejoin: round; }
+      .legend { font-size: 18px; fill: #625d6c; }
+    </style>
+  </defs>
+  <rect width="1840" height="1520" rx="24" fill="#faf9fb"/>
+
+<path class="edge" d="M240 140 V222" marker-end="url(#arrow)"/>
+<path class="edge" d="M650 140 V185 H1470 V140"/>
+<path class="edge" d="M1060 140 V185"/>
+<path class="edge" d="M850 185 V225" marker-end="url(#arrow)"/>
+<circle cx="850" cy="185" r="4" fill="#737380"/>
+<path class="edge" d="M380 285 H660" marker-end="url(#arrow)"/>
+<path class="edge" d="M240 348 V385 H170 V415" marker-end="url(#arrow)"/>
+<path class="edge" d="M1040 285 H1290" marker-end="url(#arrow)"/>
+<path class="edge" d="M1470 345 V410" marker-end="url(#arrow)"/>
+<path class="edge rose" d="M1270 475 H1215" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M815 475 H690" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M540 545 V650" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M615 510 H775 V610 H1015 V635" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M720 710 H850" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M1180 710 H1320" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M1015 785 V815 H775 V918 Q795 930 775 942 V1080 H540"/>
+<path class="edge rose" d="M360 710 H300" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M1620 710 H1750 V1080 H540"/>
+<path class="edge rose" d="M1470 785 V870" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M1270 930 H1215" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M815 930 H690" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M390 930 H290" marker-end="url(#arrow-rose)"/>
+<path class="edge rose" d="M540 1005 V1100" marker-end="url(#arrow-rose)"/>
+<circle cx="540" cy="1080" r="4" fill="#b14d66"/>
+<path class="edge" d="M740 1160 H815" marker-end="url(#arrow)"/>
+<path class="edge" d="M1215 1160 H1270" marker-end="url(#arrow)"/>
+<path class="edge" d="M1470 1220 V1310" marker-end="url(#arrow)"/>
+<path class="edge" d="M1470 1160 H1750 V1310" marker-end="url(#arrow)"/>
+<path class="edge" d="M1650 1370 H1670" marker-end="url(#arrow)"/>
+<path class="edge" d="M1290 1370 H1215" marker-end="url(#arrow)"/>
+<path class="edge" d="M815 1370 H740" marker-end="url(#arrow)"/>
+<g id="chat">
+<rect class="box entry" x="75" y="40" width="330" height="100" rx="16"/>
+<text class="title" x="240" y="83.5" text-anchor="middle">自然语言聊天</text>
+<text class="detail" x="240" y="112.5" text-anchor="middle">遵循 MaiBot 原有回复规则</text>
+</g>
+<g id="command">
+<rect class="box entry" x="485" y="40" width="330" height="100" rx="16"/>
+<text class="title" x="650" y="83.5" text-anchor="middle">聊天命令</text>
+<text class="detail" x="650" y="112.5" text-anchor="middle">文生图 / 图生图 / 风格绘图</text>
+</g>
+<g id="webui">
+<rect class="box entry" x="895" y="40" width="330" height="100" rx="16"/>
+<text class="title" x="1060" y="83.5" text-anchor="middle">WebUI 开始创作</text>
+<text class="detail" x="1060" y="112.5" text-anchor="middle">选择模式、模型和参考图</text>
+</g>
+<g id="api">
+<rect class="box entry" x="1290" y="40" width="360" height="100" rx="16"/>
+<text class="title" x="1470" y="83.5" text-anchor="middle">外部插件 / DrawingClient</text>
+<text class="detail" x="1470" y="112.5" text-anchor="middle">简易调用 / 高级调用</text>
+</g>
+<g id="planner">
+<polygon class="decision" points="240,222 380,285 240,348 100,285"/>
+<text class="title" x="240" y="278.5" text-anchor="middle">planner 是否调用</text>
+<text class="detail" x="240" y="307.5" text-anchor="middle">绘图工具？</text>
+</g>
+<g id="normal">
+<rect class="box muted" x="50" y="415" width="240" height="80" rx="16"/>
+<text class="title" x="170" y="463" text-anchor="middle">正常聊天或等待</text>
+</g>
+<g id="admission">
+<rect class="box " x="660" y="225" width="380" height="120" rx="16"/>
+<text class="title" x="850" y="264" text-anchor="middle">统一受理检查</text>
+<text class="detail" x="850" y="293" text-anchor="middle">参数、权限、模型及适用额度</text>
+<text class="detail" x="850" y="322" text-anchor="middle">未通过则返回原因，不创建任务</text>
+</g>
+<g id="task">
+<rect class="box " x="1290" y="225" width="360" height="120" rx="16"/>
+<text class="title" x="1470" y="264" text-anchor="middle">保存并启动后台任务</text>
+<text class="detail" x="1470" y="293" text-anchor="middle">返回任务 ID</text>
+<text class="detail" x="1470" y="322" text-anchor="middle">可查询进度或取消本地等待</text>
+</g>
+<g id="references">
+<rect class="box reference" x="1270" y="410" width="400" height="130" rx="16"/>
+<text class="title" x="1470" y="442.5" text-anchor="middle">准备参考图和绘图预设</text>
+<text class="detail" x="1470" y="469.5" text-anchor="middle">自我主体：明确指定 / 语义识别</text>
+<text class="detail" x="1470" y="496.5" text-anchor="middle">图库和预设：指定项 → tag → 默认</text>
+<text class="small" x="1470" y="523.5" text-anchor="middle">图生图预设须开启，按实际模式选择</text>
+</g>
+<g id="needs">
+<rect class="box reference" x="815" y="415" width="400" height="120" rx="16"/>
+<text class="title" x="1015" y="454" text-anchor="middle">识别本次素材需求</text>
+<text class="detail" x="1015" y="483" text-anchor="middle">仅本次开启取材时调用识别模型</text>
+<text class="detail" x="1015" y="512" text-anchor="middle">依据原话提取最多 3 项需求和检索词</text>
+</g>
+<g id="followup">
+<polygon class="decision" points="540,405 690,475 540,545 390,475"/>
+<text class="title" x="540" y="468.5" text-anchor="middle">明确接续前图</text>
+<text class="detail" x="540" y="497.5" text-anchor="middle">且允许聊天取材？</text>
+</g>
+<g id="history">
+<rect class="box reference" x="360" y="650" width="360" height="120" rx="16"/>
+<text class="title" x="540" y="689" text-anchor="middle">读取当前聊天前图</text>
+<text class="detail" x="540" y="718" text-anchor="middle">最近 24 小时；默认最多 50 条消息</text>
+<text class="detail" x="540" y="747" text-anchor="middle">最多取 6 张候选图，选择最近前图</text>
+</g>
+<g id="history-missing">
+<rect class="box failure" x="40" y="660" width="260" height="100" rx="16"/>
+<text class="title" x="170" y="703.5" text-anchor="middle">前图缺失 / 读取失败</text>
+<text class="detail" x="170" y="732.5" text-anchor="middle">停止并提示引用原图</text>
+</g>
+<g id="web-needed">
+<polygon class="decision" points="1015,635 1180,710 1015,785 850,710"/>
+<text class="title" x="1015" y="703.5" text-anchor="middle">需要且允许网络取材？</text>
+<text class="detail" x="1015" y="732.5" text-anchor="middle">具名目标 / 明确找参考</text>
+</g>
+<g id="existing">
+<polygon class="decision" points="1470,635 1620,710 1470,785 1320,710"/>
+<text class="title" x="1470" y="703.5" text-anchor="middle">已有参考图</text>
+<text class="detail" x="1470" y="732.5" text-anchor="middle">能满足需求？</text>
+</g>
+<g id="search">
+<rect class="box reference" x="1270" y="870" width="400" height="120" rx="16"/>
+<text class="title" x="1470" y="909" text-anchor="middle">搜索网页并提取候选图片</text>
+<text class="detail" x="1470" y="938" text-anchor="middle">MaiBot / DeepSeek Search</text>
+<text class="detail" x="1470" y="967" text-anchor="middle">每项最多 3 个网页、6 张候选图</text>
+</g>
+<g id="visual-match">
+<rect class="box reference" x="815" y="870" width="400" height="120" rx="16"/>
+<text class="title" x="1015" y="909" text-anchor="middle">逐张匹配实际图片</text>
+<text class="detail" x="1015" y="938" text-anchor="middle">核对身份、服装、人数和目标版本</text>
+<text class="detail" x="1015" y="967" text-anchor="middle">最多检查 12 张次，首个符合即采用</text>
+</g>
+<g id="matched">
+<polygon class="decision" points="540,855 690,930 540,1005 390,930"/>
+<text class="title" x="540" y="923.5" text-anchor="middle">每项需求都有</text>
+<text class="detail" x="540" y="952.5" text-anchor="middle">匹配图片？</text>
+</g>
+<g id="material-missing">
+<rect class="box failure" x="50" y="875" width="240" height="110" rx="16"/>
+<text class="title" x="170" y="923.5" text-anchor="middle">未找到匹配素材</text>
+<text class="detail" x="170" y="952.5" text-anchor="middle">停止并提示补图</text>
+</g>
+<g id="compose">
+<rect class="box reference" x="340" y="1100" width="400" height="120" rx="16"/>
+<text class="title" x="540" y="1139" text-anchor="middle">合并预设提示词和参考图</text>
+<text class="detail" x="540" y="1168" text-anchor="middle">去重，保留每张图的对应说明</text>
+<text class="detail" x="540" y="1197" text-anchor="middle">有图：图生图；无图：文生图</text>
+</g>
+<g id="validate">
+<rect class="box " x="815" y="1100" width="400" height="120" rx="16"/>
+<text class="title" x="1015" y="1127.5" text-anchor="middle">执行前校验和提示词审核</text>
+<text class="detail" x="1015" y="1154.5" text-anchor="middle">检查模式、模型能力及图片上限</text>
+<text class="detail" x="1015" y="1181.5" text-anchor="middle">自我 / 预设多图须先经用户确认</text>
+<text class="small" x="1015" y="1208.5" text-anchor="middle">未通过则结束任务并返回原因</text>
+</g>
+<g id="provider">
+<rect class="box " x="1270" y="1100" width="400" height="120" rx="16"/>
+<text class="title" x="1470" y="1139" text-anchor="middle">按配置处理提示词并绘图</text>
+<text class="detail" x="1470" y="1168" text-anchor="middle">仅按规则有限重试或切换备选</text>
+<text class="detail" x="1470" y="1197" text-anchor="middle">异步平台查询同一上游任务</text>
+</g>
+<g id="review">
+<rect class="box " x="1290" y="1310" width="360" height="120" rx="16"/>
+<text class="title" x="1470" y="1349" text-anchor="middle">按配置审核生成图片</text>
+<text class="detail" x="1470" y="1378" text-anchor="middle">通过的图片进入后续交付</text>
+<text class="detail" x="1470" y="1407" text-anchor="middle">全部未通过则拒绝交付</text>
+</g>
+<g id="results">
+<rect class="box success" x="815" y="1310" width="400" height="120" rx="16"/>
+<text class="title" x="1015" y="1363.5" text-anchor="middle">保存原图和预览</text>
+<text class="detail" x="1015" y="1392.5" text-anchor="middle">分别记录生成、缓存、发送状态</text>
+</g>
+<g id="delivery">
+<rect class="box success" x="340" y="1310" width="400" height="120" rx="16"/>
+<text class="title" x="540" y="1349" text-anchor="middle">交付结果</text>
+<text class="detail" x="540" y="1378" text-anchor="middle">WebUI / API 查询任务和图片</text>
+<text class="detail" x="540" y="1407" text-anchor="middle">聊天任务或指定会话发送图片</text>
+</g>
+<g id="failed">
+<rect class="box failure" x="1670" y="1310" width="160" height="120" rx="16"/>
+<text class="title" x="1750" y="1349" text-anchor="middle">任务未完成</text>
+<text class="detail" x="1750" y="1378" text-anchor="middle">保留状态</text>
+<text class="detail" x="1750" y="1407" text-anchor="middle">返回原因</text>
+</g>
+<text class="label" x="260" y="185" text-anchor="start">命中关键词时只追加提醒</text>
+<text class="label" x="520" y="267" text-anchor="middle">是：draw / edit_image</text>
+<text class="label" x="263" y="383" text-anchor="middle">否</text>
+<text class="label" x="1160" y="267" text-anchor="middle">通过</text>
+<text class="label" x="740" y="455" text-anchor="middle">按原话判断</text>
+<text class="label" x="562" y="602" text-anchor="start">是</text>
+<text class="label" x="722" y="535" text-anchor="middle">否</text>
+<text class="label" x="775" y="693" text-anchor="middle">找到前图</text>
+<text class="label" x="1250" y="693" text-anchor="middle">是</text>
+<text class="label" x="750" y="846" text-anchor="end">否，跳过联网</text>
+<text class="label" x="330" y="692" text-anchor="middle">无图</text>
+<text class="label" x="1700" y="690" text-anchor="middle">是</text>
+<text class="label" x="1488" y="829" text-anchor="start">否</text>
+<text class="label" x="1370" y="1062" text-anchor="middle">已有图片足够，跳过搜索</text>
+<text class="label" x="740" y="910" text-anchor="middle">逐项判定</text>
+<text class="label" x="340" y="910" text-anchor="middle">否</text>
+<text class="label" x="563" y="1050" text-anchor="start">是</text>
+<text class="label" x="775" y="1143" text-anchor="middle">校验</text>
+<text class="label" x="1245" y="1143" text-anchor="middle">通过</text>
+<text class="label" x="1490" y="1274" text-anchor="start">获得图片</text>
+<text class="label" x="1730" y="1238" text-anchor="end">失败或结果待确认</text>
+<text class="label" x="1245" y="1352" text-anchor="middle">通过</text>
+<text class="legend" x="920" y="1490" text-anchor="middle">按箭头阅读；粉色为参考取材，菱形为条件判断，绿色为结果交付。未开启的可选功能直接跳过。</text>
+</svg>
