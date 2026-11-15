@@ -23,6 +23,33 @@ def provide_streams(plugin, monkeypatch):
     return calls
 
 
+@pytest.mark.parametrize("method,arguments", [
+    ("drawpic_submit", {"prompt": "cat", "reference_options": '{"self_reference":"off"}'}),
+    ("drawpic_submit", {"prompt": "cat", "reference_options": []}),
+    ("drawpic_submit", {"prompt": "cat", "reference_options": {"material_sources": {"web"}}}),
+    ("drawpic_submit", {"prompt": "cat", "reference_options": {"user_request": "汉" * 22000}}),
+    ("drawpic_submit", {"prompt": "cat", "unexpected": True}),
+    ("drawpic_submit", {}),
+    ("drawpic_preferences_set", {"stream_id": "actual-stream", "preferences": '{"model":"x"}'}),
+    ("drawpic_presets", {"operation": "save", "preset": '{"name":"x"}'}),
+])
+def test_native_object_validation_rejects_before_acceptance(make_plugin, method, arguments):
+    async def run():
+        plugin = make_plugin()
+        await plugin.on_load()
+        try:
+            result = await getattr(plugin, method)(**arguments)
+            assert result["error"]["code"] == "INVALID_REQUEST"
+            assert not result["error"]["retry_submit"]
+            if method == "drawpic_submit":
+                assert result["accepted"] is False and result["task_id"] is None
+            assert plugin._task_store.get_task_count() == 0
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
 def test_client_preferences_partial_update_clear_and_reload(make_plugin, monkeypatch):
     async def run():
         plugin = make_plugin()
