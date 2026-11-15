@@ -102,6 +102,9 @@ def test_planner_hook_respects_chat_access(make_plugin, monkeypatch):
 
 @pytest.mark.parametrize("model,expected", [
     ("vlm", {"task_name": "vlm"}),
+    ("task:vlm", {"task_name": "vlm"}),
+    ("task:planner", {"task_name": "planner"}),
+    ("task:replyer", {"task_name": "replyer"}),
     ("fast-vision", {"task_name": "vlm", "model_name": "fast-vision"}),
     ("planner", {"task_name": "vlm", "model_name": "planner"}),
     ("model:vlm", {"task_name": "vlm", "model_name": "vlm"}),

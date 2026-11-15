@@ -381,7 +381,7 @@ def test_search_verifies_each_subject_and_reuse_does_not_search_again(make_plugi
             async def matches(self, image, need):
                 return image.raw.endswith(b"ganyu")
 
-            async def web(self, query):
+            async def web(self, query, *, subject=""):
                 counts["web"] += 1
                 return [images.ReferenceImage(image_bytes() + b"ganyu", "web", url="https://example.org/ganyu.png")]
 
@@ -481,7 +481,7 @@ def test_chat_material_order_and_errors_do_not_silently_enable_web(tmp_path, mon
                 raise RuntimeError("chat service unavailable")
             return [references.ReferenceImage(image_bytes(), "chat")]
 
-        async def web(self, query):
+        async def web(self, query, *, subject=""):
             counts["web"] += 1
             return [references.ReferenceImage(image_bytes(), "web", url="https://example.org/ganyu.png")]
 

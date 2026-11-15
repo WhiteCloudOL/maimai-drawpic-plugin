@@ -482,9 +482,19 @@ _OPENAI_MODE_HINTS = (
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
     "ReferenceConfig.material_model": (
-        "A fast multimodal model is recommended. For a specific model, enter its configured MaiBot name.",
-        "高速なマルチモーダルモデルを推奨します。指定する場合はMaiBotに設定済みのモデル名を入力してください。",
-        "빠른 멀티모달 모델을 권장합니다. 직접 지정하려면 MaiBot에 설정된 모델 이름을 입력하세요.",
+        "A fast multimodal model is recommended. Use planner, replyer, vlm, or a configured MaiBot model name.",
+        "高速なマルチモーダルモデルを推奨します。planner、replyer、vlm、またはMaiBotに設定済みのモデル名を指定できます。",
+        "빠른 멀티모달 모델을 권장합니다. planner, replyer, vlm 또는 MaiBot에 설정된 모델 이름을 사용할 수 있습니다.",
+    ),
+    "ReferenceConfig.web_search_provider": (
+        "MaiBot uses the host's configured search service. DeepSeek uses a separate API key.",
+        "MaiBotはホストの検索設定を使い、DeepSeekは別途入力したAPIキーを使います。",
+        "MaiBot은 호스트의 검색 서비스를 사용하고 DeepSeek은 별도 API 키를 사용합니다.",
+    ),
+    "ReferenceConfig.deepseek_api_key": (
+        "Leave empty to keep the saved key. Search API returns web pages; candidate images are extracted from them.",
+        "空欄では保存済みキーを保持します。Search APIのウェブ結果から候補画像を抽出します。",
+        "비워 두면 저장된 키를 유지합니다. Search API가 반환한 웹 페이지에서 후보 이미지를 추출합니다.",
     ),
     "ReferenceConfig.allow_chat_material_search": (
         "Read prior images only for clear follow-up edits or regeneration requests.",
@@ -512,9 +522,9 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "권장값은 50개이며 1~200개로 설정할 수 있습니다. 현재 대화의 최근 24시간만 검색하고 후보 이미지는 최대 6장 선택합니다.",
     ),
     "ReferenceConfig.allow_web_material_search": (
-        "Search only for named characters, specific objects or explicit reference requests. Uses the service selected in MaiBot.",
-        "指定キャラ、特定物品、明示的な参照画像探しのみ検索します。サービスはMaiBotの設定に従います。",
-        "지정 캐릭터, 특정 물건 또는 명시적인 참고 이미지 요청만 검색합니다. 서비스는 MaiBot 설정을 따릅니다.",
+        "Search only for named characters, specific objects or explicit reference requests.",
+        "指定キャラ、特定物品、明示的な参照画像探しのみ検索します。",
+        "지정 캐릭터, 특정 물건 또는 명시적인 참고 이미지 요청만 검색합니다.",
     ),
     "ReferenceConfig.self_keywords": (
         "For example: selfie, draw, drawing. Matching tags remind the planner to consider drawing; bot identity still depends on meaning. Add with Enter or commas; leave empty to disable reminders.",
@@ -786,6 +796,8 @@ _SECTION_TEXTS.update({
     "ReferenceBindingConfig": (("Reference image use", "参照画像の用途", "참조 이미지 용도"), ("Image and subject binding.", "画像と被写体の対応。", "이미지와 대상 연결.")),
 })
 _FIELD_LABELS.update({
+    "web_search_provider": ("Search service", "検索サービス", "검색 서비스"),
+    "deepseek_api_key": ("DeepSeek API Key", "DeepSeek APIキー", "DeepSeek API 키"),
     "material_model": ("Recognition model", "識別モデル", "인식 모델"),
     "self_keywords": ("Trigger keywords", "トリガーキーワード", "트리거 키워드"),
     "references": ("References and materials", "参照と素材", "참조 및 소재"),

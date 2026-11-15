@@ -144,6 +144,7 @@ class WorkspaceService:
             "defaults": _mask_secrets(defaults),
             "schema": schema,
             "reference_fields": reference_schema["references"]["fields"],
+            "deepseek_search_key_configured": bool(self.get_config().general.references.deepseek_api_key),
             "reference_assets": await asyncio.to_thread(self.tasks.references.snapshot),
             "catalog": [
                 {
@@ -232,12 +233,26 @@ class WorkspaceService:
     async def _save_settings(self, config_json: str, revision: int) -> Dict[str, Any]:
         values = parse_json_object(config_json)
         # 旧页面可能仍回传宿主字段；明确忽略这些已移出工作台的字段，避免阻止绘图设置保存。
-        if values.keys() - {"plugin", "proxy", "general", "style", "clear_proxy_password"}:
+        if values.keys() - {"plugin", "proxy", "general", "style", "clear_proxy_password", "clear_deepseek_api_key"}:
             raise ValueError("工作台配置包含未知分类")
+        clear_key = values.pop("clear_deepseek_api_key", False)
+        if type(clear_key) is not bool:
+            raise ValueError("清除 DeepSeek 密钥必须为布尔值")
         values = workspace_config(values)
         if revision != self.store.revision:
             raise ValueError("配置已更新，请刷新后保存")
         current = self.get_config().model_dump(mode="json")
+        if "general" in values:
+            references = values["general"].setdefault("references", {})
+            supplied_key = references.get("deepseek_api_key", "")
+            if not isinstance(supplied_key, str) or len(supplied_key) > 512:
+                raise ValueError("DeepSeek API Key 必须为 512 字符以内的文本")
+            if clear_key:
+                references["deepseek_api_key"] = ""
+            elif not supplied_key.strip():
+                references["deepseek_api_key"] = current["general"]["references"]["deepseek_api_key"]
+            else:
+                references["deepseek_api_key"] = supplied_key.strip()
         checked = DrawpicConfig.model_validate({**current, **values})
         await self._validate_reference_assets(checked)
         updated = await asyncio.to_thread(self.store.save_common, values, current, revision)
@@ -355,7 +370,7 @@ class WorkspaceService:
                     raise ValueError("已有同名预设")
                 presets.append(preset)
         await self._validate_reference_assets(DrawpicConfig.model_validate(current))
-        updated = await asyncio.to_thread(self.store.save_common, workspace_config(current), current, snapshot["revision"])
+        updated = await asyncio.to_thread(self.store.save_common, {"style": current["style"]}, current, snapshot["revision"])
         status = await self._refresh_committed(updated)
         return {**listed(), **status}
 

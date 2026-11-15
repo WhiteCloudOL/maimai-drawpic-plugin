@@ -28,6 +28,7 @@ class PreferenceAPIMixin(WorkspaceAPIBase):
                 "chat_material_search_limit": config.chat_material_search_limit,
                 "material_model": config.material_model,
                 "allow_web_material_search": config.allow_web_material_search,
+                "web_search_provider": config.web_search_provider,
                 "multi_reference_confirmed": config.multi_reference_confirmed}
 
     def _preference_api(self) -> IntegrationPreferenceService:

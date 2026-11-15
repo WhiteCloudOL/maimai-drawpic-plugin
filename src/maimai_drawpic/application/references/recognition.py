@@ -43,8 +43,9 @@ class ReferenceRecognizer:
             messages = await asyncio.to_thread(encode)
         try:
             async with asyncio.timeout(20):
-                route = {"task_name": "vlm"}
-                if self.model != "vlm":
+                task = {"vlm": "vlm", "task:vlm": "vlm", "task:planner": "planner", "task:replyer": "replyer"}.get(self.model)
+                route = {"task_name": task or "vlm"}
+                if task is None:
                     route["model_name"] = self.model.removeprefix("model:")
                 response = await self.ctx.llm.generate(messages, **route,
                                                      temperature=0.0, max_tokens=900, rpc_timeout_ms=20000)
@@ -64,7 +65,7 @@ class ReferenceRecognizer:
         return value["subject"]
 
     async def needs(self, request: str, *, source_count: int = 0) -> MaterialNeeds:
-        value = await self._json(PROMPTS["zh-CN"]["needs"].format(request=request, source_count=source_count))
+        value = await self._json(PROMPTS["zh-CN"]["query_guidance"] + PROMPTS["zh-CN"]["needs"].format(request=request, source_count=source_count))
         try:
             result = MaterialNeeds.model_validate(value)
         except ValidationError as exc:

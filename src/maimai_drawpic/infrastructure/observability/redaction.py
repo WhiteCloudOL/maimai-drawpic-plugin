@@ -25,7 +25,7 @@ class SecretRedactor(logging.Filter):
             item = pending.pop()
             if isinstance(item, dict):
                 secrets.extend(
-                    value for key, value in item.items() if key in {"api_key", "password"} and isinstance(value, str)
+                    value for key, value in item.items() if key in {"api_key", "password", "deepseek_api_key"} and isinstance(value, str)
                 )
                 pending.extend(item.values())
             elif isinstance(item, list):

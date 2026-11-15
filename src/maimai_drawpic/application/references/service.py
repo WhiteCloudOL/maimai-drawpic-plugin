@@ -105,7 +105,9 @@ class ReferencePreparation:
                         if need.kind == "user" or need.subject.strip() in {"用户", "我", "本人", "user"}:
                             raise TaskRequestError("MATERIAL_MISSING", "用户本人形象需要明确提供照片，不能使用同名网图")
                         try:
-                            candidates = await self.sources.web(need.query)
+                            candidates = await self.sources.web(need.query, subject=need.mention)
+                        except TaskRequestError:
+                            raise
                         except Exception as exc:
                             raise TaskRequestError("WEB_MATERIAL_UNAVAILABLE", f"网络素材获取失败（{type(exc).__name__}）") from exc
                     for candidate in candidates:
