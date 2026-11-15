@@ -48,7 +48,7 @@
       <details class="settings-card settings-disclosure"><summary><span>固定参考组合</span><span class="disclosure-note">可选 ${icon("chevron")}</span></summary><div class="settings-card-body">${U.forms.html(pick(["self_reference_ids", "multi_reference_confirmed"]), values)}</div></details>`;
   }
   function materialFields(fields, values) {
-    return `<section class="settings-card">${U.forms.html(fields, values)}</section>`;
+    return `<p class="hint feature-preview-note" role="note">${icon("info")}<span>本页功能处于测试阶段，如遇问题可通过 <a href="https://github.com/WhiteCloudOL/maimai-drawpic-plugin/issues/new" target="_blank" rel="noopener noreferrer">GitHub Issue</a> 反馈。</span></p><section class="settings-card">${U.forms.html(fields, values)}</section>`;
   }
   async function showSettings(view) {
     const keys = view === "library" ? ["style", "references", "materials"] : ["general", "review", "access"];
@@ -57,6 +57,7 @@
     const revision = state.data.revision;
     const working = structuredClone(state.data.settings), baseline = working;
     const readers = {};
+    let clearSearchKey = () => false;
     const save = $("#save-settings");
     const navigation = (keys, caption) => `<span class="settings-nav-caption" aria-hidden="true">${caption}</span>${keys.map(name => `<button id="settings-tab-${name}" class="settings-tab" data-section="${name}" role="tab" aria-controls="settings-panel-${name}">${icon(sectionIcons[name])}<span>${e(sections[name])}</span>${icon("chevron")}</button>`).join("")}`;
     $("#workspace-content").innerHTML = `<div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="配置分类">${navigation(keys, view === "library" ? "创作资源" : "运行管理")}</nav><section class="settings-workspace"><div class="settings-page-heading"><h2 id="settings-heading"></h2><button type="button" id="reset-settings" class="button secondary compact">${icon("reset")}恢复本类默认</button></div><form id="settings-form"></form></section></div>`;
@@ -69,7 +70,7 @@
       panel.setAttribute("role", "tabpanel");
       panel.setAttribute("aria-labelledby", `settings-tab-${name}`);
       panel.hidden = name !== selected;
-      const materialField = key => key.startsWith("allow_") || ["chat_material_search_limit", "material_model"].includes(key);
+      const materialField = key => key.startsWith("allow_") || ["chat_material_search_limit", "material_model", "web_search_provider", "deepseek_api_key"].includes(key);
       const fields = ["references", "materials"].includes(name) ? Object.fromEntries(Object.entries(state.data.reference_fields).filter(([key]) => name === "materials" ? materialField(key) : !materialField(key))) : Object.fromEntries(
         Object.entries(state.data.schema.sections[sourceSection(name)].fields)
           .filter(([key]) => belongsToSection(name, key)),
@@ -85,6 +86,14 @@
       if (old) old.replaceWith(panel);
       else form.append(panel);
       const read = U.forms.bind(panel, fields, values);
+      if (name === "materials") {
+        clearSearchKey = U.formControls.secret(panel, { key: "deepseek_api_key", configured: state.data.deepseek_search_key_configured });
+        const provider = $('[data-input="web_search_provider"]', panel);
+        const keyField = $('[data-field="deepseek_api_key"]', panel);
+        const showKey = () => { keyField.hidden = provider.value !== "deepseek"; };
+        provider.addEventListener("change", showKey);
+        showKey();
+      }
       // 各分类只读取所属字段，再合并为同一份持久配置。
       readers[name] = () => {
         const result = read();
@@ -172,6 +181,7 @@
       for (const name of ["general", "review", "access"]) if (readers[name]) Object.assign(all.general, readers[name]());
       for (const name of ["references", "materials"]) if (readers[name]) Object.assign(all.general.references, readers[name]());
       if (readers.style) all.style = readers.style();
+      if (clearSearchKey()) all.clear_deepseek_api_key = true;
       return all;
     };
     form.onsubmit = (event) => {

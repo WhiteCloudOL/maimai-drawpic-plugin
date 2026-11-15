@@ -8,7 +8,7 @@
     return meta.i18n?.[language]?.[key] || meta[key] || "";
   }
   function defaultValue(key, meta) {
-    return key === "api_key" || key === "password" ? "" : structuredClone(meta.default);
+    return key === "api_key" || key === "password" || meta.input_type === "password" ? "" : structuredClone(meta.default);
   }
   function multiline(key, meta) {
     return meta.input_type === "textarea" ||
@@ -49,7 +49,7 @@
       return `<input id="${id}" type="text" inputmode="numeric" pattern="-?[0-9]+" data-exact-integer data-input="${e(key)}" value="${e(value)}" required autocomplete="off">`;
     if (type === "integer" || type === "number")
       return `<input id="${id}" type="number" data-input="${e(key)}" value="${e(value)}" step="${meta.step || (type === "integer" ? 1 : "any")}" ${meta.min != null ? `min="${e(meta.min)}"` : ""} ${meta.max != null ? `max="${e(meta.max)}"` : ""}>`;
-    const secret = key === "api_key" || key === "password";
+    const secret = key === "api_key" || key === "password" || meta.input_type === "password";
     if (multiline(key, meta) && !secret)
       return `<textarea id="${id}" rows="${meta.rows || 3}" data-input="${e(key)}" maxlength="16000">${e(value)}</textarea>`;
     const models = /^(default_model|fallback_model)$/.test(key);

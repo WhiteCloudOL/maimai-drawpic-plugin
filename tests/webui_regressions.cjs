@@ -10,7 +10,7 @@ const source = path.join(__dirname, '../src/maimai_drawpic/interfaces/webui/src'
 const read = name => fs.readFileSync(path.join(source, name), 'utf8');
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const event = { preventDefault() {} };
-const referenceDefaults = { self_reference_enabled: false, self_names: ['麦麦'], self_reference_ids: [], multi_reference_confirmed: false, allow_chat_material_search: false, chat_material_search_limit: 50, material_model: "vlm", allow_web_material_search: false };
+const referenceDefaults = { self_reference_enabled: false, self_names: ['麦麦'], self_reference_ids: [], multi_reference_confirmed: false, allow_chat_material_search: false, chat_material_search_limit: 50, material_model: "vlm", allow_web_material_search: false, web_search_provider: 'maibot', deepseek_api_key: '' };
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -41,6 +41,7 @@ function harness(file, extra = {}) {
     views: {}, $: get, e: String, icon: () => '', bindSubmit() {}, bindDirty() {},
     selects: { refresh() {} },
     motion: { enter() {}, loading() {}, segmented() {} },
+    formControls: { secret: () => () => false },
     toast() {}, savedNotice() {}, error: e => errors.push(e),
     call(kind, name, args) {
       const d = deferred(); calls.push({ kind, name, args, ...d }); return d.promise;
@@ -238,7 +239,7 @@ async function settings(view = 'settings') {
     bootstrap: async () => {}, render: async () => {},
     submitForm: form => form.onsubmit(event),
   });
-  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, allow_web_material_search: {} },
+  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, allow_web_material_search: {}, web_search_provider: {}, deepseek_api_key: {} },
     schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {}, integration_api_enabled: {}, group_access_ids: {}, private_access_mode: {}, admin_user_ids: {}, group_default_quota: {} } }, style: { fields: { presets: {} } } } },
     settings: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } },
     defaults: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } } };
@@ -532,11 +533,18 @@ test('tag control: IME stays intact, Enter commits unique tags, limits preserve 
 
 test('recognition model control distinguishes the default task from a concrete model with the same name', () => {
   const h = harness('forms'), control = { dataset: { control: 'recognition-model' } };
+  const alias = h.U.formControls.scalar('material_model', {}, 'task:vlm', 'material-model');
+  assert.match(alias, /<option value="vlm" selected>/);
+  assert.doesNotMatch(alias, /value="task:vlm"/);
   h.get('[data-choice-select]').value = '__workspace_custom__';
   h.get('[data-custom-value]').value = ' vlm ';
   assert.equal(h.U.formControls.read(control), 'model:vlm');
   h.get('[data-choice-select]').value = 'vlm';
   assert.equal(h.U.formControls.read(control), 'vlm');
+  for (const task of ['task:planner', 'task:replyer']) {
+    h.get('[data-choice-select]').value = task;
+    assert.equal(h.U.formControls.read(control), task);
+  }
 });
 
 // Use the actual production bridge queue: ordering bugs must not be tested with

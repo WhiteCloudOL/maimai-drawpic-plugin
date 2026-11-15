@@ -14,6 +14,7 @@
     refresh: '<path d="M20 8a8 8 0 1 0 1 6M20 3v5h-5"/>',
     reset: '<path d="M3 10a9 9 0 1 1 2.7 8.3M3 4v6h6"/>',
     search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
     chevron: '<path d="m6 9 6 6 6-6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',

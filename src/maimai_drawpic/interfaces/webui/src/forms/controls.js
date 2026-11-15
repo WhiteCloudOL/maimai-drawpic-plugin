@@ -37,7 +37,7 @@
     }
     const selected = $("[data-choice-select]", node).value;
     if (node.dataset.control === "recognition-model")
-      return selected === custom ? `model:${$("[data-custom-value]", node).value.trim()}` : "vlm";
+      return selected === custom ? `model:${$("[data-custom-value]", node).value.trim()}` : selected;
     if (selected !== custom) return selected;
     if (node.dataset.control !== "dimension")
       return $("[data-custom-value]", node).value;
@@ -80,11 +80,18 @@
     const kind = options.kind;
     if (meta.type === "array" && ["self_keywords", "self_names", "tags"].includes(key))
       return tags(value || [], { id, label: meta.label, limit: meta.max_items || 32 });
-    if (key === "material_model")
-      return choice(value.replace(/^model:/, ""), ["vlm"], { id, label: "识别模型", labels: { vlm: "MaiBot 视觉模型" }, forceCustom: value !== "vlm",
+    if (key === "material_model") {
+      if (value === "task:vlm") value = "vlm";
+      return choice(value.replace(/^model:/, ""), ["task:planner", "task:replyer", "vlm"], { id, label: "识别模型", labels: { "task:planner": "planner（规划模型）", "task:replyer": "replyer（回复模型）", vlm: "vlm（视觉模型）" }, forceCustom: !["task:planner", "task:replyer", "vlm"].includes(value),
         placeholder: "填写 MaiBot 中配置的模型名称", customLabel: "指定模型…" }).replace(
         "data-choice-select", `data-choice-select data-input="${e(key)}"`,
       ).replace('data-control="choice"', 'data-control="recognition-model"');
+    }
+    if (key === "web_search_provider")
+      return choice(value, ["maibot", "deepseek"], { id, label: "搜索服务", allowCustom: false,
+        labels: { maibot: "MaiBot 搜索服务", deepseek: "DeepSeek Search API" } }).replace(
+        "data-choice-select", `data-choice-select data-input="${e(key)}"`,
+      );
     if (meta.multiple) return multi(key, meta.choices || [], value || [], id);
     if (key === "request_retry_count" || key.endsWith("_review_retry_count"))
       return `<select id="${id}" data-input="${key}">${[0, 1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${Number(value) === count ? "selected" : ""}>${count === 0 ? "不重试" : `${count} 次${count === Number(meta.default) ? "（默认）" : ""}`}</option>`).join("")}</select>`;
@@ -150,5 +157,27 @@
       if (active) inputs[0]?.focus();
     });
   }
-  U.formControls = { choice, multi, tags, read, scalar, bind, optionsHTML };
+  function secret(root, { key, configured }) {
+    const input = $(`[data-input="${key}"]`, root), field = input.closest("[data-field]");
+    const button = document.createElement("button");
+    let pending = false;
+    button.type = "button";
+    button.className = "button ghost compact";
+    button.textContent = "清除已保存密钥";
+    button.hidden = !configured;
+    field.append(button);
+    input.placeholder = configured ? "已配置，留空保留" : "填写 API Key";
+    button.onclick = () => {
+      pending = !pending;
+      input.value = "";
+      button.textContent = pending ? "取消清除密钥" : "清除已保存密钥";
+      root.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    input.addEventListener("input", () => {
+      pending = false;
+      button.textContent = "清除已保存密钥";
+    });
+    return () => pending;
+  }
+  U.formControls = { choice, multi, tags, secret, read, scalar, bind, optionsHTML };
 })();
