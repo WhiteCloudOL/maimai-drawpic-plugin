@@ -4,7 +4,7 @@
 
 # 麦麦绘图
 
-![Plugin Version](https://img.shields.io/badge/Plugin-2.2.1-informational.svg) ![MaiBot](https://img.shields.io/badge/MaiBot-1.3.19%E2%80%931.4.99-blue.svg) ![MaiBot Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-2.20.0%E2%80%932.23.0-blueviolet.svg) ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
+![Plugin Version](https://img.shields.io/badge/Plugin-2.3.0-informational.svg) ![MaiBot](https://img.shields.io/badge/MaiBot-1.3.19%E2%80%931.4.99-blue.svg) ![MaiBot Plugin SDK](https://img.shields.io/badge/Plugin%20SDK-2.20.0%E2%80%932.23.0-blueviolet.svg) ![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)
 
 **❤️为 MaiBot 提供多平台聚合绘图能力，内置现代化 WebUI 工作台与聊天指令支持❤️**
 
@@ -42,14 +42,7 @@
 ## ⚡ 快速导航
 [安装说明](#-安装) · [快速上手](#-快速上手) · [支持平台](#-支持平台) · [聊天命令](#-聊天命令) · [配置与特性](#-配置与高级特性) · [常见问题](#-常见问题)
 
-
----
-
-> 当前主线已加入参考与素材、两类预设和对应 API；原 2.2.1 release 不包含这些新增功能。尚未发布新的 release。
-
 ## 📦 安装
-
-最低运行环境：**MaiBot 1.3.19、插件 SDK 2.20.0、Python 3.12**；可用版本范围以 [_manifest.json](_manifest.json) 为准。
 
 > [!TIP]
 > 无论哪种方式，升级旧版本前均建议先备份原插件目录与数据配置。详见 [升级与恢复指南](docs/configuration.md#升级迁移与冲突恢复)
@@ -72,7 +65,7 @@ git clone https://github.com/WhiteCloudOL/maimai-drawpic-plugin.git
 首次使用前，请准备好绘图服务的 API Key 与可用模型（ComfyUI 用户需准备好 API 格式工作流）。
 
 1. **添加平台**：进入 WebUI **绘图平台 → 添加平台**，选择平台类型
-2. **配置连接**：设置自定义平台名称（如“日常创作”），填入 API Key、服务地址与可用模型 ID，保存后即刻生效
+2. **配置连接**：设置自定义平台名称，填入 API Key、服务地址与可用模型 ID，保存后即刻生效
 3. **文生图测试**：切换至 **开始创作 → 文生图**，输入 Prompt，挑选模型并点击 **开始绘图**
 4. **查看成果**：在创作区或 **绘图任务** 列表查看进度与原图。若需发送到群聊，展开表单底部的发送选项即可
 
@@ -130,6 +123,7 @@ git clone https://github.com/WhiteCloudOL/maimai-drawpic-plugin.git
 - **风格模板**：模板中 `{prompt}` 与 `{negative_prompt}` 为占位符，支持一键注入固定画风，按文生图/图生图分别选择预设；上传参考图片后直接关联到当前图生图预设，以图库卡片展示、弹窗编辑用途
 - **会话历史同步**：可在「插件设置 → 运行设置」开启 *生成图片同步到会话历史*，开启后发至聊天的图片可供视觉 Planner 查看
 - **聊天取材范围**：仅明确接续前图时读取聊天；在“预设参考 → 素材来源”设置消息搜索上限，推荐默认 50 条（1～200），仅查找当前聊天最近 24 小时
+- **网络素材搜索（测试）**：可选择 MaiBot 搜索服务或 DeepSeek Search API，按需求搜索网页并提取候选图片；识别模型支持 planner、replyer、vlm 或自定义模型
 - **权限与审核**：内置提示词与图片双重审查，支持 `vlm` / `planner` / `replyer` 模型，支持分别设置群聊／私聊黑白名单
 - **缓存与日志**：在 MaiBot 宿主插件配置页可限制图片缓存（默认 300MB）与日志容量（默认 10MB），重要生成图建议本地另存
 

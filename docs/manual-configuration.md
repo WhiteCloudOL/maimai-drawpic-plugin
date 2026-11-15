@@ -198,7 +198,9 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
         "material_model": "vlm",
         "allow_chat_material_search": false,
         "chat_material_search_limit": 50,
-        "allow_web_material_search": false
+        "allow_web_material_search": false,
+        "web_search_provider": "maibot",
+        "deepseek_api_key": ""
       }
     },
     "style": {
@@ -258,9 +260,14 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 - `self_keywords`：界面中的“触发关键词”，保留原字段名以兼容已有设置。最多 32 项，每项 1～80 字符，默认 `自拍`、`画`、`绘图`；可以添加绘图意图词，不限于机器人名字。MaiBot 放行本轮规划后，仅对当前最新用户发言做不区分大小写的包含匹配，命中时追加绘图判断提醒；不会在收消息时唤醒回复，也不会直接调用工具或认定主体为机器人。留空关闭提醒，已有自定义词保留。
 - `self_reference_ids`：留空时按 tag 从自我图库选一张，无命中时使用默认图。指定单张可固定形象；多张应通过工作台选择和确认。
 - `allow_chat_material_search`、`allow_web_material_search`：两个独立开关，默认均为 `false`。聊天仅在明确接续前图时读取当前聊天；网络仅为具体角色、特定物件或明确找参考图的请求搜索。外部 v2 调用还须逐次选择来源，见 [API 文档](integration.md#参考与素材选项)。
-- `material_model`：默认 `vlm` 跟随 MaiBot 的视觉模型任务。工作台“指定模型”填写 MaiBot 中配置的模型名称，保存为 `model:名称`；例如 `model:fast-vision` 严格使用 `fast-vision`，`model:vlm` 严格使用名为 `vlm` 的具体模型。旧的非 `vlm` 字符串仍按具体模型读取。不会把指定名称解释为其他任务组，名称不存在时报告错误。建议使用快速多模态模型；设置只保存在 `workspace_settings.json`，不放入 `config.toml`。
+- `material_model`：默认 `vlm` 跟随视觉任务；planner、replyer 分别保存为 `task:planner`、`task:replyer`，也接受 `task:vlm`。“指定模型”保存为 `model:名称`，例如 `model:planner` 严格使用名为 `planner` 的具体模型。旧的普通名称仍按具体模型读取，不存在的名称会报错。建议选择快速多模态模型；这些设置只保存在 `workspace_settings.json`。
+- `web_search_provider`：`maibot`（默认）使用 MaiBot 已分配的搜索服务，`deepseek` 直接调用 DeepSeek Search/Fetch API。搜索失败不会自动切换服务。
+- `deepseek_api_key`：独立 DeepSeek 路径的密钥。工作台不回传已有密钥，留空保留，点击“清除已保存密钥”才清除；手动编辑 JSON 时设为 `""` 可清除。不要把真实密钥提交到仓库。MaiBot 路径的密钥在宿主搜索服务中管理。
+
 - `chat_material_search_limit`：每次任务最多读取当前聊天最近 24 小时内的消息条数，推荐默认 50 条，可设 1～200 条，不接受 0 或无限制。每个任务只读取一次，各素材需求共用最多 6 张聊天候选图；在途任务降低上限立即收紧，提高只影响新任务。
 - `multi_reference_confirmed`：记录管理员在工作台 dialog 中确认当前多图配置；不表示插件已经探测到模型支持多图，也不能绕过图生图能力与图片数量限制。不要通过手动设为 `true` 代替确认。
+
+DeepSeek 使用 `https://api.deepseek.com/v1/tools/search`，每次搜索最多返回 3 个网页。正文缺少图片链接时读取同服务的 Fetch，再按下载规则读取网页图片标记。Search API 当前不直接返回搜图候选，本插件未接入模型工具的以图搜图。最多检查 6 张候选；单个不可用网页或图片会记录原因并检查剩余候选，全部不可用时报告错误。测试功能遇到问题可在 [GitHub Issue](https://github.com/WhiteCloudOL/maimai-drawpic-plugin/issues) 反馈。
 
 图生图预设的 `reference_bindings` 是图片用途列表，例如下方**字段片段**。`asset_id` 必须从工作台上传后的预设图片中选择，不是路径、URL 或 Base64：
 
