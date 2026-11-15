@@ -44,6 +44,7 @@ result = await client.generate(
 
 ## 方法
 
+- `draw(prompt, request_id=..., source_image=..., reference_id=...)`：简易短提交，自动选择文生图/图生图，返回 TaskHandle；不自动取材。
 - `submit(prompt, request_id=..., **request)`：短调用，返回 `TaskHandle`，响应未知时保留请求键。
 - `generate(..., wait_seconds=120, read_images=True)`：有限总预算内提交、等待并读取图片字节。
 - `wait(handle_or_task_id, request_id=..., wait_seconds=120)`：只等待已有任务，不提交。
@@ -52,13 +53,16 @@ result = await client.generate(
 - `models()`、`tasks(page=1, status="", search="")`：模型能力与任务分页；模型目录区分总体图生图能力和 Base64 API 编辑能力。
 - `preferences(stream_id)`、`set_preferences(stream_id, **patch)`：读取或部分更新会话模型、OpenAI 模式、NAI 模式与画师；空字符串清除会话覆盖。
 - `presets()`、`preset(name)`、`save_preset(preset, name=None)`、`delete_preset(name)`：管理实例共享风格；指定旧 name 可以重命名。
-- `references(page=1)`：读取自我参考目录、来源开关和搜索服务状态，不返回图片或密钥。
+- `references(page=1, kind="", search="")`、`reference(asset_id)`：查询 self/preset 图库、提示词、版本和修订号。
+- `save_reference(reference, revision=..., image=...)`、`delete_reference`、`set_default_reference`、`move_reference`：图库管理；写入需当前图库修订号，上传可传图片 bytes。
+- `reference_preview`、`read_reference_image`、`save_reference_image`：预览或固定 asset_version 下载原图，完成后校验内容 SHA-256。
+- `reference_settings()`、`set_reference_settings(revision=..., **patch)`：读写绘图插件自己的名称、触发关键词、自我选图及默认预设，不涉及 MaiBot 全局人设。
 - `read_image(task_id, index=0)`：校验并拼接原图分块。
 - `save_image(task_id, destination, index=0, overwrite=False)`：在工作线程中写入调用方指定路径；默认不覆盖。
 
 构造参数：单次 RPC 默认 8 秒（大于 0、最多 30 秒），查询间隔默认 3 秒（大于 0、最多 60 秒），单图上限 64 MiB、单次结果上限 128 MiB。`generate`/`wait` 的总预算需大于 0、最多 3600 秒，包括 RPC、sleep 与取图，不能突破外层组件超时。
 
-`DrawingRequest` 和 `DrawingPreferences` 提供编辑器可见的参数类型。提交支持图片 bytes 或 Base64 的列表/元组；底层仍传 Base64。`openai_compatibility_mode`、`novelai_mode`、`novelai_artist_tags` 可覆盖单次任务；详见[参数继承规则](../docs/integration.md#drawpic_submit提交任务)。设置写入不自动重试；`DrawingTransportError` 表示结果可能未确认，应重新读取核对。没有平台、密钥或全局配置写入方法。
+`SimpleDrawingRequest`、`DrawingRequest`、`DrawingPreferences` 和 `DrawingReferenceSettings` 提供参数类型。高级提交支持图片 bytes 或 Base64 的列表/元组；底层仍传 Base64。OpenAI/NAI 参数可覆盖本次任务，详见[参数继承规则](../docs/integration.md#drawpic_submit提交任务)。图库和工作台配置有各自独立的 revision，不能混用。设置写入不自动重试；DrawingTransportError 表示结果可能未确认，应重新读取核对。平台、密钥和通用运行配置不开放写入。
 
 保存使用同目录临时文件；默认通过排他硬链接建立目标，需要目标文件系统支持硬链接（常见 NTFS/ext4 支持）。显式 `overwrite=True` 原子替换目标。路径必须由调用方限制在自己的获授目录；不采用上游文件名拼路径。
 
@@ -72,11 +76,11 @@ result = await client.generate(
 
 等待结束不取消任务、不换新 request_id；外部取消协程时保留 asyncio 的取消语义。LLM 工具应使用 `submit` 并快速返回，通过后续工具取结果；不要在临近超时的工具中创建无人管理的后台任务。
 
-相关文档：[API 与四类示例](../docs/integration.md) · [用户指南](../docs/usage.md)。
+相关文档：[API 指南和完整示例](../docs/integration.md) · [用户指南](../docs/usage.md)。
 
 ## 主线新增：参考与素材
 
-本次主线扩展 `DrawingRequest.reference_options` 并新增 `references(page=1)`。原 2.2.1 release 不包含这些新增参数/API；先确认服务端已经更新，不向旧服务端静默降级重试。
+本次统一提供 17 个公开 API，包括简易绘图、自我参考设置和图库管理。原 2.2.1 release 不包含这些新增参数/API；先确认服务端已更新，不向旧服务端降级重试。
 
 ```python
 handle = await client.submit(
@@ -85,6 +89,6 @@ handle = await client.submit(
 )
 ```
 
-`reference_options` 使用可导出的 `DrawingReferenceOptions` 类型，包含 `self_reference`、`user_request`、`self_reference_ids`、`self_reference_tags`、`material_sources`。客户端自动序列化 JSON；未提供选项时不启用自我参考或自动搜索。全局开关、真实会话权限及多图 dialog 确认不能被参数绕过。
+`reference_options` 使用 DrawingReferenceOptions，包含 self_reference、user_request、self_reference_ids、self_reference_tags、reference_ids、material_sources 和 multi_reference_confirmed。直接传对象；reference_ids 可临时引用 preset 图库，不必修改预设。多图前先由用户通过 dialog 确认模型支持，再明确传 multi_reference_confirmed=true；LLM 不能代替用户确认。全局开关、真实会话权限和模型已知限制仍生效。
 
 `style` 仍是统一预设名。`presets/preset/save_preset/delete_preset` 继续使用原方法，支持两类预设及跨模式标记；资源目录返回状态不代表授权。每个 API 的完整参数、返回值、错误及示例见[完整接口目录](../docs/integration.md#接口目录)。

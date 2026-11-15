@@ -59,6 +59,7 @@ for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
         **ReferenceOptions.model_json_schema(),
         "description": "已启用参考或素材搜索时，user_request 必须原样复制用户原始请求，不能用改写的绘图提示词代替。自我图只用于机器人；素材来源只能使用工作台已开启的 chat/web。省略各项时遵循聊天入口已开启的功能。",
     }
+    schema["properties"]["reference_options"]["properties"].pop("multi_reference_confirmed")
     schema["properties"]["reference_options"]["properties"]["self_reference"] = {
         "description": "正常使用 required（明确描绘机器人自身）、off（其他人物）、auto（指向不明确）。优先依据当前对话明确选择；异常值统一按 auto 重新识别，不会直接注入默认人物图。",
         "default": "auto",

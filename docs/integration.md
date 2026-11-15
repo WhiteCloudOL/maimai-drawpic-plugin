@@ -4,9 +4,9 @@
 
 插件 ID 为 `maimai-drawpic-plugin`。所有接口均通过 Host 转发的 `ctx.api.call` 调用，没有额外 HTTP 监听、令牌或跨实例服务。
 
-2.3.0 提供统一的 11 个公开接口，包含自我参考、两类绘图预设、素材来源、幂等任务恢复和会话偏好。接口及客户端需一起更新，不提供旧协议兼容入口。运行环境最低为 **MaiBot 1.3.19、插件 SDK 2.20.0、Python 3.12**，具体上限见 [_manifest.json](../_manifest.json)。[MaiBot 1.3.19 的依赖声明](https://github.com/Mai-with-u/MaiBot/blob/v1.3.19/pyproject.toml)首次将 SDK 最低依赖提升至 2.20.0。
+2.3.0 提供统一的 17 个公开接口，包含简易绘图、高级提交、自我参考设置、参考图库管理、两类绘图预设、素材来源、幂等任务恢复和会话偏好。接口及客户端需一起更新，不提供旧协议兼容入口。运行环境最低为 **MaiBot 1.3.19、插件 SDK 2.20.0、Python 3.12**，具体上限见 [_manifest.json](../_manifest.json)。[MaiBot 1.3.19 的依赖声明](https://github.com/Mai-with-u/MaiBot/blob/v1.3.19/pyproject.toml)首次将 SDK 最低依赖提升至 2.20.0。
 
-目录：[接口目录](#接口目录) · [接入准备](#接入准备) · [最小调用](#最小调用) · [任务提交](#drawpic_submit提交任务) · [参考与素材](#参考与素材选项) · [查询恢复](#任务查询与恢复) · [图片读取](#drawpic_image读取图片) · [取消与列表](#任务取消与列表) · [模型目录](#drawpic_models模型目录) · [会话偏好](#会话偏好读写) · [绘图预设](#drawpic_presets绘图预设管理) · [参考目录](#drawpic_references只读参考目录) · [客户端](#drawingclient方法与结果) · [完整示例](#完整接入示例) · [错误处理](#错误与恢复规则) · [权限与资源](#权限与资源边界)。
+目录：[接口目录](#接口目录) · [接入准备](#接入准备) · [最小调用](#最小调用) · [简易/高级调用](#简易调用与高级调用) · [高级提交](#drawpic_submit提交任务) · [参考素材](#参考与素材选项) · [查询恢复](#任务查询与恢复) · [图片读取](#drawpic_image读取图片) · [取消和列表](#任务取消与列表) · [模型目录](#drawpic_models模型目录) · [会话偏好](#会话偏好读写) · [绘图预设](#drawpic_presets绘图预设管理) · [参考目录](#drawpic_references参考目录) · [图库管理](#drawpic_reference_update参考图管理) · [自我设置](#drawpic_reference_settings自我参考及预设设置) · [客户端](#drawingclient方法与结果) · [完整示例](#完整接入示例) · [错误处理](#错误与恢复规则) · [权限和资源](#权限与资源边界)。
 
 ## 接口目录
 
@@ -14,7 +14,8 @@
 
 | API 名 | 作用 | DrawingClient 方法 |
 | --- | --- | --- |
-| `drawpic_submit` | 受理文生图/图生图，立即返回持久任务句柄 | `submit`；`generate` 内部也调用它 |
+| `drawpic_draw` | 简易提交，按明确的源图、参考 ID 或预设自动选择绘图模式 | `draw` |
+| `drawpic_submit` | 高级提交，显式控制模式、模型、预设、参考和本次参数 | `submit`；`generate` 内部也调用它 |
 | `drawpic_task` | 查询单个任务、错误、结果引用和投递状态 | `task`、`wait` |
 | `drawpic_request` | 回执丢失后按原 request_id 只读找回任务 | `request`、`recover` |
 | `drawpic_image` | 读取原图分块、预览或缩略图 | `read_image`、`save_image` |
@@ -23,10 +24,15 @@
 | `drawpic_preferences` | 读取真实聊天流的会话绘图覆盖值 | `preferences` |
 | `drawpic_preferences_set` | 部分更新会话模型、兼容模式和 NAI 偏好 | `set_preferences` |
 | `drawpic_presets` | 列出、读取、保存、重命名或删除两类预设 | `presets`、`preset`、`save_preset`、`delete_preset` |
-| `drawpic_references` | 读取自我图库元数据和功能可用状态 | `references` |
+| `drawpic_references` | 分页搜索自我及预设参考目录和功能状态 | `references` |
+| `drawpic_reference` | 读取单张参考图元数据、提示词及版本 | `reference` |
+| `drawpic_reference_update` | 上传、编辑、删除、设默认及排序参考图 | `save_reference`、`delete_reference`、`set_default_reference`、`move_reference` |
+| `drawpic_reference_image` | 参考图预览或固定版本原图分块 | `reference_preview`、`read_reference_image`、`save_reference_image` |
+| `drawpic_reference_settings` | 读取自我参考、触发关键词及默认预设设置 | `reference_settings` |
+| `drawpic_reference_settings_set` | 按修订号部分更新上述设置 | `set_reference_settings` |
 | `drawpic_models` | 列出完整模型名、文生图/图生图能力及输入限制 | `models` |
 
-`workspace_*` 是工作台绑定的私有 API，不属于第三方插件接入契约。平台密钥、通用配置写入、图库上传/删除/设默认和运行日志查询不公开。没有 `compose_image`、独立素材搜索 RPC 或长等待的 `drawpic_generate` RPC。
+`workspace_*` 是工作台绑定的私有 API，不属于第三方插件接入契约。平台密钥、网络搜索密钥、通用运行配置和日志不公开；这里只开放绘图插件自己的自我参考及预设设置，不读写 MaiBot 全局人设。没有 `compose_image`、独立素材搜索 RPC 或长等待的 `drawpic_generate` RPC。
 
 ## 接入准备
 
@@ -78,6 +84,40 @@ async def call_drawing(ctx, endpoint, /, **args):
 
 SDK/传输异常与业务错误分别处理。一次调用正常返回，不表示绘图成功；继续检查 `accepted/status/error`、`results_readable` 和 `delivery`。
 
+## 简易调用与高级调用
+
+| 需求 | 推荐调用 | 返回 |
+| --- | --- | --- |
+| 后台快速发起，参数越少越好 | `client.draw("画一只猫", request_id=...)` | TaskHandle，用 wait 或 task 跟进 |
+| 一次 await 等待并获取图片 | `client.generate("画一只猫", request_id=..., wait_seconds=...)` | DrawingResult，内部走高级提交及短轮询 |
+| 精确指定模式、多图、反向词、来源或 NAI 参数 | `client.submit(..., **request)` 后 wait | 持久任务句柄，等待预算由调用方控制 |
+
+两种提交入口使用同一个后台执行和去重记录。提交前持久化 request_id；回执不确定时按原键查询，不能因为切换入口就换键重新画。
+
+## drawpic_draw：简易绘图
+
+| 参数 | 默认值 | 作用 |
+| --- | --- | --- |
+| `prompt` | 必填 | 画面描述，1～16000 字符 |
+| `model` | `""` | 完整平台/模型名称；留空使用插件默认模型 |
+| `style` | `""` | 预设名称；none 跳过预设 |
+| `source_image` | `""` | 一张真实图片 Base64；客户端可直接传 bytes |
+| `reference_id` | `""` | 已上传的自我或预设参考图 ID |
+| `self_reference` | false | 明确使用机器人自身形象，使用当前选图及默认图规则 |
+| `stream_id` | `""` | 明确发送到该真实会话；留空只在后台保留结果 |
+| `request_id` | `""` | 调用方持久化的 8～80 位请求键 |
+
+有源图、reference_id、自我参考或显式图生图预设时使用图生图，否则文生图。自我图库 ID 会启用本次 required 选图，并检查全局自我参考开关。简易调用不隐式启用聊天取材、网络搜索或主体识别；需要这些能力用高级提交。模型能力、审核、额度、默认预设、图片限制和任务回执与 drawpic_submit 一致。
+
+```python
+async def quick_draw(ctx, prompt, saved_request_id, reference_id=""):
+    client = DrawingClient(ctx.api)
+    handle = await client.draw(prompt, request_id=saved_request_id, reference_id=reference_id)
+    return await client.wait(handle, wait_seconds=120)
+```
+
+直接 SDK：`await ctx.api.call("maimai-drawpic-plugin.drawpic_draw", prompt="画一只猫", request_id=saved_request_id)`。返回 accepted、task_id、request_id、reused、状态、图片引用和结构化 error，格式与高级提交相同。
+
 ## drawpic_submit：提交任务
 
 用途：校验请求并持久化任务与幂等映射，随后在原任务中完成必要素材准备、审核、提供商调用、缓存与可选投递。接口不等待图片生成。
@@ -126,15 +166,17 @@ SDK/传输异常与业务错误分别处理。一次调用正常返回，不表�
 | --- | --- | --- |
 | `self_reference` | `off` | `off` 不使用自身图库；`auto` 识别原始请求；`required` 明确描绘机器人自身 |
 | `user_request` | `""` | 用户原始请求，最多 16000 字符；`auto` 或任一素材来源启用时必填，不能用改写后的第一人称 prompt 替代 |
-| `self_reference_ids` | `[]` | 最多 8 个已存在自我图片 ID；优先于 tag；多选只能使用工作台已确认的组合 |
+| `self_reference_ids` | `[]` | 最多 8 个已存在自我图片 ID，优先于 tag；多选使用已确认组合，或由调用插件先确认后明确声明 |
 | `self_reference_tags` | `[]` | 最多 32 个、每个 1～80 字符；未指定 ID 时按规范化 tag/原始请求匹配，未命中用指定默认图 |
+| `reference_ids` | `[]` | 本次直接使用的预设图库 ID，最多 8 个；无需保存或修改风格预设；只接受 preset 类型 |
+| `multi_reference_confirmed` | false | 调用插件已通过 dialog 确认所用模型支持本次多图组合；只用于该任务，不修改持久确认状态 |
 | `material_sources` | `[]` | `chat`、`web` 的子集，不得重复；本次限制不能打开全局关闭的来源 |
 
 未传参考选项的调用不会因管理员打开全局设置而突然读取聊天或联网。聊天工具和工作台按各自显式选择接入这些能力，外部 API 必须主动选择。
 
 ### 自我参考
 
-管理员先在“预设参考 → 自我参考”开启自我参考、上传 tag 图片并设置默认图。首张自我图片成为默认图；后续上传不自动更换默认项。图库存在并不代表功能已开启。名称/别称用于 auto 的语义判断；触发关键词仅在 planner 请求中提醒判断绘图，不用于直接认定人物。
+先在工作台或通过下文的参考设置和图库 API 开启自我参考、上传 tag 图片并设置默认图。首张自我图片成为默认图；后续上传不自动更换默认项。图库存在并不代表功能已开启。名称/别称用于 auto 的语义判断；触发关键词仅在 planner 请求中提醒判断绘图，不用于直接认定人物。
 
 聊天工具优先由宿主 LLM 明确给出 self_reference；空值、错拼或非法类型会在工具入口归一为 auto，再依据真实原话判断。此修正仅适用于聊天工具，公开 API 继续严格校验参数；没有原话不能拿改写 prompt 代替。
 
@@ -207,7 +249,7 @@ async def draw_group(ctx, real_stream_id, saved_request_id):
 
 ### 多图与模式
 
-`source_images` 原本就支持列表，本次没有新增独立多图 RPC。新增自我/预设多图及其与其他图片合用的配置，需要管理员在工作台通过 dialog 核实具体服务商模型是否支持多图；API 不能用一个 `confirmed=true` 绕过确认。
+`source_images` 支持列表，最多 8 张。自我/预设多图及其和其他图片合用前，必须由用户通过 dialog 核实所用服务商模型支持多图。可使用工作台已经确认的配置，也可由外部插件在自己的界面完成确认后，传入本次 `reference_options.multi_reference_confirmed=true`。此声明不自动探测模型、不跳过图生图能力及数量校验，也不能由 LLM 猜测或自动填写；插件自带聊天工具不开放这个确认字段。
 
 生图前至少检查图生图能力，保留已知数量上限、输入方式与体积限制。确认不代表自动探测，也不能覆盖模型已知限制。提供商拒绝时不静默减图。
 
@@ -344,7 +386,7 @@ async def choose_session_model(ctx, real_stream_id, full_model_name):
 
 ## drawpic_presets：绘图预设管理
 
-参数为 `operation="list"`、`name=""`、`preset=None`。名称最多 80 字符，两类预设名称全局唯一。此接口不修改全局开关或默认项。
+参数为 `operation="list"`、`name=""`、`preset=None`、`confirm_multi_reference=false`。名称最多 80 字符，两类预设名称全局唯一。启用图生图预设或设置默认项使用 drawpic_reference_settings_set。
 
 | operation | 参数 | 返回/作用 | 客户端 |
 | --- | --- | --- | --- |
@@ -366,7 +408,7 @@ async def choose_session_model(ctx, real_stream_id, full_model_name):
 | `tags` | `[]` | 本次请求的固定匹配 tag |
 | `apply_to_image_edit` | false | 仅文生图类型可勾选“同时应用到图生图” |
 | `reference_bindings` | `[]` | 仅图生图类型可关联真实预设图片，最多 8 条用途绑定 |
-| `multi_reference_confirmed` | false | 工作台 dialog 的已确认配置；公开 API 不能自行设置为 true 或变更多图绑定来绕过确认 |
+| `multi_reference_confirmed` | false | 已确认配置状态；新增/变更多图组合或首次确认时，调用插件须先完成用户 dialog，再使用独立参数 confirm_multi_reference=true 保存 |
 
 每个绑定包含 `asset_id`、`role`、`subject_id`、`note`。role 为 `identity/clothing/scene/lighting/composition/base`；note 最多 500 字符。身份参考标明对应人物，服装参考不额外增加一个出镜人物。同图可承担不同用途，最终编号一致并按真实内容去重。模型参考图数量上限按去重后的图片计算；相同图片来自上传、自我参考或预设时仍保留各来源的多图确认要求。
 
@@ -377,8 +419,8 @@ async def choose_session_model(ctx, real_stream_id, full_model_name):
 3. 开启后，图生图使用图生图类型或已勾选兼容的文生图类型；一次只应用一条模板。
 4. 显式选择优先；否则匹配当前模式允许的 tag，再使用模式默认项。图生图默认项未设置时，才考虑已勾选兼容的默认文生图预设。配置的默认项无效时明确报错。
 5. 不会仅为套默认图生图预设而向纯文生图加入图片。图生图需要真实源图；显式图生图预设可以提供自己的关联图。
-6. 关联图在工作台上传，API 只引用已经存在且用途属于预设的资产。自我图库 ID 不能伪装为预设资产来绕过自身开关。
-7. 创建/改变多图配置返回 `MULTI_REFERENCE_CONFIRMATION_REQUIRED`，由管理员在工作台完成 dialog；写入回执未知先 get/list 核对，不自动重试写入。
+6. 关联图可在工作台或通过 drawpic_reference_update 上传。自我图库 ID 不能当作预设资产使用；描绘自身使用 self_reference 选项，并遵循自身开关。
+7. 未确认就创建/改变多图配置返回 `MULTI_REFERENCE_CONFIRMATION_REQUIRED`。可在工作台确认，也可由外部插件先通过 dialog 确认，再传 confirm_multi_reference=true 保存；回执未知先 get/list 核对，不自动重试写入。
 
 ```python
 async def save_watercolor(ctx):
@@ -394,35 +436,128 @@ async def save_watercolor(ctx):
 
 全局图生图开关仍需管理员在工作台打开。保存该标记不会偷偷启用总开关。
 
-## drawpic_references：只读参考目录
+## drawpic_references：参考目录
 
-可选参数 `page=1`，范围 1～10，每页 12 条。用于展示可选自我图、tag、默认项和实际可用状态。
+| 参数 | 默认值 | 限制 |
+| --- | --- | --- |
+| page | 1 | 1～10，每页 12 条 |
+| kind | 空字符串 | 全部；也可指定 self 或 preset |
+| search | 空字符串 | 按名称和 tag 子串搜索，最多 200 字符 |
 
-```json
-{
-  "page":1,"page_size":12,"total":1,
-  "assets":[{"id":"0123456789abcdef0123456789abcdef","name":"冬装","tags":["冬装"],"default":true}],
-  "self_reference_enabled":false,
-  "allow_chat_material_search":false,
-  "chat_material_search_limit":50,
-  "material_model":"vlm",
-  "allow_web_material_search":false,
-  "web_search_provider":"maibot",
-  "multi_reference_confirmed":false,
-  "error":null
-}
-```
+返回 `revision`（图库修订号）、default_reference_id、page/page_size/total、assets、功能状态及 error。total 是筛选后数量，排序沿用图库顺序。每条 asset 包含：
 
-`chat_material_search_limit` 是管理员配置的聊天消息搜索上限；调用方不能通过单次参考选项扩大它。在途任务采用提交时与执行时上限的较小值。
+| 字段 | 意义 |
+| --- | --- |
+| id | 32 位十六进制 ID |
+| kind | self 为机器人自身；preset 为场景等其他参考 |
+| name/tags/prompt | 名称、匹配 tag、可选参考提示词（最多 500 字符） |
+| version | 图片内容 SHA-256，64 位十六进制；只改名称/tag/prompt 不改变图片版本 |
+| size | 原图字节数 |
+| default | 是否为默认自我参考图 |
 
-只返回元数据，不返回 Base64、文件路径、签名链接、候选图或搜索历史。`total` 是自我图库条数，不包括预设图片。图库上传、图片参考提示词、删除及默认项仍在工作台管理，不能通过此接口修改。图片参考提示词会随本次选中的图片自动应用。
+目录不含图片字节、任意文件路径、签名链接、候选图或搜索历史。来源状态仍包含 self_reference_enabled、allow_chat_material_search、chat_material_search_limit、material_model、allow_web_material_search、web_search_provider、multi_reference_confirmed，不含密钥。
 
 ```python
 async def list_self_options(ctx):
-    return await DrawingClient(ctx.api).references(page=1)
+    return await DrawingClient(ctx.api).references(page=1, kind="self")
 ```
 
-这些状态只供展示，不是授权凭证；提交和执行会重新检查开关。客户端不要缓存目录后假设永久可用。
+聊天搜索上限由管理员设置，单次调用不能扩大。在途任务采用提交时与执行时较小的上限。目录中的状态只供展示，提交和执行仍会检查实际开关。
+
+## drawpic_reference：单张参考图信息
+
+必填 `asset_id`。返回 `{asset, revision, default_reference_id, error}`，asset 字段与目录相同。不存在返回 REFERENCE_NOT_FOUND。不返回文件内容；使用图片读取接口取图。
+
+## drawpic_reference_update：参考图管理
+
+| 参数 | 用法 |
+| --- | --- |
+| operation | 必填 save/delete/default/move |
+| revision | 必填当前**图库**修订号，从 references/reference 或上次图片写入返回读取 |
+| reference | 必填对象，按下表填写；不接受 JSON 字符串 |
+| image_base64 | 仅 save 可提供，PNG/JPEG/WebP Base64 或 data URL；省略保留原图 |
+
+| operation | reference 对象 | 行为 |
+| --- | --- | --- |
+| save 新增 | name 必填；kind 默认 self；tags 默认空列表，prompt 可选 | 必须同时上传图片，返回新 asset_id；首张 self 图片自动成为默认图，但不自动开启自我参考 |
+| save 编辑 | asset_id 必填，其余 name/tags/prompt 可部分提供 | 未传字段保留；不能修改归属 kind；提供 image_base64 则替换原图 |
+| delete | asset_id | 删除；被已保存的自我选图或风格预设引用时拒绝，不自动解除引用 |
+| default | asset_id | 必须属于 self 图库，设置为默认自我参考 |
+| move | asset_id、position | 在**全部 self/preset 图片混合列表**的零起始位置排序 |
+
+返回 `{saved:true, revision, asset_id, asset, default_reference_id, deleted, error}`；删除时 asset 为 null，其他操作返回最新元数据。图库修改不会改变配置修订号。
+
+名称 1～80 字符，tag 最多 32 个、每个最多 80 字符，prompt 最多 500 字符。单次 RPC 图片编码最多 8 MiB 字符，服务端另验证真实图片、像素及 20 MiB 单图限制；持久图库最多 100 张、总计 128 MiB。接口不接受 URL 下载指令或任意文件路径。
+
+冲突返回 REFERENCE_REVISION_CONFLICT：重新读取图库、重新确认修改后再提交，不能无条件重试。写入响应丢失时先读取图库核对；客户端不会自动重新上传、删除或改默认。删除默认图片且无其他引用时，剩余首张 self 图片成为默认图，全部删除后默认 ID 为空。
+
+## drawpic_reference_image：读取参考图片
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| asset_id | 必填 | 参考图 ID |
+| kind | preview | preview 返回 WebP data_url；original 返回原图分块 |
+| asset_version | 空字符串 | original 必填元数据中的 version；preview 可省略，或传入期望版本 |
+| offset | 0 | original 的字节偏移；每次使用上次 next_offset；预览只允许 0 |
+
+预览返回 asset_id、version、mime、data_url、error。原图返回 asset_id、version、data（本块 Base64）、offset、next_offset、size、mime、filename、done、error；每块最多 192 KiB，直到 done=true。filename 仅供展示，不能直接作为未校验的保存路径。
+
+**参数必须叫 asset_version**：SDK 的 `version` 是接口版本保留参数，不能作为业务图片版本传入。图片在下载中被替换会返回 REFERENCE_VERSION_CONFLICT；客户端不会自动改版本拼接旧图和新图，下载完成后还会校验 SHA-256。
+
+```python
+async def copy_reference_image(ctx, asset_id, destination):
+    client = DrawingClient(ctx.api)
+    info = await client.reference(asset_id)
+    return await client.save_reference_image(
+        asset_id, destination, asset_version=info["asset"]["version"], overwrite=False,
+    )
+```
+
+## drawpic_reference_settings：自我参考及预设设置
+
+无参数。返回 `{revision, settings, runtime_refresh_pending, recovery_pending, error}`。这里的 revision 是**工作台配置**修订号，与图库 revision 独立；两个数字不能混用。settings 是持久设置，运行时刷新未完成时 pending 标志为 true。
+
+| settings 字段 | 作用 |
+| --- | --- |
+| self_reference_enabled | 是否允许使用自身图库，默认 false |
+| self_names | 机器人名称及别称，用于自身指向识别 |
+| self_keywords | planner 已决定回复时使用的绘图触发关键词，不直接认定人物，不唤醒回复 |
+| self_reference_ids | 固定使用的自身图片 ID；留空时按 tag/默认图选一张 |
+| multi_reference_confirmed | 只读的持久多图确认状态 |
+| image_edit_presets_enabled | 是否启用图生图预设，默认 false |
+| default_style | 默认文生图预设名 |
+| default_image_edit_preset | 默认图生图预设名 |
+
+这里只包含绘图插件内的设定，不包含 MaiBot 全局人设、联网服务密钥或其他通用设置。
+
+## drawpic_reference_settings_set：部分更新设置
+
+必填 `settings` 对象（非空补丁）、`revision` 配置修订号，可选 `confirm_multi_reference=false`。可写上表除 multi_reference_confirmed 外的字段；未传字段保留，不允许传其他配置或密钥。名称和触发关键词各最多 32 个、每项 1～80 字符；固定自身图最多 8 个，必须是已有 self 资产。默认预设必须存在、已启用且类型匹配；空字符串清除默认。
+
+改变固定图片组合会清除原组合的确认。多选前须由用户完成 dialog 确认，再用独立 `confirm_multi_reference=true` 写入；这个参数不应由 LLM 决定。传入完整状态对象前应移除只读字段，推荐只发送需要改动的补丁。
+
+返回最新 settings、revision、saved=true 及可能的 warning、runtime_refresh_pending、recovery_pending。已保存但刷新失败仍是已提交状态，应重读并提示重新加载，不能当作未写入而重试。修订号冲突先读取和确认修改；图库与配置都与工作台使用同一份存储和事务协调。
+
+```python
+async def configure_self_reference(ctx, image_bytes):
+    client = DrawingClient(ctx.api)
+    library = await client.references()
+    image = await client.save_reference(
+        {"name": "日常形象", "kind": "self", "tags": ["日常"], "prompt": "保留白色长发"},
+        revision=library["revision"], image=image_bytes,
+    )
+    await client.set_default_reference(image["asset_id"], revision=image["revision"])
+    settings = await client.reference_settings()
+    saved = await client.set_reference_settings(
+        revision=settings["revision"], self_reference_enabled=True,
+        self_names=["麦麦", "小麦"], self_keywords=["画", "自拍"],
+    )
+    if saved.get("runtime_refresh_pending"):
+        raise RuntimeError("设置已保存，请先重新加载绘图插件")
+    return image["asset_id"]
+```
+
+设置完成后，简易调用 `client.draw("画你的日常自拍", reference_id=asset_id, request_id=...)`。高级调用可用 `reference_options={"self_reference":"required","self_reference_ids":[asset_id]}` 明确选图，或传 `self_reference_tags` 自动匹配；其他场景图用 `reference_ids` 直接引用，不需要修改全局预设。
 
 ## DrawingClient 方法与结果
 
@@ -430,6 +565,7 @@ async def list_self_options(ctx):
 
 | 方法 | 用法/结果 |
 | --- | --- |
+| `draw(prompt, request_id=..., source_image=..., reference_id=...)` | 简易短提交，自动选择文生图/图生图 |
 | `submit(prompt, request_id=..., **request)` | 立即返回 TaskHandle；受理前明确拒绝抛 DrawingError，回执不可信返回 submission_unknown 句柄 |
 | `generate(prompt, request_id=..., wait_seconds=120, read_images=True, **request)` | 提交一次，然后在有限预算内等待，返回 DrawingResult |
 | `wait(handle_or_task_id, request_id=..., wait_seconds=120, read_images=True)` | 只等待已有任务；预算 >0 且 ≤3600 秒，不提交生成 |
@@ -438,7 +574,12 @@ async def list_self_options(ctx):
 | `read_image(task_id, index=0)` | 分块校验后返回 bytes |
 | `save_image(task_id, destination, index=0, overwrite=False)` | 读图并在线程中写入调用方指定文件 |
 | `cancel(task_id)` / `tasks(page=1,status="",search="")` | 取消或管理任务 |
-| `models()` / `references(page=1)` | 发现模型能力或只读自我参考目录 |
+| `models()` / `references(page=1,kind="",search="")` | 模型能力或分页参考目录 |
+| `reference(asset_id)` / `reference_preview(asset_id,asset_version="")` | 单图信息或预览 |
+| `save_reference(reference,revision=...,image=...)` | 新增/部分编辑，image 可直接传 bytes |
+| `delete_reference` / `set_default_reference` / `move_reference` | 按图库修订号管理图片 |
+| `read_reference_image` / `save_reference_image` | 下载固定 asset_version 原图并验证内容哈希 |
+| `reference_settings()` / `set_reference_settings(revision=...,**patch)` | 自我设置及预设默认项读写 |
 | `preferences(stream_id)` / `set_preferences(stream_id, **patch)` | 会话绘图覆盖值读写 |
 | `presets()` / `preset(name)` / `save_preset(preset,name=...)` / `delete_preset(name)` | 预设目录与管理 |
 
@@ -547,6 +688,9 @@ async def resume_drawing(ctx, saved, wait_seconds=120):
 | 错误/状态 | 含义与处理 |
 | --- | --- |
 | `INVALID_REQUEST` | 类型、长度、预设名称/模式等参数不合法；修正输入 |
+| `REFERENCE_NOT_FOUND` | 参考图不存在或原图文件缺失；读取图库核对 |
+| `REFERENCE_REVISION_CONFLICT` / `CONFIG_REVISION_CONFLICT` | 图库/配置修订号过期；重新读取并确认修改，不无条件重试写入 |
+| `REFERENCE_VERSION_CONFLICT` | 下载期间图片已替换；明确选择新版本后重新开始下载，不混合分块 |
 | `PERMISSION_DENIED` | 联动开关或会话名单拒绝；不绕过、不切换会话重发 |
 | `CONCURRENCY_LIMIT` | 当前 4 个任务名额已用完；明确未受理时可由用户稍后重新发起 |
 | `REQUEST_ID_CONFLICT` | 同一 request_id 对应不同显式参数；核对调用方保存的原始请求 |

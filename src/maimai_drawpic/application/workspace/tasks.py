@@ -147,6 +147,7 @@ class WorkspaceTaskService:
         novelai_artist_tags: str | None = None,
         require_existing_stream: bool = False,
         reference_options_json: str = "",
+        simple_signature: str = "",
     ) -> Dict[str, Any]:
         if origin == "plugin":
             require_integration_api(self.get_config().general, self.ctx.logger, "submit")
@@ -191,6 +192,8 @@ class WorkspaceTaskService:
             signature_values.append(options)
         if reference_values:
             signature_values.append({"reference_options": reference_values})
+        if simple_signature:
+            signature_values = ["simple", simple_signature]
         signature = await asyncio.to_thread(
             lambda: sha256(
                 json.dumps(
@@ -244,6 +247,7 @@ class WorkspaceTaskService:
             if task_type == "edit_image" and not images and not preparation.self_ids and not reference_options.material_sources and not preparation.frozen:
                 raise TaskRequestError("SOURCE_IMAGE_REQUIRED", "图生图需要真实源图片，请提供图片或选择已开启的参考来源")
             known = list(images)
+            known.extend(preparation.frozen[key].raw for key in reference_options.reference_ids)
             if reference_options.self_reference == "required":
                 known.extend(preparation.frozen[key].raw for key in preparation.self_ids)
             selected_preset = StylePromptResolver(preparation.config.style).select_for_task(
@@ -251,8 +255,10 @@ class WorkspaceTaskService:
             )
             if selected_preset is not None:
                 known.extend(preparation.frozen[binding.asset_id].raw for binding in selected_preset.reference_bindings)
-            unique_count = await asyncio.to_thread(lambda: len({sha256(raw).digest() for raw in known}))
-            router.validate_source_image_count(resolved_model, unique_count)
+            unique_sizes = await asyncio.to_thread(lambda: {sha256(raw).digest(): len(raw) for raw in known})
+            if len(unique_sizes) > 8 or sum(unique_sizes.values()) > 40 * 1024 * 1024:
+                raise TaskRequestError("REFERENCE_LIMIT_EXCEEDED", "合并后的源图最多 8 张、总计 40 MiB")
+            router.validate_source_image_count(resolved_model, len(unique_sizes))
             if known:
                 router.validate_local_source_images(resolved_model)
             submission = {
@@ -263,6 +269,8 @@ class WorkspaceTaskService:
                 "style": style,
             }
             submission["reference_options"] = reference_values
+            if simple_signature:
+                submission["simple_signature"] = simple_signature
             submission["reference_versions"] = {key: image.version for key, image in preparation.frozen.items()}
             if origin == "plugin":
                 require_integration_api(self.get_config().general, self.ctx.logger, "submit")

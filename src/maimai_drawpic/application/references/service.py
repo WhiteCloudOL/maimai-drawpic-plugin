@@ -32,7 +32,7 @@ class ReferencePreparation:
     def expected_mode(self) -> str:
         if self.required_mode:
             return self.required_mode
-        if self.images or self.options.self_reference == "required":
+        if self.images or self.options.reference_ids or self.options.self_reference == "required":
             return "edit_image"
         explicit = next((item for item in self.config.style.presets if item.name.casefold() == self.style.casefold()), None)
         if explicit is not None and explicit.preset_type == "image_to_image":
@@ -61,6 +61,7 @@ class ReferencePreparation:
             if not enabled:
                 raise TaskRequestError("MATERIAL_SOURCE_DISABLED", f"素材来源已关闭：{source}")
         images = list(self.images)
+        images.extend(self.frozen[identifier] for identifier in self.options.reference_ids)
         if refs.self_reference_enabled and self.options.self_reference != "off":
             subject = "self" if self.options.self_reference == "required" else await self.recognizer.self_subject(
                 self.options.user_request, refs.self_names)
@@ -160,10 +161,12 @@ class ReferencePreparation:
         # 同图去重后仍保留所有来源的约束，不能因上传图覆盖参考图而绕过多图确认。
         sources = {image.source for image in images}
         if len(unique) > 1 and sources & {"self", "preset"}:
-            if "self" in sources and not refs.multi_reference_confirmed:
-                raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请在工作台通过 dialog 确认自我参考与其他图片合用的多图能力")
-            if preset is not None and preset.reference_bindings and not preset.multi_reference_confirmed:
-                raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请在工作台确认预设的多图合用方式")
+            if "self" in sources and not (refs.multi_reference_confirmed or self.options.multi_reference_confirmed):
+                raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请先确认所用模型支持自我参考和其他图片合用")
+            if preset is not None and preset.reference_bindings and not (preset.multi_reference_confirmed or self.options.multi_reference_confirmed):
+                raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请先确认所用模型支持预设的多图合用方式")
+            if self.options.reference_ids and not self.options.multi_reference_confirmed:
+                raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "直接使用图库多图时，请先确认模型支持多图参考")
         resolved = resolver.resolve(style_name=preset.name if preset is not None else "none", user_prompt=self.prompt,
                                     user_negative_prompt=self.negative, task_type=mode)
         prompt = resolved.positive_prompt
@@ -204,18 +207,18 @@ async def freeze_reference_request(*, ctx: Any, config: Any, store: ReferenceAss
             snapshot = await asyncio.to_thread(store.snapshot)
             if any(item["kind"] == "self" for item in snapshot["assets"]):
                 self_ids = [await asyncio.to_thread(store.select_self, options.self_reference_tags, options.user_request)]
-        if len(self_ids) > 1 and not refs.multi_reference_confirmed:
-            raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "自我多图配置尚未通过 dialog 确认")
+        if len(self_ids) > 1 and not (options.multi_reference_confirmed or refs.multi_reference_confirmed and self_ids == refs.self_reference_ids):
+            raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请先确认模型支持所选自我参考图片")
         if options.self_reference == "required" and not self_ids:
             raise TaskRequestError("SELF_REFERENCE_MISSING", "自我参考图库为空，请先上传参考图片")
-        if len(self_ids) > 1 and self_ids != refs.self_reference_ids:
-            raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "本次多图选择必须使用工作台已确认的自我图片组合")
         for identifier in self_ids:
             frozen[identifier] = await asyncio.to_thread(store.read, identifier, kind="self", subject="bot")
+    for identifier in options.reference_ids:
+        frozen[identifier] = await asyncio.to_thread(store.read, identifier, kind="preset", role="base")
     explicit = next((item for item in config.style.presets if item.name.casefold() == style.casefold()), None)
     if explicit is not None and explicit.preset_type == "image_to_image" and not required_mode:
         required_mode = "edit_image"
-    if required_mode == "draw" and (images or self_ids or options.material_sources or explicit is not None and explicit.reference_bindings):
+    if required_mode == "draw" and (images or self_ids or options.reference_ids or options.material_sources or explicit is not None and explicit.reference_bindings):
         raise TaskRequestError("TASK_MODE_CONFLICT", "文生图不能使用会加入图片的参考选项，请改用 edit_image")
     modes = [required_mode] if required_mode else ["draw", "edit_image"]
     for mode in modes:

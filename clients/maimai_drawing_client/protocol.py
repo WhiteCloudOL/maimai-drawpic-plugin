@@ -4,12 +4,24 @@
 """只校验客户端依赖的任务字段；允许服务器增加额外诊断字段。"""
 
 from typing import Any, Dict
+import re
 
 from .models import DrawingError, DrawingTransportError, validate_error
 
 
 TASK_STATUSES = {"pending", "running", "completed", "failed", "rejected", "unconfirmed", "cancelled"}
 DELIVERY_STATUSES = {"not_requested", "pending", "sent", "partial", "failed", "unconfirmed"}
+
+
+def validate_reference(asset: Any) -> None:
+    if (not isinstance(asset, dict) or not isinstance(asset.get("id"), str)
+            or not re.fullmatch(r"[a-f0-9]{32}", asset["id"])
+            or not isinstance(asset.get("version"), str) or not re.fullmatch(r"[a-f0-9]{64}", asset["version"])
+            or not isinstance(asset.get("kind"), str) or asset["kind"] not in {"self", "preset"}
+            or not isinstance(asset.get("name"), str) or not isinstance(asset.get("prompt"), str)
+            or not isinstance(asset.get("tags"), list) or any(not isinstance(tag, str) for tag in asset["tags"])
+            or type(asset.get("default")) is not bool or type(asset.get("size")) is not int or asset["size"] <= 0):
+        raise DrawingTransportError("参考图片元数据格式无效")
 
 
 def validate_task(result: Dict[str, Any], task_id: str) -> None:

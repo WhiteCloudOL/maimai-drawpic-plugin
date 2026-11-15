@@ -1,7 +1,7 @@
 """绘图工作台的配置、模型、会话和预设业务边界。"""
 
 from maibot_sdk.config import generate_plugin_config_schema
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable, Dict, Optional
 import asyncio
 
 from ...domain.configuration.models import DrawpicConfig, StylePresetConfig
@@ -205,11 +205,26 @@ class WorkspaceService:
     async def save_settings(self, config_json: str, revision: int) -> Dict[str, Any]:
         return await self._run_transaction(lambda: self._save_settings(config_json, revision))
 
-    async def presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
+    async def presets(self, operation: str = "list", name: str = "", preset_json: str = "",
+                      confirm_multi_reference: bool = False) -> Dict[str, Any]:
         if operation in {"list", "get"}:
             async with self.lock:
-                return await self._presets(operation, name, preset_json)
-        return await self._run_transaction(lambda: self._presets(operation, name, preset_json))
+                return await self._presets(operation, name, preset_json, confirm_multi_reference)
+        return await self._run_transaction(lambda: self._presets(operation, name, preset_json, confirm_multi_reference))
+
+    async def update_reference(self, operation: str, revision: int, values: Dict[str, Any],
+                               raw: Optional[bytes] = None) -> Dict[str, Any]:
+        return await self._run_transaction(lambda: self._update_reference(operation, revision, values, raw))
+
+    async def _update_reference(self, operation: str, revision: int, values: Dict[str, Any],
+                                raw: Optional[bytes] = None) -> Dict[str, Any]:
+        if values.keys() - {"asset_id", "name", "tags", "kind", "position", "prompt"}:
+            raise ValueError("参考图片包含未知字段")
+        config = await asyncio.to_thread(self.store.effective_config, self.get_config().model_dump(mode="json"))
+        referenced = list(config.general.references.self_reference_ids)
+        referenced.extend(binding.asset_id for preset in config.style.presets for binding in preset.reference_bindings)
+        return await asyncio.to_thread(self.tasks.references.update, operation=operation, revision=revision,
+                                       raw=raw, referenced_ids=referenced, **values)
 
     async def _save_provider(self, provider_json: str, revision: int) -> Dict[str, Any]:
         payload = parse_json_object(provider_json)
@@ -301,14 +316,17 @@ class WorkspaceService:
         if len(refs.self_reference_ids) > 8:
             raise ValueError("自我参考最多选择 8 张图片")
         if len(refs.self_reference_ids) > 1 and not refs.multi_reference_confirmed:
-            raise ValueError("请通过 dialog 确认自我多图配置")
+            raise ValueError("请先确认所用模型支持自我多图配置")
         for identifier in refs.self_reference_ids:
             await asyncio.to_thread(self.tasks.references.read, identifier, kind="self")
         for preset in config.style.presets:
             for binding in preset.reference_bindings:
                 await asyncio.to_thread(self.tasks.references.read, binding.asset_id, kind="preset")
 
-    async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
+    async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "",
+                       confirm_multi_reference: bool = False) -> Dict[str, Any]:
+        if type(confirm_multi_reference) is not bool or confirm_multi_reference and operation != "save":
+            raise ValueError("多图确认仅用于保存预设，且必须为布尔值")
         if operation not in {"list", "get", "save", "delete"} or len(name) > 80:
             raise ValueError("预设操作或名称无效")
         snapshot = await asyncio.to_thread(self.store.public_snapshot)
@@ -338,11 +356,13 @@ class WorkspaceService:
         else:
             incoming = parse_json_object(preset_json)
             combined = {**(target or {}), **incoming}
+            if confirm_multi_reference:
+                combined["multi_reference_confirmed"] = True
             old_bindings = target["reference_bindings"] if target else []
             new_bindings = combined.get("reference_bindings", [])
             confirmed = combined.get("multi_reference_confirmed", False)
-            if (confirmed and (not target or not target["multi_reference_confirmed"])) or new_bindings != old_bindings and (len(new_bindings) > 1 or confirmed):
-                raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "多图配置需要在工作台通过 dialog 确认")
+            if not confirm_multi_reference and ((confirmed and (not target or not target["multi_reference_confirmed"])) or new_bindings != old_bindings and (len(new_bindings) > 1 or confirmed)):
+                raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请先确认所用模型支持此多图配置")
             preset = _validate_fields(StylePresetConfig, combined)
             if not preset["name"].strip() or len(preset["name"]) > 80 or len(presets) >= 100 and target is None:
                 raise ValueError("预设名称必须为 1～80 个字符，最多保存 100 个预设")

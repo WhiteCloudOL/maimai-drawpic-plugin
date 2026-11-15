@@ -4,7 +4,8 @@
 """严格校验分块协议，保存路径由调用插件明确提供。"""
 
 from pathlib import Path
-from typing import List, Sequence, Union
+from hashlib import sha256
+from typing import Any, Dict, List, Optional, Sequence, Union
 import asyncio
 import base64
 import binascii
@@ -34,12 +35,24 @@ def encode_sources(images: Sequence[Union[str, bytes]]) -> List[str]:
 
 
 async def read_image(rpc: DrawingRPC, task_id: str, index: int, max_bytes: int) -> bytes:
+    return await read_chunks(rpc, "image", {"task_id": task_id, "index": index, "kind": "original"}, max_bytes, task_id)
+
+
+async def read_reference_image(rpc: DrawingRPC, asset_id: str, asset_version: str, max_bytes: int) -> bytes:
+    raw = await read_chunks(rpc, "reference_image", {"asset_id": asset_id, "asset_version": asset_version, "kind": "original"}, max_bytes)
+    if await asyncio.to_thread(lambda: sha256(raw).hexdigest()) != asset_version:
+        raise DrawingTransportError("参考图片内容与版本校验值不一致")
+    return raw
+
+
+async def read_chunks(rpc: DrawingRPC, endpoint: str, arguments: Dict[str, Any], max_bytes: int,
+                      task_id: Optional[str] = None) -> bytes:
     offset, chunks, expected = 0, [], None
     while True:
         response = None
         for attempt in range(3):
             try:
-                response = await rpc.call("image", task_id=task_id, index=index, kind="original", offset=offset)
+                response = await rpc.call(endpoint, **arguments, offset=offset)
                 break
             except DrawingTransportError:
                 if attempt == 2:
@@ -51,6 +64,8 @@ async def read_image(rpc: DrawingRPC, task_id: str, index: int, max_bytes: int) 
                 raise DrawingTransportError("图片响应请求键格式无效", task_id=task_id)
             raise DrawingError(response["error"], task_id=task_id, request_id=request_id)
         try:
+            if "asset_version" in arguments and response.get("version") != arguments["asset_version"]:
+                raise ValueError("参考图片版本改变")
             size = response["size"]
             if type(size) is not int or size <= 0:
                 raise ValueError("图片大小无效")

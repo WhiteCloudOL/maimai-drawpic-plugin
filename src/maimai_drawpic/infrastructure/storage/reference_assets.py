@@ -3,14 +3,17 @@
 from copy import deepcopy
 from hashlib import sha256
 from pathlib import Path
+from PIL import Image
 from threading import RLock
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+import base64
 import os
 import re
 import tempfile
 
 from ...domain.references import ReferenceImage, normalize_tag
+from ...domain.task_errors import TaskRequestError
 from ..media.images import validate_image_bytes
 from .atomic import write_json_atomically
 from .settings import read_json_file
@@ -58,7 +61,7 @@ class ReferenceAssetStore:
         if not isinstance(version, str) or not re.fullmatch(r"[a-f0-9]{64}", version):
             raise ValueError("参考图片版本无效")
         path = self.root / f"{identifier}-{version}.image"
-        if path.is_symlink() or not path.resolve().is_relative_to(self.root.resolve()):
+        if self.root.is_symlink() or path.is_symlink() or not path.resolve().is_relative_to(self.root.resolve()):
             raise ValueError("参考图片不属于当前插件")
         return path
 
@@ -196,3 +199,28 @@ class ReferenceAssetStore:
         ))
         score = sum(normalize_tag(tag) in requested or normalize_tag(tag) in normalized_text for tag in ranked[0][1]["tags"])
         return ranked[0][1]["id"] if score else snapshot["default_reference_id"]
+
+    def original_chunk(self, identifier: str, version: str, offset: int) -> Dict[str, Any]:
+        """固定资产版本读取原图；更新、替换后拒绝混合不同版本的分块。"""
+        with self.lock:
+            path = self._path(identifier, version)
+            item = next((item for item in self.snapshot()["assets"] if item["id"] == identifier), None)
+            if item is None:
+                raise TaskRequestError("REFERENCE_NOT_FOUND", "参考图片不存在")
+            if item["version"] != version:
+                raise TaskRequestError("REFERENCE_VERSION_CONFLICT", "参考图片已被替换，请重新读取图片信息后再下载")
+            if type(offset) is not int or not 0 <= offset < item["size"]:
+                raise ValueError("参考图片读取偏移无效")
+            if path.stat().st_size != item["size"]:
+                raise ValueError("参考图片内容与索引大小不一致")
+            with Image.open(path) as image:
+                mime = Image.MIME.get(image.format, "")
+            if mime not in {"image/png", "image/jpeg", "image/webp"}:
+                raise ValueError("原图读取仅支持 PNG、JPEG 或 WebP")
+            with path.open("rb") as handle:
+                handle.seek(offset)
+                chunk = handle.read(192 * 1024)
+            extension = "jpg" if mime == "image/jpeg" else mime.split("/", 1)[1]
+            return {"asset_id": identifier, "version": version, "data": base64.b64encode(chunk).decode("ascii"),
+                    "offset": offset, "next_offset": offset + len(chunk), "size": item["size"], "mime": mime,
+                    "filename": f"{identifier}.{extension}", "done": offset + len(chunk) == item["size"]}

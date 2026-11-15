@@ -39,15 +39,8 @@ class WebUIAPIMixin(WorkspaceAPIBase):
         if values.keys() - {"asset_id", "name", "tags", "kind", "position", "prompt"}:
             raise ValueError("参考图片包含未知字段")
 
-        async def update() -> Dict[str, Any]:
-            config = workspace.get_config()
-            referenced = list(config.general.references.self_reference_ids)
-            referenced.extend(binding.asset_id for preset in config.style.presets for binding in preset.reference_bindings)
-            raw = (await workspace.tasks._sources([source_id], []))[0] if source_id else None
-            return await asyncio.to_thread(workspace.tasks.references.update, operation=operation, revision=revision,
-                                           raw=raw, referenced_ids=referenced, **values)
-
-        return await workspace._run_transaction(update)
+        raw = (await workspace.tasks._sources([source_id], []))[0] if source_id else None
+        return await workspace.update_reference(operation, revision, values, raw)
 
     @API("workspace_provider_models", version="1")
     @workspace_endpoint

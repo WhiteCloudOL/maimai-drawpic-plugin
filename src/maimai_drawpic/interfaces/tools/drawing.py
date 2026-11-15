@@ -17,6 +17,8 @@ class DrawingToolMixin:
     def _drawing_reference_options(kwargs: Dict[str, Any], reference_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """显式原话优先；否则只读取当前真实消息的文本，不使用改写后的 prompt。"""
         values = dict(reference_options or {})
+        if "multi_reference_confirmed" in values:
+            raise ValueError("多图能力必须由用户确认，不能由聊天模型声明已确认")
         if "self_reference" in values:
             supplied = values["self_reference"]
             normalized = supplied.strip().casefold() if isinstance(supplied, str) else ""

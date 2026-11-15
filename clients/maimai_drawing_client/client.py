@@ -10,9 +10,9 @@ import asyncio
 import math
 import re
 
-from .images import encode_sources, read_image, save_bytes
-from .models import DrawingError, DrawingPreferences, DrawingRequest, DrawingResult, DrawingTransportError, GeneratedImage, TaskHandle
-from .protocol import TASK_STATUSES, validate_task
+from .images import encode_sources, read_image, read_reference_image, save_bytes
+from .models import DrawingError, DrawingPreferences, DrawingReferenceSettings, DrawingRequest, DrawingResult, DrawingTransportError, GeneratedImage, SimpleDrawingRequest, TaskHandle
+from .protocol import TASK_STATUSES, validate_reference, validate_task
 from .transport import APIProxy, DrawingRPC
 
 
@@ -63,9 +63,23 @@ class DrawingClient:
             reference_options = kwargs["reference_options"]
             if not isinstance(reference_options, dict):
                 raise ValueError("reference_options 必须为对象")
+        return await self._submit("submit", prompt, request_id, kwargs)
+
+    async def draw(self, prompt: str, *, request_id: Optional[str] = None, **kwargs: Unpack[SimpleDrawingRequest]) -> TaskHandle:
+        """简易短提交，按一张源图或图库 ID 自动确定模式；用 wait 继续等待。"""
+        request_id = uuid4().hex if request_id is None else request_id
+        if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request_id):
+            raise ValueError("request_id 应为 8～80 位字母、数字、下划线或横线")
+        if kwargs.keys() - SimpleDrawingRequest.__annotations__.keys():
+            raise ValueError("简易绘图包含不支持的参数，请使用 submit 高级调用")
+        if "source_image" in kwargs:
+            kwargs["source_image"] = (await asyncio.to_thread(encode_sources, [kwargs["source_image"]]))[0]
+        return await self._submit("draw", prompt, request_id, kwargs)
+
+    async def _submit(self, endpoint: str, prompt: str, request_id: str, kwargs: Dict[str, Any]) -> TaskHandle:
         task_id = None
         try:
-            result = await self.rpc.call("submit", prompt=prompt, request_id=request_id, **kwargs)
+            result = await self.rpc.call(endpoint, prompt=prompt, request_id=request_id, **kwargs)
             # 回执不完整时无法证明未受理，保留原幂等键供调用方恢复。
             if result.get("accepted") is True:
                 if isinstance(result.get("task_id"), str) and result["task_id"]:
@@ -121,14 +135,95 @@ class DrawingClient:
     async def presets(self) -> Dict[str, Any]:
         return await self._presets("list")
 
-    async def references(self, *, page: int = 1) -> Dict[str, Any]:
-        """只读参考目录，不读取图片或修改全局设置。"""
+    async def references(self, *, page: int = 1, kind: str = "", search: str = "") -> Dict[str, Any]:
+        """分页查询参考图库，kind 留空查询全部，或指定 self/preset。"""
         if type(page) is not int or not 1 <= page <= 10:
             raise ValueError("参考目录页码必须为 1～10")
-        result = await self.rpc.call("references", page=page)
+        result = await self.rpc.call("references", page=page, kind=kind, search=search)
         self._resource_error(result)
         if not isinstance(result.get("assets"), list):
             raise DrawingTransportError("参考目录响应格式无效")
+        for asset in result["assets"]:
+            validate_reference(asset)
+        return result
+
+    async def reference(self, asset_id: str) -> Dict[str, Any]:
+        result = await self.rpc.call("reference", asset_id=asset_id)
+        self._resource_error(result)
+        validate_reference(result.get("asset"))
+        if result["asset"]["id"] != asset_id:
+            raise DrawingTransportError("参考图片查询返回了不同的资产")
+        return result
+
+    async def save_reference(self, reference: Dict[str, Any], *, revision: int,
+                             image: Optional[Union[str, bytes]] = None) -> Dict[str, Any]:
+        """新增需要真实图片；编辑可只提供 asset_id 和要修改的字段，不自动重试写入。"""
+        encoded = None if image is None else (await asyncio.to_thread(encode_sources, [image]))[0]
+        return await self._reference_update("save", revision, reference, encoded)
+
+    async def delete_reference(self, asset_id: str, *, revision: int) -> Dict[str, Any]:
+        return await self._reference_update("delete", revision, {"asset_id": asset_id})
+
+    async def set_default_reference(self, asset_id: str, *, revision: int) -> Dict[str, Any]:
+        return await self._reference_update("default", revision, {"asset_id": asset_id})
+
+    async def move_reference(self, asset_id: str, position: int, *, revision: int) -> Dict[str, Any]:
+        return await self._reference_update("move", revision, {"asset_id": asset_id, "position": position})
+
+    async def _reference_update(self, operation: str, revision: int, reference: Dict[str, Any],
+                                image_base64: Optional[str] = None) -> Dict[str, Any]:
+        if type(revision) is not int or revision < 0 or not isinstance(reference, dict):
+            raise ValueError("参考图片需要当前图库修订号和对象参数")
+        result = await self.rpc.call("reference_update", operation=operation, revision=revision,
+                                     reference=reference, image_base64=image_base64)
+        self._resource_error(result)
+        if result.get("saved") is not True or type(result.get("revision")) is not int or result["revision"] <= revision:
+            raise DrawingTransportError("参考图片写入响应未确认，请读取图库核对")
+        if (type(result.get("deleted")) is not bool or result["deleted"] != (operation == "delete")
+                or reference.get("asset_id") and result.get("asset_id") != reference["asset_id"]):
+            raise DrawingTransportError("参考图片写入响应与原操作不一致，请读取图库核对")
+        if operation != "delete":
+            validate_reference(result.get("asset"))
+            if result["asset"]["id"] != result.get("asset_id"):
+                raise DrawingTransportError("参考图片写入返回了不同的资产")
+        return result
+
+    async def reference_preview(self, asset_id: str, *, asset_version: str = "") -> Dict[str, Any]:
+        result = await self.rpc.call("reference_image", asset_id=asset_id, kind="preview", asset_version=asset_version)
+        self._resource_error(result)
+        if (result.get("asset_id") != asset_id or not isinstance(result.get("data_url"), str)
+                or not result["data_url"].startswith("data:image/webp;base64,")
+                or asset_version and result.get("version") != asset_version):
+            raise DrawingTransportError("参考图片预览响应无效")
+        return result
+
+    async def read_reference_image(self, asset_id: str, *, asset_version: Optional[str] = None) -> bytes:
+        if asset_version is None:
+            asset_version = (await self.reference(asset_id))["asset"]["version"]
+        return await read_reference_image(self.rpc, asset_id, asset_version, self.max_image_bytes)
+
+    async def save_reference_image(self, asset_id: str, destination: Union[str, Path], *,
+                                   asset_version: Optional[str] = None, overwrite: bool = False) -> Path:
+        raw = await self.read_reference_image(asset_id, asset_version=asset_version)
+        return await asyncio.to_thread(save_bytes, Path(destination), raw, overwrite)
+
+    async def reference_settings(self) -> Dict[str, Any]:
+        result = await self.rpc.call("reference_settings")
+        self._resource_error(result)
+        if type(result.get("revision")) is not int or not isinstance(result.get("settings"), dict):
+            raise DrawingTransportError("参考设置响应格式无效")
+        return result
+
+    async def set_reference_settings(self, *, revision: int, confirm_multi_reference: bool = False,
+                                     **patch: Unpack[DrawingReferenceSettings]) -> Dict[str, Any]:
+        if patch.keys() - DrawingReferenceSettings.__annotations__.keys() or type(revision) is not int or revision < 0:
+            raise ValueError("参考设置字段或修订号无效")
+        result = await self.rpc.call("reference_settings_set", revision=revision, settings=patch,
+                                     confirm_multi_reference=confirm_multi_reference)
+        self._resource_error(result)
+        if (result.get("saved") is not True or not isinstance(result.get("settings"), dict)
+                or type(result.get("revision")) is not int or result["revision"] <= revision):
+            raise DrawingTransportError("参考设置写入响应未确认，请先读取设置核对")
         return result
 
     async def preferences(self, stream_id: str) -> Dict[str, Any]:
@@ -169,21 +264,23 @@ class DrawingClient:
     async def preset(self, name: str) -> Dict[str, Any]:
         return await self._presets("get", name)
 
-    async def save_preset(self, preset: Dict[str, Any], *, name: Optional[str] = None) -> Dict[str, Any]:
+    async def save_preset(self, preset: Dict[str, Any], *, name: Optional[str] = None,
+                           confirm_multi_reference: bool = False) -> Dict[str, Any]:
         """创建或更新预设；name 指定旧名称时可重命名，不自动重试写入。"""
         if not isinstance(preset, dict):
             raise ValueError("preset 必须为对象")
-        return await self._presets("save", preset.get("name", "") if name is None else name, preset)
+        return await self._presets("save", preset.get("name", "") if name is None else name, preset, confirm_multi_reference)
 
     async def delete_preset(self, name: str) -> Dict[str, Any]:
         return await self._presets("delete", name)
 
-    async def _presets(self, operation: str, name: str = "", preset: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _presets(self, operation: str, name: str = "", preset: Optional[Dict[str, Any]] = None,
+                       confirm_multi_reference: bool = False) -> Dict[str, Any]:
         if not isinstance(name, str) or len(name) > 80:
             raise ValueError("预设名称应为不超过 80 个字符的文本")
         result = await self.rpc.call(
             "presets", operation=operation, name=name,
-            preset=preset,
+            preset=preset, confirm_multi_reference=confirm_multi_reference,
         )
         self._resource_error(result)
         if operation == "get":

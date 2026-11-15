@@ -1,7 +1,9 @@
 """公开绘图任务契约，独立表达受理、生成、缓存和投递结果。"""
 
+from hashlib import sha256
 from typing import Any, Dict
 import asyncio
+import json
 import re
 
 from ...domain.task_errors import TaskRequestError, task_error
@@ -41,6 +43,39 @@ class IntegrationTaskService:
         except (ValueError, PermissionError) as exc:
             return {**self.error_response(exc), "accepted": False, "request_id": kwargs.get("request_id", "")}
         return {**await self.task(receipt["task_id"]), **receipt, "accepted": True}
+
+    async def draw(self, *, prompt: str, model: str, style: str, source_image: str, reference_id: str,
+                   self_reference: bool, stream_id: str, request_id: str) -> Dict[str, Any]:
+        """简易提交只按明确图片和已选预设确定模式，不隐式读取聊天或联网。"""
+        if type(self_reference) is not bool or not all(isinstance(value, str) for value in (prompt, model, source_image, reference_id, style, stream_id, request_id)):
+            raise ValueError("图片、参考 ID 和预设名称必须为文本，自我参考必须为布尔值")
+        if len(source_image) > 8 * 1024 * 1024 or request_id and not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request_id):
+            raise ValueError("源图片超过 8 MiB 编码限制，或 request_id 格式无效")
+        signature = await asyncio.to_thread(lambda: sha256(json.dumps(
+            [prompt, model, style, source_image, reference_id, self_reference, stream_id], ensure_ascii=False,
+        ).encode("utf-8")).hexdigest())
+        if request_id:
+            async with self.tasks.lock:
+                previous = await asyncio.to_thread(self.tasks.task_store.find_request, request_id)
+            if previous is not None:
+                if previous["submission"].get("simple_signature") != signature:
+                    raise TaskRequestError("REQUEST_ID_CONFLICT", "相同 request_id 不能用于不同绘图参数或提交入口")
+                return {**await self.task(previous["task_id"]), "accepted": True, "reused": True}
+        options: Dict[str, Any] = {"self_reference": "required" if self_reference else "off"}
+        if reference_id:
+            snapshot = await asyncio.to_thread(self.tasks.references.snapshot)
+            asset = next((item for item in snapshot["assets"] if item["id"] == reference_id), None)
+            if asset is None:
+                raise TaskRequestError("REFERENCE_NOT_FOUND", "参考图片不存在")
+            if asset["kind"] == "self":
+                options.update(self_reference="required", self_reference_ids=[reference_id])
+            else:
+                options["reference_ids"] = [reference_id]
+        preset = next((item for item in self.tasks.get_config().style.presets if item.name.casefold() == style.strip().casefold()), None)
+        edit = bool(source_image or reference_id or self_reference or preset is not None and preset.preset_type == "image_to_image")
+        return await self.submit(prompt=prompt, model=model, style=style, stream_id=stream_id, request_id=request_id,
+                                 task_type="edit_image" if edit else "draw", source_images=[source_image] if source_image else [],
+                                 reference_options_json=json.dumps(options, ensure_ascii=False), simple_signature=signature)
 
     async def request(self, request_id: str) -> Dict[str, Any]:
         """只查询持久化请求映射；未找到不证明从未受理，也不能据此自动重画。"""

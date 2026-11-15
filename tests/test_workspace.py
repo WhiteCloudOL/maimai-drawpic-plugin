@@ -206,6 +206,8 @@ def test_component_bindings_are_private_and_public_api_is_limited():
         "drawpic_presets",
         "drawpic_request", "drawpic_preferences", "drawpic_preferences_set",
         "drawpic_references",
+        "drawpic_draw", "drawpic_reference", "drawpic_reference_update", "drawpic_reference_image",
+        "drawpic_reference_settings", "drawpic_reference_settings_set",
     }
     assert all(declarations[name]["metadata"]["version"] == "1" for name in public)
     assert (Path(__file__).parents[1] / page["entry"]).is_file()

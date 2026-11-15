@@ -20,6 +20,8 @@ class ReferenceOptions(BaseModel):
     user_request: str = Field(default="", max_length=16000)
     self_reference_ids: List[str] = Field(default_factory=list, max_length=8)
     self_reference_tags: List[str] = Field(default_factory=list, max_length=32)
+    reference_ids: List[str] = Field(default_factory=list, max_length=8)
+    multi_reference_confirmed: bool = False
     material_sources: List[Literal["chat", "web"]] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode="after")
@@ -33,6 +35,7 @@ class ReferenceOptions(BaseModel):
         if any(not value.strip() or len(value) > 80 for value in self.self_reference_tags):
             raise ValueError("参考 tag 必须是 1～80 个字符")
         self.self_reference_ids = list(dict.fromkeys(self.self_reference_ids))
+        self.reference_ids = list(dict.fromkeys(self.reference_ids))
         self.self_reference_tags = list(dict.fromkeys(normalize_tag(value) for value in self.self_reference_tags))
         self.material_sources = [value for value in ("chat", "web") if value in self.material_sources]
         return self

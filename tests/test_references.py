@@ -360,7 +360,7 @@ def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, m
             directory = await client.references()
             assert directory["total"] == 2
             assert directory["chat_material_search_limit"] == 50
-            assert set(directory["assets"][0]) == {"id", "name", "tags", "default"}
+            assert set(directory["assets"][0]) == {"id", "name", "tags", "default", "kind", "version", "size", "prompt"}
             assert directory["assets"][0]["default"]
             conflict = await plugin.drawpic_submit("麦麦", reference_options=options)
             assert conflict["accepted"] is False and conflict["error"]["code"] == "TASK_MODE_CONFLICT"

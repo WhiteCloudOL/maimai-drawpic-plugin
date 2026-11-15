@@ -23,7 +23,28 @@ class DrawingReferenceOptions(TypedDict, total=False):
     user_request: str
     self_reference_ids: List[str]
     self_reference_tags: List[str]
+    reference_ids: List[str]
+    multi_reference_confirmed: bool
     material_sources: List[Literal["chat", "web"]]
+
+
+class SimpleDrawingRequest(TypedDict, total=False):
+    model: str
+    style: str
+    source_image: Union[str, bytes]
+    reference_id: str
+    self_reference: bool
+    stream_id: str
+
+
+class DrawingReferenceSettings(TypedDict, total=False):
+    self_reference_enabled: bool
+    self_names: List[str]
+    self_keywords: List[str]
+    self_reference_ids: List[str]
+    image_edit_presets_enabled: bool
+    default_style: str
+    default_image_edit_preset: str
 
 
 class DrawingRequest(TypedDict, total=False):

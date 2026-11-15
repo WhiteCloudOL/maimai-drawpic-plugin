@@ -2,11 +2,11 @@
 
 from maibot_sdk import API
 from typing import Any, Dict, List, Optional
-import asyncio
 import json
 
 from ...application.workspace.integration import IntegrationTaskService
 from ...application.workspace.preferences import IntegrationPreferenceService
+from ...application.workspace.reference_api import ReferenceAPIService
 from ...infrastructure.storage.platforms import parse_json_object
 from .base import WorkspaceAPIBase, drawing_endpoint
 
@@ -30,6 +30,15 @@ class DrawingAPIMixin(WorkspaceAPIBase):
     @drawing_endpoint()
     async def drawpic_models(self) -> Dict[str, Any]:
         return self._workspace().models()
+
+    @API("drawpic_draw", public=True, description="简易绘图：自动选择文生图或图生图，快速返回任务句柄")
+    @drawing_endpoint("submit")
+    async def drawpic_draw(self, prompt: str, model: str = "", style: str = "", source_image: str = "",
+                           reference_id: str = "", self_reference: bool = False,
+                           stream_id: str = "", request_id: str = "") -> Dict[str, Any]:
+        return await self._drawing_tasks().draw(prompt=prompt, model=model, style=style, source_image=source_image,
+                                                reference_id=reference_id, self_reference=self_reference,
+                                                stream_id=stream_id, request_id=request_id)
 
     @API("drawpic_submit", public=True, description="提交后台绘图，返回持久任务句柄与受理状态")
     @drawing_endpoint("submit")
@@ -96,30 +105,42 @@ class DrawingAPIMixin(WorkspaceAPIBase):
 
     @API("drawpic_presets", public=True, description="查询、保存、重命名或删除两类绘图预设")
     @drawing_endpoint()
-    async def drawpic_presets(self, operation: str = "list", name: str = "", preset: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def drawpic_presets(self, operation: str = "list", name: str = "", preset: Optional[Dict[str, Any]] = None,
+                             confirm_multi_reference: bool = False) -> Dict[str, Any]:
         if not all(isinstance(value, str) for value in (operation, name)):
             raise ValueError("预设操作与名称必须为文本")
-        return await self._workspace().presets(operation, name, _object_json(preset, "绘图预设") if preset is not None else "")
+        return await self._workspace().presets(operation, name, _object_json(preset, "绘图预设") if preset is not None else "", confirm_multi_reference)
 
-    @API("drawpic_references", public=True, description="只读查询自我参考目录及素材设置，不返回图片或密钥")
+    @API("drawpic_references", public=True, description="分页搜索自我及预设参考目录，返回元数据和图库修订号")
     @drawing_endpoint()
-    async def drawpic_references(self, page: int = 1) -> Dict[str, Any]:
-        if type(page) is not int or not 1 <= page <= 10:
-            raise ValueError("参考目录分页无效")
-        workspace = self._workspace()
-        snapshot = await asyncio.to_thread(workspace.tasks.references.snapshot)
-        assets = [item for item in snapshot["assets"] if item["kind"] == "self"]
-        config = workspace.get_config().general.references
-        return {
-            "page": page, "page_size": 12, "total": len(assets),
-            "assets": [{"id": item["id"], "name": item["name"], "tags": item["tags"],
-                        "default": item["id"] == snapshot["default_reference_id"]}
-                       for item in assets[(page - 1) * 12:page * 12]],
-            "self_reference_enabled": config.self_reference_enabled,
-            "allow_chat_material_search": config.allow_chat_material_search,
-            "chat_material_search_limit": config.chat_material_search_limit,
-            "material_model": config.material_model,
-            "allow_web_material_search": config.allow_web_material_search,
-            "web_search_provider": config.web_search_provider,
-            "multi_reference_confirmed": config.multi_reference_confirmed,
-        }
+    async def drawpic_references(self, page: int = 1, kind: str = "", search: str = "") -> Dict[str, Any]:
+        return await ReferenceAPIService(self._workspace()).listing(page, kind, search)
+
+    @API("drawpic_reference", public=True, description="查询参考图信息、提示词、版本和图库修订号")
+    @drawing_endpoint()
+    async def drawpic_reference(self, asset_id: str) -> Dict[str, Any]:
+        return await ReferenceAPIService(self._workspace()).get(asset_id)
+
+    @API("drawpic_reference_update", public=True, description="上传、编辑、删除、设默认或排序参考图片")
+    @drawing_endpoint()
+    async def drawpic_reference_update(self, operation: str, revision: int, reference: Dict[str, Any],
+                                      image_base64: Optional[str] = None) -> Dict[str, Any]:
+        values = parse_json_object(_object_json(reference, "参考图片"))
+        return await ReferenceAPIService(self._workspace()).update(operation, revision, values, image_base64)
+
+    @API("drawpic_reference_image", public=True, description="读取参考图预览或固定版本的原图分块")
+    @drawing_endpoint()
+    async def drawpic_reference_image(self, asset_id: str, kind: str = "preview", asset_version: str = "", offset: int = 0) -> Dict[str, Any]:
+        return await ReferenceAPIService(self._workspace()).image(asset_id, kind, asset_version, offset)
+
+    @API("drawpic_reference_settings", public=True, description="读取绘图插件的自我参考和默认预设设置，不含宿主人设或密钥")
+    @drawing_endpoint()
+    async def drawpic_reference_settings(self) -> Dict[str, Any]:
+        return await ReferenceAPIService(self._workspace()).settings()
+
+    @API("drawpic_reference_settings_set", public=True, description="按修订号部分更新自我参考及默认预设设置")
+    @drawing_endpoint()
+    async def drawpic_reference_settings_set(self, settings: Dict[str, Any], revision: int,
+                                             confirm_multi_reference: bool = False) -> Dict[str, Any]:
+        values = parse_json_object(_object_json(settings, "参考设置"))
+        return await ReferenceAPIService(self._workspace()).set_settings(values, revision, confirm_multi_reference)
