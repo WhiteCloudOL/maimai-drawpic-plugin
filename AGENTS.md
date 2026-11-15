@@ -106,3 +106,11 @@
 
 - 后续更新不创建 Pull Request；提交、推送或发布遵循用户当次要求。
 - 提交采用 Conventional Commits，并按功能边界拆分。
+
+## Release 发布格式
+
+- Release 标题使用英文，例如 `Maimai Drawpic v2.3.0`；正文条目使用中文。
+- 正文依次使用 `# Features`、`# Fixes` 两个英文标题，分别列出新增功能和修复；条目有关联 issue 或 PR 时附上对应链接，不虚构引用。
+- 仅在存在首次贡献者时添加 `## New Contributors`，使用中文说明其首次贡献并引用对应 PR。
+- 正文末尾使用 `**Full Changelog**`，链接到上一发布标签和本次标签之间的 GitHub compare 页面。
+- 发布前完成相关测试、WebUI 交互检查、版本及文档核对，保留运行要求和必要升级提示，使用中文描述。
