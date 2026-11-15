@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 import asyncio
 
 from ...domain.references import PreparedRequest, ReferenceImage, ReferenceOptions, normalize_tag
+from ...domain.configuration.models import StylePresetConfig
 from ...domain.styles import StylePromptResolver, merge_prompt_parts
 from ...domain.task_errors import TaskRequestError
 from ...infrastructure.references.materials import MaterialSource
@@ -38,6 +39,15 @@ class ReferencePreparation:
             return "edit_image"
         return ""
 
+    def _preset_images(self, preset: Optional[StylePresetConfig]) -> List[ReferenceImage]:
+        images: List[ReferenceImage] = []
+        if preset is not None:
+            for binding in preset.reference_bindings:
+                image = self.frozen[binding.asset_id]
+                images.append(ReferenceImage(image.raw, image.source, binding.role, binding.subject_id, image.url,
+                                             image.asset_id, image.version, merge_prompt_parts((image.note, binding.note))))
+        return images
+
     async def prepare(self, task_id: str) -> PreparedRequest:
         # 配置仅允许收紧在途请求；任务使用已读取的资产和模板版本。
         refs = self.config.general.references
@@ -61,9 +71,11 @@ class ReferencePreparation:
                     raise TaskRequestError("SELF_REFERENCE_MISSING", "自我参考图库为空，请先上传图片")
                 images.extend(self.frozen[identifier] for identifier in self.self_ids)
 
-        explicit = next((item for item in self.config.style.presets if item.name.casefold() == self.style.casefold()), None)
-        if explicit is not None and explicit.preset_type == "image_to_image":
-            images.extend(self.frozen[binding.asset_id] for binding in explicit.reference_bindings)
+        resolver = StylePromptResolver(self.config.style)
+        initial_preset = resolver.select_for_task(
+            self.style, self.expected_mode or ("edit_image" if images else "draw"), self.options.user_request or self.prompt,
+        )
+        images.extend(self._preset_images(initial_preset))
         if self.options.material_sources:
             plan = await self.recognizer.needs(self.options.user_request, source_count=len(self.images))
             chat_images: Optional[List[ReferenceImage]] = None
@@ -128,13 +140,9 @@ class ReferencePreparation:
         if self.required_mode and mode != self.required_mode:
             raise TaskRequestError("SOURCE_IMAGE_REQUIRED" if mode == "draw" else "TASK_MODE_CONFLICT",
                                    "图生图必须有真实源图片" if mode == "draw" else "文生图不能隐式加入参考图，请改用图生图")
-        resolver = StylePromptResolver(self.config.style)
         preset = resolver.select_for_task(self.style, mode, self.options.user_request or self.prompt)
-        if preset is not None:
-            for binding in preset.reference_bindings:
-                image = self.frozen[binding.asset_id]
-                images.append(ReferenceImage(image.raw, image.source, binding.role, binding.subject_id, image.url,
-                                             image.asset_id, image.version, merge_prompt_parts((image.note, binding.note))))
+        if preset is not initial_preset:
+            images.extend(self._preset_images(preset))
         unique: Dict[str, ReferenceImage] = {}
         uses: Dict[str, List[str]] = {}
         digests = await asyncio.to_thread(lambda: [sha256(image.raw).hexdigest() for image in images])
@@ -173,6 +181,7 @@ async def freeze_reference_request(*, ctx: Any, config: Any, store: ReferenceAss
                                    prompt: str, style: str, negative: str, stream_id: str,
                                    options: ReferenceOptions, images: List[bytes], urls: List[str],
                                    required_mode: str = "", get_config: Optional[Callable[[], Any]] = None) -> ReferencePreparation:
+    style = style.strip()
     refs = config.general.references
     if options.self_reference == "required" and not refs.self_reference_enabled:
         raise TaskRequestError("SELF_REFERENCE_DISABLED", "自我参考未启用")

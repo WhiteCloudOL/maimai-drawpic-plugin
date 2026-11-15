@@ -243,6 +243,34 @@ def test_reference_image_prompt_is_frozen_and_used_in_generation(tmp_path, kind)
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("selection", ["explicit", "spaced", "default", "tag"])
+def test_preset_can_supply_the_only_source_image(tmp_path, selection):
+    async def run():
+        config_module = module("domain.configuration.models")
+        config = config_module.DrawpicConfig()
+        store = module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path)
+        snapshot = store.update(revision=0, operation="save", name="水彩参考", tags=[], kind="preset",
+                                raw=image_bytes(), prompt="保留水彩笔触")
+        config.style.image_edit_presets_enabled = True
+        config.style.presets = [config_module.StylePresetConfig(
+            name="水彩", preset_type="image_to_image", tags=["水彩"],
+            reference_bindings=[{"asset_id": snapshot["assets"][0]["id"]}],
+        )]
+        if selection == "default":
+            config.style.default_image_edit_preset = "水彩"
+        preparation = await module("application.references.service").freeze_reference_request(
+            ctx=SimpleNamespace(logger=logging.getLogger("reference-test")), config=config, store=store,
+            streams=None, prompt="水彩猫" if selection == "tag" else "画猫",
+            style={"explicit": "水彩", "spaced": " 水彩 "}.get(selection, ""), negative="", stream_id="",
+            options=module("domain.references").ReferenceOptions(), images=[], urls=[], required_mode="edit_image",
+        )
+        result = await preparation.prepare("preset-only")
+        assert result.task_type == "edit_image" and result.images == [image_bytes()]
+        assert result.style == "水彩" and result.prompt.count("保留水彩笔触") == 1
+
+    asyncio.run(run())
+
+
 def test_presets_mode_defaults_and_legacy_contract():
     styles = module("domain.styles")
     config = module("domain.configuration.models")
