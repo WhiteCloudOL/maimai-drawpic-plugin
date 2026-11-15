@@ -4203,13 +4203,14 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
       $('.reference-gallery-header', root).append(C.toolbar({ kind }));
       const grid = $('.reference-gallery', root);
       for (const item of entries.slice(page * 12, page * 12 + 12)) {
-        const index = snapshot.assets.findIndex(entry => entry.id === item.id);
+        const siblings = assets(kind), index = siblings.findIndex(entry => entry.id === item.id);
+        const position = index > 0 ? snapshot.assets.findIndex(entry => entry.id === siblings[index - 1].id) : -1;
         grid.append(C.card(item, {
           onEdit: () => C.editor(item),
           onRemove: () => U.buttonAction($(`[data-asset="${item.id}"] [data-remove-image]`, root), () => mutate("delete", { asset_id: item.id })),
           isDefault: snapshot.default_reference_id === item.id,
           onDefault: kind === "self" && snapshot.default_reference_id !== item.id ? () => mutate("default", { asset_id: item.id }).catch(U.error) : null,
-          onUp: index > 0 ? () => mutate("move", { asset_id: item.id, position: index - 1 }).catch(U.error) : null,
+          onUp: index > 0 ? () => mutate("move", { asset_id: item.id, position }).catch(U.error) : null,
         }));
       }
       if (!entries.length) grid.innerHTML = '<p class="muted">尚未上传参考图片</p>';
@@ -4379,7 +4380,7 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
       all.forEach(decorate);
       const query = search.value.trim().toLocaleLowerCase();
       const kindRows = all.filter(row => typeOf(row) === active);
-      const matching = kindRows.filter(row => [value(row, "name"), value(row, "description"), ...row.querySelectorAll('[data-array="tags"] [data-value]')].map(item => typeof item === "string" ? item : item.value).join(" ").toLocaleLowerCase().includes(query));
+      const matching = kindRows.filter(row => [value(row, "name"), value(row, "description"), ...row.querySelectorAll('[data-field="tags"] [data-tag-value]')].map(item => typeof item === "string" ? item : item.value).join(" ").toLocaleLowerCase().includes(query));
       if (!matching.includes(selected)) selected = matching.find(row => value(row, "name") === state.presetSelection?.[active]) || matching[0] || null;
       state.presetSelection = { ...state.presetSelection, [active]: selected ? value(selected, "name") : "" };
       manager.querySelectorAll('[data-kind]').forEach(button => button.setAttribute("aria-pressed", String(button.dataset.kind === active)));
@@ -4478,15 +4479,7 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
       return preset.reference_bindings.length > 1 && (!preset.multi_reference_confirmed || JSON.stringify(preset.reference_bindings) !== JSON.stringify(before?.reference_bindings));
     });
     if (!selfNeeds && !presets.length) return true;
-    if (!(await confirmMultiple())) {
-      if (selfNeeds) refs.self_reference_ids = [...old.self_reference_ids];
-      for (const preset of presets) {
-        const before = previous.style.presets.find(item => item.name === preset.name);
-        preset.reference_bindings = structuredClone(before?.reference_bindings || preset.reference_bindings.slice(0, 1));
-        preset.multi_reference_confirmed = before?.multi_reference_confirmed || false;
-      }
-      return false;
-    }
+    if (!(await confirmMultiple())) return false;
     if (selfNeeds) refs.multi_reference_confirmed = true;
     presets.forEach(preset => { preset.multi_reference_confirmed = true; });
     return true;
@@ -4962,6 +4955,12 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
   // Unconfirmed immutable snapshots belong to requests, never to a DOM button.
   const submissions = new Map();
   const draft = {};
+  const streamCatalog = new Map();
+  function streamOptions(platform) {
+    const streams = streamCatalog.get(platform);
+    if (!streams) return '<option value="">请先加载会话</option>';
+    return '<option value="">请选择真实会话</option>' + streams.map(item => `<option value="${e(item.id)}">${e(item.name)}</option>`).join("");
+  }
   function saveDraft() {
     for (const id of [
       "draw-prompt",
@@ -4970,6 +4969,7 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
       "draw-negative",
       "draw-delivery",
       "chat-platform",
+      "draw-stream",
       "reference-self",
       "reference-tags",
       "reference-chat",
@@ -5162,6 +5162,7 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
           <section class="panel studio-canvas-panel"><div class="panel-header"><div><h2>创作结果</h2></div><button type="button" class="button ghost compact" id="studio-tasks">全部任务 ${icon("arrow")}</button></div><div id="studio-submissions" aria-live="polite"></div><div id="studio-result"><div class="placeholder-art studio-empty"><div class="empty-canvas" aria-hidden="true">${icon("images")}<span></span></div><span>暂无结果</span></div></div></section>
         </aside>
       </div>`;
+    $("#draw-stream").innerHTML = streamOptions((draft["chat-platform"] ?? $("#chat-platform").value).trim());
     for (const [id, value] of Object.entries(draft)) {
       const input = $("#" + id);
       if (
@@ -5188,6 +5189,10 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
     $("#draw-delivery").onchange = () => {
       $("#delivery-fields").hidden = $("#draw-delivery").value !== "chat";
     };
+    $("#chat-platform").addEventListener("input", () => {
+      $("#draw-stream").innerHTML = streamOptions($("#chat-platform").value.trim());
+      U.selects.refresh($("#draw-form"));
+    });
     if ($("#studio-references")) {
       $("#studio-references").onclick = () => { state.librarySection = "references"; U.navigate("library"); };
       const updateTags = () => { $("#reference-tags").disabled = $("#reference-self").value === "off"; };
@@ -5208,17 +5213,17 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
     };
     $("#load-streams").onclick = (event) =>
       buttonAction(event.currentTarget, async () => {
+        const form = $("#draw-form"), platform = $("#chat-platform").value.trim();
         const result = await call("query", "streams", {
-          platform: $("#chat-platform").value.trim(),
+          platform,
         });
-        $("#draw-stream").innerHTML =
-          '<option value="">请选择真实会话</option>' +
-          result.streams
-            .map(
-              (item) =>
-                `<option value="${e(item.id)}">${e(item.name)}</option>`,
-            )
-            .join("");
+        if (!form.isConnected || form !== $("#draw-form") || platform !== $("#chat-platform").value.trim()) return;
+        const selected = $("#draw-stream").value;
+        streamCatalog.set(platform, result.streams);
+        $("#draw-stream").innerHTML = streamOptions(platform);
+        if (result.streams.some(item => item.id === selected)) $("#draw-stream").value = selected;
+        saveDraft();
+        U.selects.refresh(form);
         if (!result.streams.length) toast("这个平台暂无聊天会话");
       });
     if (mode === "edit_image") {
@@ -5660,13 +5665,9 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
       buttonAction(save, async () => {
         const all = readSettings();
         if (view === "library" && !(await U.referenceUI.confirmSettings(all, baseline))) {
-          renderSection("references", { references: all.general.references });
-          renderSection("materials", { references: all.general.references });
-          renderSection("style", all.style);
-          state.dirty = true;
-          updateNotice();
           return;
         }
+        if (!form.isConnected || state.view !== view) return;
         if (view === "library") {
           $('[data-input="multi_reference_confirmed"]', $("#settings-panel-references")).checked = all.general.references.multi_reference_confirmed;
           const presetRows = $('[data-array="presets"]', $("#settings-panel-style"));

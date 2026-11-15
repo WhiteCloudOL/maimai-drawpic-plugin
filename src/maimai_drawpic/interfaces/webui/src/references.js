@@ -54,13 +54,14 @@
       $('.reference-gallery-header', root).append(C.toolbar({ kind }));
       const grid = $('.reference-gallery', root);
       for (const item of entries.slice(page * 12, page * 12 + 12)) {
-        const index = snapshot.assets.findIndex(entry => entry.id === item.id);
+        const siblings = assets(kind), index = siblings.findIndex(entry => entry.id === item.id);
+        const position = index > 0 ? snapshot.assets.findIndex(entry => entry.id === siblings[index - 1].id) : -1;
         grid.append(C.card(item, {
           onEdit: () => C.editor(item),
           onRemove: () => U.buttonAction($(`[data-asset="${item.id}"] [data-remove-image]`, root), () => mutate("delete", { asset_id: item.id })),
           isDefault: snapshot.default_reference_id === item.id,
           onDefault: kind === "self" && snapshot.default_reference_id !== item.id ? () => mutate("default", { asset_id: item.id }).catch(U.error) : null,
-          onUp: index > 0 ? () => mutate("move", { asset_id: item.id, position: index - 1 }).catch(U.error) : null,
+          onUp: index > 0 ? () => mutate("move", { asset_id: item.id, position }).catch(U.error) : null,
         }));
       }
       if (!entries.length) grid.innerHTML = '<p class="muted">尚未上传参考图片</p>';
@@ -230,7 +231,7 @@
       all.forEach(decorate);
       const query = search.value.trim().toLocaleLowerCase();
       const kindRows = all.filter(row => typeOf(row) === active);
-      const matching = kindRows.filter(row => [value(row, "name"), value(row, "description"), ...row.querySelectorAll('[data-array="tags"] [data-value]')].map(item => typeof item === "string" ? item : item.value).join(" ").toLocaleLowerCase().includes(query));
+      const matching = kindRows.filter(row => [value(row, "name"), value(row, "description"), ...row.querySelectorAll('[data-field="tags"] [data-tag-value]')].map(item => typeof item === "string" ? item : item.value).join(" ").toLocaleLowerCase().includes(query));
       if (!matching.includes(selected)) selected = matching.find(row => value(row, "name") === state.presetSelection?.[active]) || matching[0] || null;
       state.presetSelection = { ...state.presetSelection, [active]: selected ? value(selected, "name") : "" };
       manager.querySelectorAll('[data-kind]').forEach(button => button.setAttribute("aria-pressed", String(button.dataset.kind === active)));
@@ -329,15 +330,7 @@
       return preset.reference_bindings.length > 1 && (!preset.multi_reference_confirmed || JSON.stringify(preset.reference_bindings) !== JSON.stringify(before?.reference_bindings));
     });
     if (!selfNeeds && !presets.length) return true;
-    if (!(await confirmMultiple())) {
-      if (selfNeeds) refs.self_reference_ids = [...old.self_reference_ids];
-      for (const preset of presets) {
-        const before = previous.style.presets.find(item => item.name === preset.name);
-        preset.reference_bindings = structuredClone(before?.reference_bindings || preset.reference_bindings.slice(0, 1));
-        preset.multi_reference_confirmed = before?.multi_reference_confirmed || false;
-      }
-      return false;
-    }
+    if (!(await confirmMultiple())) return false;
     if (selfNeeds) refs.multi_reference_confirmed = true;
     presets.forEach(preset => { preset.multi_reference_confirmed = true; });
     return true;

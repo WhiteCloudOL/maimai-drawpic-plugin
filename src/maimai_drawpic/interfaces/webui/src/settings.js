@@ -190,13 +190,9 @@
       buttonAction(save, async () => {
         const all = readSettings();
         if (view === "library" && !(await U.referenceUI.confirmSettings(all, baseline))) {
-          renderSection("references", { references: all.general.references });
-          renderSection("materials", { references: all.general.references });
-          renderSection("style", all.style);
-          state.dirty = true;
-          updateNotice();
           return;
         }
+        if (!form.isConnected || state.view !== view) return;
         if (view === "library") {
           $('[data-input="multi_reference_confirmed"]', $("#settings-panel-references")).checked = all.general.references.multi_reference_confirmed;
           const presetRows = $('[data-array="presets"]', $("#settings-panel-style"));

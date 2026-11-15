@@ -309,6 +309,51 @@ test('creative: preset, self-reference and material drafts merge without overwri
   assert.equal(h.U.state.dirty, false);
 });
 
+test('creative: cancelling multi-image confirmation preserves panels and credential drafts', async () => {
+  const h = await settings('library');
+  const panels = [...h.form.children];
+  h.panel('references').values.self_reference_ids = ['first', 'second'];
+  h.panel('materials').values.deepseek_api_key = 'fake-key-draft';
+  h.U.state.dirty = true;
+  h.U.referenceUI.confirmSettings = async () => false;
+  h.form.onsubmit(event); await flush();
+  assert.deepEqual(h.form.children, panels);
+  assert.deepEqual(h.panel('references').values.self_reference_ids, ['first', 'second']);
+  assert.equal(h.panel('materials').values.deepseek_api_key, 'fake-key-draft');
+  assert.equal(h.U.state.dirty, true);
+  assert.equal(h.calls.length, 0);
+  h.U.referenceUI.confirmSettings = async () => true;
+  h.form.onsubmit(event); await flush();
+  assert.equal(h.calls.length, 1);
+  assert.equal(JSON.parse(h.calls[0].args.config_json).general.references.deepseek_api_key, 'fake-key-draft');
+  h.calls[0].resolve({ saved: true }); await flush();
+});
+
+test('creative: a detached form cannot save after a pending confirmation', async () => {
+  const h = await settings('library'), confirmation = deferred();
+  h.U.referenceUI.confirmSettings = () => confirmation.promise;
+  h.form.onsubmit(event); await flush();
+  h.form.isConnected = false;
+  h.U.state.view = 'tasks';
+  confirmation.resolve(true); await flush();
+  assert.equal(h.calls.length, 0);
+});
+
+test('references: declining multi-image confirmation leaves the proposed references intact', async () => {
+  const h = harness('references');
+  const dialog = node({ showModal() {}, remove() {}, close() { this.listeners.close(); } });
+  h.document.body = { append() {} };
+  h.document.createElement = () => dialog;
+  const all = { general: { references: { ...referenceDefaults, self_reference_enabled: true, self_reference_ids: ['first', 'second'] } },
+    style: { presets: [{ name: '多人', reference_bindings: [{ asset_id: 'a' }, { asset_id: 'b' }], multi_reference_confirmed: false }] } };
+  const previous = { general: { references: structuredClone(referenceDefaults) }, style: { presets: [] } };
+  const before = JSON.stringify(all);
+  const result = h.U.referenceUI.confirmSettings(all, previous);
+  h.get('[data-cancel]').onclick();
+  assert.equal(await result, false);
+  assert.equal(JSON.stringify(all), before);
+});
+
 test('settings: failed saves retain both category drafts and allow editing', async () => {
   const h = await settings();
   h.panel('general').values.timeout = 245;
@@ -570,6 +615,36 @@ const taskSnapshot = (id, extra = {}) => ({ task_id: id, images: [], status: 'ru
   message: id, model: 'model', ...extra });
 const taskList = active => ({ counts: { pending: 0, running: active, completed: 0, failed: 0, rejected: 0 },
   items: [], total: 0, page_size: 20 });
+test('studio: rebuilding a mode retains the loaded conversations and selected destination', async () => {
+  const h = fifoController();
+  h.get('#chat-platform').value = 'qq';
+  await h.U.views.studio();
+  h.get('#load-streams').onclick({ currentTarget: h.get('#load-streams') }); await flush();
+  h.calls[0].resolve({ streams: [{ id: 'demo-chat', name: '演示群聊' }] }); await flush();
+  h.get('#draw-stream').value = 'demo-chat';
+  h.get('#draw-form').oninput();
+  h.nodes.set('#draw-stream', node());
+  await h.U.views.studio();
+  assert.match(h.get('#draw-stream').innerHTML, /演示群聊/);
+  assert.equal(h.get('#draw-stream').value, 'demo-chat');
+  assert.equal(h.calls.length, 1);
+});
+
+test('studio: an old conversation response cannot overwrite a different platform or form', async () => {
+  const h = fifoController();
+  h.get('#chat-platform').value = 'qq';
+  await h.U.views.studio();
+  h.get('#load-streams').onclick({ currentTarget: h.get('#load-streams') }); await flush();
+  h.get('#chat-platform').value = 'other';
+  h.get('#draw-stream').innerHTML = 'new-platform-options';
+  h.calls[0].resolve({ streams: [{ id: 'old-chat', name: '旧平台会话' }] }); await flush();
+  assert.equal(h.get('#draw-stream').innerHTML, 'new-platform-options');
+  h.get('#load-streams').onclick({ currentTarget: h.get('#load-streams') }); await flush();
+  h.get('#draw-form').isConnected = false;
+  h.calls[1].resolve({ streams: [{ id: 'late-chat', name: '已离开页面' }] }); await flush();
+  assert.equal(h.get('#draw-stream').innerHTML, 'new-platform-options');
+});
+
 test('studio FIFO: late A receipt cannot clear queued B key; lost receipt reuses exact snapshot after rebuild', async () => {
   const h = fifoController();
   await h.U.views.studio();

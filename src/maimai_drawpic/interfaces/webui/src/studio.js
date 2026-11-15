@@ -10,6 +10,12 @@
   // Unconfirmed immutable snapshots belong to requests, never to a DOM button.
   const submissions = new Map();
   const draft = {};
+  const streamCatalog = new Map();
+  function streamOptions(platform) {
+    const streams = streamCatalog.get(platform);
+    if (!streams) return '<option value="">请先加载会话</option>';
+    return '<option value="">请选择真实会话</option>' + streams.map(item => `<option value="${e(item.id)}">${e(item.name)}</option>`).join("");
+  }
   function saveDraft() {
     for (const id of [
       "draw-prompt",
@@ -18,6 +24,7 @@
       "draw-negative",
       "draw-delivery",
       "chat-platform",
+      "draw-stream",
       "reference-self",
       "reference-tags",
       "reference-chat",
@@ -210,6 +217,7 @@
           <section class="panel studio-canvas-panel"><div class="panel-header"><div><h2>创作结果</h2></div><button type="button" class="button ghost compact" id="studio-tasks">全部任务 ${icon("arrow")}</button></div><div id="studio-submissions" aria-live="polite"></div><div id="studio-result"><div class="placeholder-art studio-empty"><div class="empty-canvas" aria-hidden="true">${icon("images")}<span></span></div><span>暂无结果</span></div></div></section>
         </aside>
       </div>`;
+    $("#draw-stream").innerHTML = streamOptions((draft["chat-platform"] ?? $("#chat-platform").value).trim());
     for (const [id, value] of Object.entries(draft)) {
       const input = $("#" + id);
       if (
@@ -236,6 +244,10 @@
     $("#draw-delivery").onchange = () => {
       $("#delivery-fields").hidden = $("#draw-delivery").value !== "chat";
     };
+    $("#chat-platform").addEventListener("input", () => {
+      $("#draw-stream").innerHTML = streamOptions($("#chat-platform").value.trim());
+      U.selects.refresh($("#draw-form"));
+    });
     if ($("#studio-references")) {
       $("#studio-references").onclick = () => { state.librarySection = "references"; U.navigate("library"); };
       const updateTags = () => { $("#reference-tags").disabled = $("#reference-self").value === "off"; };
@@ -256,17 +268,17 @@
     };
     $("#load-streams").onclick = (event) =>
       buttonAction(event.currentTarget, async () => {
+        const form = $("#draw-form"), platform = $("#chat-platform").value.trim();
         const result = await call("query", "streams", {
-          platform: $("#chat-platform").value.trim(),
+          platform,
         });
-        $("#draw-stream").innerHTML =
-          '<option value="">请选择真实会话</option>' +
-          result.streams
-            .map(
-              (item) =>
-                `<option value="${e(item.id)}">${e(item.name)}</option>`,
-            )
-            .join("");
+        if (!form.isConnected || form !== $("#draw-form") || platform !== $("#chat-platform").value.trim()) return;
+        const selected = $("#draw-stream").value;
+        streamCatalog.set(platform, result.streams);
+        $("#draw-stream").innerHTML = streamOptions(platform);
+        if (result.streams.some(item => item.id === selected)) $("#draw-stream").value = selected;
+        saveDraft();
+        U.selects.refresh(form);
         if (!result.streams.length) toast("这个平台暂无聊天会话");
       });
     if (mode === "edit_image") {
