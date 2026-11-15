@@ -38,7 +38,7 @@ class LocalAPI:
             if item["type"] == "API"
         }
 
-    async def call(self, api_name: str, version: str = "1", **kwargs: Any) -> Dict[str, Any]:
+    async def call(self, api_name: str, version: str = "", **kwargs: Any) -> Dict[str, Any]:
         return await self.api.call(api_name, version=version, **kwargs)
 
     async def _call_host(self, method: str, plugin_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -49,9 +49,13 @@ class LocalAPI:
         arguments = payload["args"]
         api_name, version, kwargs = arguments["api_name"], arguments["version"], arguments["args"]
         self.calls.append((api_name, version, kwargs))
-        handler = self.handlers[(api_name.rsplit(".", 1)[1], version)]
+        name = api_name.rsplit(".", 1)[1]
+        candidates = [handler for (registered, declared_version), handler in self.handlers.items()
+                      if registered == name and (not version or declared_version == version)]
+        assert len(candidates) == 1, (name, version)
+        handler = candidates[0]
         result = await getattr(self.plugin, handler)(**kwargs)
-        if api_name.endswith("drawpic_task_v2") and version == "2":
+        if api_name.endswith("drawpic_task"):
             result["retry_after_ms"] = 1  # 加速模拟轮询，不改变产品接口。
         return {"success": True, "result": result}
 
@@ -104,7 +108,7 @@ def test_documented_background_llm_edit_and_recovery_examples(make_plugin, monke
 
             monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
             plugin.ctx.api = LocalAPI(plugin)
-            assert (await namespace["call_drawpic"](plugin, "drawpic_models"))["models"]
+            assert (await namespace["call_drawing"](plugin.ctx, "models"))["models"]
             output = tmp_path / "result.png"
             background = await namespace["background_draw"](plugin.ctx, "cat", "docs-background-01", output)
             assert background.status == "completed" and output.read_bytes() == image_bytes()
@@ -112,7 +116,7 @@ def test_documented_background_llm_edit_and_recovery_examples(make_plugin, monke
             await asyncio.gather(*tuple(plugin._require_draw_service().background_tasks))
             queried = await namespace["llm_query"](plugin.ctx, receipt["task_id"])
             assert queried["status"] == "completed" and "data" not in queried["images"][0]
-            snapshot = await namespace["call_v2"](plugin.ctx, "task", task_id=receipt["task_id"])
+            snapshot = await namespace["call_drawing"](plugin.ctx, "task", task_id=receipt["task_id"])
             assert snapshot["task_id"] == receipt["task_id"]
             model = (await plugin.drawpic_models())["models"][0]["name"]
             edited = await namespace["edit_picture"](plugin.ctx, image_bytes(), model, "docs-edit-01")
@@ -123,8 +127,8 @@ def test_documented_background_llm_edit_and_recovery_examples(make_plugin, monke
             saved["task_id"] = None  # 模拟回执丢失，仍用原键找回。
             recovered = await namespace["resume_drawing"](plugin.ctx, saved, 5)
             assert recovered.task_id == receipt["task_id"] and len(generations) == 3
-            assert (await namespace["call_v2"](plugin.ctx, "task", task_id=receipt["task_id"]))["status"] == "completed"
-            assert "presets" in await namespace["call_drawpic"](plugin, "drawpic_presets", operation="list")
+            assert (await namespace["call_drawing"](plugin.ctx, "task", task_id=receipt["task_id"]))["status"] == "completed"
+            assert "presets" in await namespace["call_drawing"](plugin.ctx, "presets", operation="list")
             assert all(not kwargs["stream_id"] for _, _, kwargs in plugin.ctx.api.calls if "stream_id" in kwargs)
         finally:
             await plugin.on_unload()
@@ -132,7 +136,7 @@ def test_documented_background_llm_edit_and_recovery_examples(make_plugin, monke
     asyncio.run(run())
 
 
-def test_generate_uses_real_v2_and_returns_images_without_sending(make_plugin, monkeypatch, tmp_path):
+def test_generate_uses_unified_api_and_returns_images_without_sending(make_plugin, monkeypatch, tmp_path):
     async def run():
         plugin = make_plugin()
         await plugin.on_load()
@@ -259,7 +263,7 @@ def test_submission_unknown_always_keeps_request_id_and_never_resubmits(mode):
     asyncio.run(run())
 
 
-def test_v2_failures_unknown_cancellation_and_concurrency(make_plugin, monkeypatch):
+def test_api_failures_unknown_cancellation_and_concurrency(make_plugin, monkeypatch):
     async def run():
         plugin = make_plugin()
         await plugin.on_load()
@@ -274,7 +278,7 @@ def test_v2_failures_unknown_cancellation_and_concurrency(make_plugin, monkeypat
             result = await client.generate("cat", wait_seconds=5)
             assert result.status == "unconfirmed" and result.error.code == "UPSTREAM_UNCONFIRMED"
             assert not result.error.retry_submit
-            assert (await plugin.drawpic_task(result.task_id))["status"] == "failed"  # v1 保持原终态。
+            assert plugin._task_store.get_task(result.task_id).status == "failed"
 
             async def block(**kwargs):
                 await asyncio.Event().wait()
@@ -286,10 +290,10 @@ def test_v2_failures_unknown_cancellation_and_concurrency(make_plugin, monkeypat
             assert full.value.code == "CONCURRENCY_LIMIT" and full.value.retry_submit
             cancelled = await client.cancel(handles[0].task_id)
             assert cancelled["status"] == "cancelled" and cancelled["upstream_cancelled"] is None
-            assert (await plugin.drawpic_task(handles[0].task_id))["status"] == "failed"
+            assert plugin._task_store.get_task(handles[0].task_id).status == "failed"
             again = await client.cancel(handles[0].task_id)
             assert not again["cancel_requested"] and again["status"] == "cancelled"
-            listing = await plugin.drawpic_tasks_v2(status="cancelled")
+            listing = await plugin.drawpic_tasks(status="cancelled")
             assert listing["total"] == 1 and "thumbnail" not in listing["items"][0]
         finally:
             await plugin.on_unload()
@@ -347,7 +351,7 @@ def test_idempotency_is_loaded_from_task_file_after_restart(make_plugin, monkeyp
         restarted = make_plugin()
         await restarted.on_load()
         try:
-            result = await restarted.drawpic_submit_v2("cat", request_id="restart-id-01")
+            result = await restarted.drawpic_submit("cat", request_id="restart-id-01")
             assert result["task_id"] == first["task_id"] and result["reused"]
             assert not restarted._require_draw_service().background_tasks
         finally:
@@ -389,7 +393,7 @@ def test_cancellation_during_persistence_keeps_intent_and_does_not_execute(make_
             assert saved["error"]["code"] == "SUBMISSION_INTERRUPTED"
             assert not plugin._require_draw_service().background_tasks
             reused = await plugin.drawpic_submit("cat", request_id="cancel-admission-01")
-            assert reused == {"task_id": saved["task_id"], "reused": True}
+            assert reused["accepted"] and reused["reused"] and reused["task_id"] == saved["task_id"]
         finally:
             await plugin.on_unload()
 
@@ -414,7 +418,7 @@ def test_restart_intent_is_unconfirmed_and_never_replayed(make_plugin):
         restarted = make_plugin()
         await restarted.on_load()
         try:
-            state = await restarted.drawpic_task_v2(saved.task_id)
+            state = await restarted.drawpic_task(saved.task_id)
             assert state["status"] == "unconfirmed" and state["error"]["code"] == "RESTART_UNCONFIRMED"
             assert state["request_id"] == "orphaned-intent-01"
             assert not restarted._require_draw_service().background_tasks

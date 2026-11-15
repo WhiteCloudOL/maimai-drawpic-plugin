@@ -205,11 +205,11 @@ class WorkspaceService:
     async def save_settings(self, config_json: str, revision: int) -> Dict[str, Any]:
         return await self._run_transaction(lambda: self._save_settings(config_json, revision))
 
-    async def presets(self, operation: str = "list", name: str = "", preset_json: str = "", *, legacy: bool = False) -> Dict[str, Any]:
+    async def presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
         if operation in {"list", "get"}:
             async with self.lock:
-                return await self._presets(operation, name, preset_json, legacy=legacy)
-        return await self._run_transaction(lambda: self._presets(operation, name, preset_json, legacy=legacy))
+                return await self._presets(operation, name, preset_json)
+        return await self._run_transaction(lambda: self._presets(operation, name, preset_json))
 
     async def _save_provider(self, provider_json: str, revision: int) -> Dict[str, Any]:
         payload = parse_json_object(provider_json)
@@ -308,32 +308,25 @@ class WorkspaceService:
             for binding in preset.reference_bindings:
                 await asyncio.to_thread(self.tasks.references.read, binding.asset_id, kind="preset")
 
-    async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "", *, legacy: bool = False) -> Dict[str, Any]:
+    async def _presets(self, operation: str = "list", name: str = "", preset_json: str = "") -> Dict[str, Any]:
         if operation not in {"list", "get", "save", "delete"} or len(name) > 80:
             raise ValueError("预设操作或名称无效")
         snapshot = await asyncio.to_thread(self.store.public_snapshot)
         current = snapshot["settings"]
         presets = current["style"]["presets"]
         target = next((item for item in presets if item["name"].casefold() == name.casefold()), None)
-        legacy_fields = {"name", "description", "enabled", "positive_prompt_template", "negative_prompt_template"}
 
         def listed() -> Dict[str, Any]:
-            items = [{key: value for key, value in item.items() if key in legacy_fields} for item in presets
-                     if item["preset_type"] == "text_to_image"] if legacy else presets
-            result = {"presets": items, "default_style": current["style"]["default_style"]}
-            if not legacy:
-                result.update(image_edit_presets_enabled=current["style"]["image_edit_presets_enabled"],
-                              default_image_edit_preset=current["style"]["default_image_edit_preset"])
-            return result
+            return {"presets": presets, "default_style": current["style"]["default_style"],
+                    "image_edit_presets_enabled": current["style"]["image_edit_presets_enabled"],
+                    "default_image_edit_preset": current["style"]["default_image_edit_preset"]}
 
         if operation == "list":
             return listed()
-        if legacy and target is not None and target["preset_type"] != "text_to_image":
-            raise ValueError("旧接口不能读取或修改图生图预设")
         if operation == "get":
             if target is None:
                 raise ValueError("预设不存在")
-            return {"preset": {key: value for key, value in target.items() if key in legacy_fields} if legacy else target}
+            return {"preset": target}
         if operation == "delete":
             if target is None:
                 raise ValueError("预设不存在")
@@ -344,8 +337,6 @@ class WorkspaceService:
                 current["style"]["default_image_edit_preset"] = ""
         else:
             incoming = parse_json_object(preset_json)
-            if legacy and incoming.keys() - legacy_fields:
-                raise ValueError("旧接口仅支持文字风格字段")
             combined = {**(target or {}), **incoming}
             old_bindings = target["reference_bindings"] if target else []
             new_bindings = combined.get("reference_bindings", [])

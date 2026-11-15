@@ -70,21 +70,17 @@ def test_switch_blocks_every_public_api_and_preserves_private_workspace(make_plu
                 name = declaration["name"]
                 handler = getattr(plugin, name)
                 values = {
-                    key: {"prompt": "sample", "preference_json": "{}"}.get(key, "fixture")
+                    key: {"prompt": "sample", "preferences": {}}.get(key, "fixture")
                     for key, param in signature(handler).parameters.items()
                     if param.default is Parameter.empty
                 }
-                if name.endswith("_v2"):
-                    response = await handler(**values)
-                    assert response["error"]["code"] == "PERMISSION_DENIED", name
-                    assert not response["error"]["retry_submit"], name
-                    if name == "drawpic_submit_v2":
-                        assert response["accepted"] is False and response["task_id"] is None
-                else:
-                    with pytest.raises(PermissionError, match="联动 API 已关闭"):
-                        await handler(**values)
+                response = await handler(**values)
+                assert response["error"]["code"] == "PERMISSION_DENIED", name
+                assert not response["error"]["retry_submit"], name
+                if name == "drawpic_submit":
+                    assert response["accepted"] is False and response["task_id"] is None
                 tested.append(name)
-            assert len(tested) == 17
+            assert len(tested) == 11
             assert (await plugin.workspace_bootstrap())["settings"]["general"]["integration_api_enabled"] is False
             assert (await plugin.handle_draw_styles())["success"]
             result = await plugin.workspace_settings_save(
@@ -139,12 +135,13 @@ def test_workspace_and_api_cannot_submit_to_denied_chat_or_mutate_preferences(ma
             plugin.config.general.private_access_ids = ["B" * 32]
             sources = Mock(side_effect=AssertionError("denied sources must not be processed"))
             monkeypatch.setattr(plugin._workspace().tasks, "_sources", sources)
-            response = await plugin.drawpic_submit_v2(prompt="sample", stream_id="actual-stream")
+            response = await plugin.drawpic_submit(prompt="sample", stream_id="actual-stream")
             assert response["accepted"] is False and response["error"]["code"] == "PERMISSION_DENIED"
-            preference = await plugin.drawpic_preferences_set_v2("actual-stream", '{"novelai_mode":"anime"}')
+            preference = await plugin.drawpic_preferences_set("actual-stream", {'novelai_mode': 'anime'})
             assert preference["error"]["code"] == "PERMISSION_DENIED"
-            with pytest.raises(PermissionError):
-                await plugin.drawpic_submit(prompt="sample", stream_id="actual-stream")
+            rejection = await plugin.drawpic_submit(prompt="sample", stream_id="actual-stream")
+            assert rejection["error"] is not None
+            assert rejection["error"]["code"] == "PERMISSION_DENIED"
             response = await plugin.workspace_submit(
                 json.dumps({"prompt": "sample", "stream_id": "actual-stream"}),
             )
@@ -173,7 +170,7 @@ def test_unrestricted_replay_preserves_task_when_stream_disappears(make_plugin, 
                 submission={"origin": "plugin", "request_id": request_id, "signature": signature_value},
             )
             plugin._task_store.update_task(record.task_id, status="completed", message="fixture completed")
-            response = await plugin.drawpic_submit_v2("sample", stream_id="gone-stream", request_id=request_id)
+            response = await plugin.drawpic_submit("sample", stream_id="gone-stream", request_id=request_id)
             assert response["accepted"] and response["reused"] and response["task_id"] == record.task_id
             assert len(plugin._task_store.snapshot()) == 1
         finally:
@@ -212,11 +209,12 @@ def test_blocked_chat_entry_matrix(make_plugin, monkeypatch, private, mode):
                 assert response["success"] is False and "名单" in response["message"], name
             response = await plugin.workspace_submit(json.dumps({"prompt": "cat", "stream_id": "actual-stream"}))
             assert "名单" in response["__workspace_error__"]
-            with pytest.raises(PermissionError):
-                await plugin.drawpic_submit("cat", stream_id="actual-stream")
-            response = await plugin.drawpic_submit_v2("cat", stream_id="actual-stream")
+            rejection = await plugin.drawpic_submit("cat", stream_id="actual-stream")
+            assert rejection["error"] is not None
+            assert rejection["error"]["code"] == "PERMISSION_DENIED"
+            response = await plugin.drawpic_submit("cat", stream_id="actual-stream")
             assert response["accepted"] is False and response["error"]["code"] == "PERMISSION_DENIED"
-            for name, values in (("drawpic_preferences_v2", {}), ("drawpic_preferences_set_v2", {"preference_json": '{"novelai_mode":"anime"}'})):
+            for name, values in (("drawpic_preferences", {}), ("drawpic_preferences_set", {"preferences": {"novelai_mode": "anime"}})):
                 response = await getattr(plugin, name)(stream_id="actual-stream", **values)
                 assert response["error"]["code"] == "PERMISSION_DENIED"
             message = {
@@ -269,7 +267,7 @@ def test_pending_api_submission_rechecks_permissions_before_accepting(make_plugi
                 def snapshot():
                     raise AssertionError("disabled request must not enter acceptance")
                 monkeypatch.setattr(tasks.task_store, "retained_task_ids", snapshot)
-            pending = asyncio.create_task(plugin.drawpic_submit_v2(
+            pending = asyncio.create_task(plugin.drawpic_submit(
                 "cat", stream_id="actual-stream" if revocation == "list" else "", request_id="pending-switch-01",
             ))
             await asyncio.wait_for(entered.wait(), 2)
@@ -378,8 +376,9 @@ def test_saved_switch_and_openid_lists_survive_reload(make_plugin, monkeypatch):
             assert not config.integration_api_enabled
             assert config.group_access_mode == "whitelist" and config.group_access_ids == ["B" * 32]
             assert config.private_access_mode == "blacklist" and config.private_access_ids == ["A" * 32]
-            with pytest.raises(PermissionError):
-                await restored.drawpic_models()
+            rejection = await restored.drawpic_models()
+            assert rejection["error"] is not None
+            assert rejection["error"]["code"] == "PERMISSION_DENIED"
             provide_streams(restored, monkeypatch, group_id="", user_id="A" * 32)
             response = await restored.handle_draw_styles(stream_id="actual-stream")
             assert response["success"] is False

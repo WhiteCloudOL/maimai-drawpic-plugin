@@ -1,4 +1,4 @@
-"""v2 任务契约；v1 页面与旧插件继续使用原接口。"""
+"""公开绘图任务契约，独立表达受理、生成、缓存和投递结果。"""
 
 from typing import Any, Dict
 import asyncio

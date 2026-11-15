@@ -334,7 +334,7 @@ def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, m
             assert directory["chat_material_search_limit"] == 50
             assert set(directory["assets"][0]) == {"id", "name", "tags", "default"}
             assert directory["assets"][0]["default"]
-            conflict = await plugin.drawpic_submit_v2("麦麦", reference_options_json=json.dumps(options))
+            conflict = await plugin.drawpic_submit("麦麦", reference_options=options)
             assert conflict["accepted"] is False and conflict["error"]["code"] == "TASK_MODE_CONFLICT"
         finally:
             await plugin.on_unload()
@@ -347,11 +347,10 @@ def test_source_flags_and_missing_chat_do_not_create_tasks(make_plugin):
         plugin = make_plugin()
         await plugin.on_load()
         try:
-            result = await plugin.drawpic_submit_v2("甘雨", task_type="edit_image", reference_options_json=json.dumps(
-                {"user_request": "画甘雨", "material_sources": ["web"]}))
+            result = await plugin.drawpic_submit("甘雨", task_type="edit_image", reference_options={"user_request": "画甘雨", "material_sources": ["web"]})
             assert not result["accepted"] and result["error"]["code"] == "MATERIAL_SOURCE_DISABLED"
             assert not plugin._task_store.snapshot()
-            result = await plugin.drawpic_submit_v2("麦麦", task_type="edit_image", reference_options_json='{"self_reference":"required"}')
+            result = await plugin.drawpic_submit("麦麦", task_type="edit_image", reference_options={'self_reference': 'required'})
             assert not result["accepted"] and result["error"]["code"] == "SELF_REFERENCE_DISABLED"
             assert not plugin._task_store.snapshot()
         finally:
@@ -410,7 +409,7 @@ def test_search_verifies_each_subject_and_reuse_does_not_search_again(make_plugi
     asyncio.run(run())
 
 
-def test_multi_preset_public_write_requires_dialog_and_legacy_preserves_fields(make_plugin):
+def test_multi_preset_public_write_requires_dialog_and_preserves_unspecified_fields(make_plugin):
     async def run():
         plugin = make_plugin()
         await plugin.on_load()
@@ -419,15 +418,15 @@ def test_multi_preset_public_write_requires_dialog_and_legacy_preserves_fields(m
             binding_schema = bootstrap["schema"]["sections"]["style"]["fields"]["presets"]["item_fields"]["reference_bindings"]
             assert binding_schema["item_type"] == "object"
             assert set(binding_schema["item_fields"]) == {"asset_id", "role", "subject_id", "note"}
-            result = await plugin.drawpic_presets_v2("save", "多图", json.dumps({"name": "多图", "preset_type": "image_to_image",
-                "reference_bindings": [{"asset_id": "a"}, {"asset_id": "b"}], "multi_reference_confirmed": True}))
+            result = await plugin.drawpic_presets("save", "多图", {"name": "多图", "preset_type": "image_to_image",
+                "reference_bindings": [{"asset_id": "a"}, {"asset_id": "b"}], "multi_reference_confirmed": True})
             assert result["error"]["code"] == "MULTI_REFERENCE_CONFIRMATION_REQUIRED"
-            await plugin.drawpic_presets_v2("save", "水彩", json.dumps({"name": "水彩", "tags": ["海边"], "apply_to_image_edit": True}))
-            await plugin.drawpic_presets("save", "水彩", json.dumps({"name": "水彩", "description": "新版说明"}))
-            current = await plugin.drawpic_presets_v2("get", "水彩")
+            await plugin.drawpic_presets("save", "水彩", {"name": "水彩", "tags": ["海边"], "apply_to_image_edit": True})
+            await plugin.drawpic_presets("save", "水彩", {"name": "水彩", "description": "新版说明"})
+            current = await plugin.drawpic_presets("get", "水彩")
             assert current["preset"]["tags"] == ["海边"] and current["preset"]["apply_to_image_edit"]
-            legacy = await plugin.drawpic_presets("get", "水彩")
-            assert "preset_type" not in legacy["preset"]
+            assert current["preset"]["preset_type"] == "text_to_image"
+            assert current["preset"]["description"] == "新版说明"
         finally:
             await plugin.on_unload()
 

@@ -133,7 +133,7 @@ def test_workspace_setting_controls_real_sdk_submission(
                     source_images=[base64.b64encode(image_bytes()).decode("ascii")] if task_type == "edit_image" else None,
                 )
                 await asyncio.gather(*tuple(service.background_tasks))
-                result = await plugin.drawpic_task_v2(receipt["task_id"])
+                result = await plugin.drawpic_task(receipt["task_id"])
             assert result["status"] == "completed", result["message"]
             assert len(requests) == (2 if stream_id else 0)
             assert result["delivery"]["status"] == ("sent" if stream_id else "not_requested")
@@ -175,7 +175,7 @@ def test_unknown_delivery_keeps_task_unconfirmed_and_redacts_diagnostics(
                     resolved_openai_mode="", provider_name="openai",
                 )
                 await asyncio.gather(*tuple(service.background_tasks))
-                result = await plugin.drawpic_task_v2(receipt["task_id"])
+                result = await plugin.drawpic_task(receipt["task_id"])
             assert result["generation_completed"]
             assert result["error"]["code"] == "DELIVERY_UNCONFIRMED"
             assert result["delivery"] == {"requested": True, "status": "unconfirmed", "sent_count": 1}

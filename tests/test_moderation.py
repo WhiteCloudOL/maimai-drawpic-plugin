@@ -372,7 +372,7 @@ def test_cancelled_drawing_never_sends_a_late_review_pass(make_plugin, monkeypat
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             record = await plugin.drawpic_task(result["task_id"])
-            assert record["status"] == "failed"
+            assert record["status"] == "cancelled"
             assert "取消" in record["message"]
             assert generated.await_count == (0 if stage == "prompt" else 1)
             sent.assert_not_awaited()

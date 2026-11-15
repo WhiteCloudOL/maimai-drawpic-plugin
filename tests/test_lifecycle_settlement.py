@@ -393,8 +393,7 @@ def test_transient_quota_settlement_io_retries_same_reservation(make_plugin, mon
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("version", [1, 2])
-def test_cancel_during_completion_preserves_actual_success(make_plugin, monkeypatch, version):
+def test_cancel_during_completion_preserves_actual_success(make_plugin, monkeypatch):
     async def run():
         plugin = await configured_plugin(make_plugin, monkeypatch)
         service = plugin._require_draw_service()
@@ -420,20 +419,15 @@ def test_cancel_during_completion_preserves_actual_success(make_plugin, monkeypa
         monkeypatch.setattr(service.stream_service, "send_generated_images_with_fallback", send)
         monkeypatch.setattr(plugin._task_store, "update_task", update)
         try:
-            receipt = await plugin.drawpic_submit_v2("cat", stream_id="mock-stream", request_id="cancel-completed")
+            receipt = await plugin.drawpic_submit("cat", stream_id="mock-stream", request_id="cancel-completed")
             assert await asyncio.to_thread(entered.wait, 5)
-            cancel = plugin.drawpic_cancel_v2 if version == 2 else plugin.drawpic_cancel
-            cancelling = asyncio.create_task(cancel(receipt["task_id"]))
+            cancelling = asyncio.create_task(plugin.drawpic_cancel(receipt["task_id"]))
             await asyncio.sleep(0.02)
             assert not cancelling.done()
             release.set()
-            if version == 2:
-                result = await cancelling
-                assert result["status"] == "completed" and result["cancel_requested"]
-                assert result["error"] is None and result["delivery"]["status"] == "sent"
-            else:
-                with pytest.raises(ValueError, match="已经结束"):
-                    await cancelling
+            result = await cancelling
+            assert result["status"] == "completed" and result["cancel_requested"]
+            assert result["error"] is None and result["delivery"]["status"] == "sent"
             assert plugin._task_store.get_task(receipt["task_id"]).status == "completed"
             assert len(sends) == len(provider_calls) == 1 and remaining(plugin) == 0
             assert plugin._usage_store.records["qq:user:12345678"].reservation_ids == []
@@ -474,9 +468,9 @@ def test_cancellation_waits_for_owned_status_io(make_plugin, monkeypatch, stage)
         monkeypatch.setattr(service, "_run_image_request_attempt", generate)
         monkeypatch.setattr(store, "update_task", update)
         try:
-            receipt = await plugin.drawpic_submit_v2("cat", stream_id="mock-stream", request_id="cancel-status-io")
+            receipt = await plugin.drawpic_submit("cat", stream_id="mock-stream", request_id="cancel-status-io")
             assert await asyncio.to_thread(entered.wait, 5)
-            cancelling = asyncio.create_task(plugin.drawpic_cancel_v2(receipt["task_id"]))
+            cancelling = asyncio.create_task(plugin.drawpic_cancel(receipt["task_id"]))
             await asyncio.sleep(0.02)
             assert not cancelling.done()
             release.set()

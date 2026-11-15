@@ -15,6 +15,7 @@ import json
 import sys
 import tomlkit
 import pytest
+import re
 
 _PACKAGE = "drawpic_workspace_test"
 package = ModuleType(_PACKAGE)
@@ -203,14 +204,10 @@ def test_component_bindings_are_private_and_public_api_is_limited():
         "drawpic_image",
         "drawpic_cancel",
         "drawpic_presets",
-        "drawpic_submit_v2",
-        "drawpic_task_v2",
-        "drawpic_request_v2", "drawpic_preferences_v2", "drawpic_preferences_set_v2", "drawpic_presets_v2",
-        "drawpic_image_v2",
-        "drawpic_cancel_v2",
-        "drawpic_tasks_v2",
-        "drawpic_references_v2",
+        "drawpic_request", "drawpic_preferences", "drawpic_preferences_set",
+        "drawpic_references",
     }
+    assert all(declarations[name]["metadata"]["version"] == "1" for name in public)
     assert (Path(__file__).parents[1] / page["entry"]).is_file()
 
 
@@ -227,16 +224,18 @@ def test_empty_workspace_load_and_presets(make_plugin):
             assert len(json.dumps(bootstrap, ensure_ascii=False).encode()) < 512 * 1024
             await plugin.drawpic_presets(
                 "save",
-                preset_json=json.dumps({"name": "watercolor", "positive_prompt_template": "watercolor, {prompt}"}),
+                preset={"name": "watercolor", "positive_prompt_template": "watercolor, {prompt}"},
             )
             result = await plugin.drawpic_presets("get", "watercolor")
             assert result["preset"]["positive_prompt_template"] == "watercolor, {prompt}"
-            with pytest.raises(ValueError, match="同名"):
-                await plugin.drawpic_presets("save", preset_json='{"name":"WATERCOLOR"}')
+            rejection = await plugin.drawpic_presets("save", preset={'name': 'WATERCOLOR'})
+            assert rejection["error"] is not None
+            assert re.search("同名", rejection["error"]["message"])
             await plugin.drawpic_presets("delete", "watercolor")
             assert (await plugin.drawpic_presets())["presets"] == []
-            with pytest.raises(ValueError, match="模型"):
-                await plugin.drawpic_submit("test")
+            rejection = await plugin.drawpic_submit("test")
+            assert rejection["error"] is not None
+            assert re.search("模型", rejection["error"]["message"])
             assert plugin._task_store.get_task_count() == 0
         finally:
             await plugin.on_unload()
@@ -262,8 +261,9 @@ def test_tasks_images_idempotency_and_config_refresh(make_plugin, monkeypatch):
             first = await plugin.drawpic_submit("a cat", request_id="test-unique-1")
             second = await plugin.drawpic_submit("a cat", request_id="test-unique-1")
             assert second["reused"] and first["task_id"] == second["task_id"]
-            with pytest.raises(ValueError, match="request_id"):
-                await plugin.drawpic_submit("another cat", request_id="test-unique-1")
+            rejection = await plugin.drawpic_submit("another cat", request_id="test-unique-1")
+            assert rejection["error"] is not None
+            assert re.search("request_id", rejection["error"]["message"])
             old_tasks = list(service.background_tasks)
             await plugin._workspace_service.refresh()
             assert service in plugin._retired_draw_services
@@ -274,7 +274,8 @@ def test_tasks_images_idempotency_and_config_refresh(make_plugin, monkeypatch):
             assert len(calls) == 1 and "prompt" not in result and "session_key" not in result
             before = plugin._task_store.path.read_bytes()
             listing = await plugin.drawpic_tasks()
-            assert listing["items"][0]["thumbnail"].startswith("data:image/webp;base64,")
+            assert "thumbnail" not in listing["items"][0]
+            assert listing["items"][0]["images"] and listing["error"] is None
             cached = plugin.ctx.paths.runtime_dir / "results" / first["task_id"]
             assert (cached / "0.preview.webp").exists()
             assert not (plugin.ctx.paths.data_dir / "results" / first["task_id"]).exists()
@@ -288,10 +289,10 @@ def test_tasks_images_idempotency_and_config_refresh(make_plugin, monkeypatch):
                 if chunk["done"]:
                     break
             assert bytes(raw) == image_bytes()
-            with pytest.raises(ValueError):
-                await plugin.drawpic_image("../outside", kind="original")
-            with pytest.raises(ValueError):
-                await plugin.drawpic_image(first["task_id"], index=True)
+            rejection = await plugin.drawpic_image("../outside", kind="original")
+            assert rejection["error"] is not None
+            rejection = await plugin.drawpic_image(first["task_id"], index=True)
+            assert rejection["error"] is not None
         finally:
             await plugin.on_unload()
 
@@ -304,12 +305,15 @@ def test_source_modes_reject_before_task_and_cancel(make_plugin, monkeypatch):
         await plugin.on_load()
         try:
             encoded = base64.b64encode(image_bytes()).decode()
-            with pytest.raises(ValueError, match="文生图"):
-                await plugin.drawpic_submit("cat", source_images=[encoded])
-            with pytest.raises(ValueError, match="真实源"):
-                await plugin.drawpic_submit("cat", task_type="edit_image")
-            with pytest.raises(ValueError, match="列表"):
-                await plugin.drawpic_submit("cat", source_images="wrong")
+            rejection = await plugin.drawpic_submit("cat", source_images=[encoded])
+            assert rejection["error"] is not None
+            assert re.search("文生图", rejection["error"]["message"])
+            rejection = await plugin.drawpic_submit("cat", task_type="edit_image")
+            assert rejection["error"] is not None
+            assert re.search("真实源", rejection["error"]["message"])
+            rejection = await plugin.drawpic_submit("cat", source_images="wrong")
+            assert rejection["error"] is not None
+            assert re.search("列表", rejection["error"]["message"])
             assert plugin._task_store.get_task_count() == 0
 
             async def wait(**kwargs):

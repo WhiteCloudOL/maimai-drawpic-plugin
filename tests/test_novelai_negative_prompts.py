@@ -108,9 +108,10 @@ def test_novelai_character_negatives_keep_binding_in_actual_payload(
                     f"v4_prompt={json.dumps(positive)}", "custom_flag=false",
                 ],
             )
-            await plugin.workspace_settings_save(json.dumps({"style": {"presets": [{
+            await plugin.workspace_settings_save(json.dumps({"style": {"image_edit_presets_enabled": True, "presets": [{
                 "name": "fixture", "positive_prompt_template": "{prompt}",
                 "negative_prompt_template": "风格，{negative_prompt}",
+                "apply_to_image_edit": True,
             }]}}), plugin._platform_store.revision)
             original_disk = plugin._platform_store.path.read_bytes()
             original_records = deepcopy(plugin._platform_store.providers)
@@ -123,9 +124,10 @@ def test_novelai_character_negatives_keep_binding_in_actual_payload(
             async def rewrite(rendered, **kwargs):
                 text = rendered.rsplit("用户提示词：\n", 1)[1]
                 prompts.append(text)
+                caption, separator, references = text.partition("\nReference image uses")
                 return {"success": True, "response": ", ".join(
-                    translations[part.strip()] for part in text.split(",")
-                )}
+                    translations[part.strip()] for part in caption.split(",")
+                ) + separator + references}
 
             async def generate(provider, prompt, selected_model, *args):
                 payloads.append(provider._build_payload(

@@ -67,7 +67,7 @@ def test_preferences_reject_invalid_or_admin_fields(make_plugin, monkeypatch, pa
         try:
             provide_streams(plugin, monkeypatch)
             before = dict(plugin._require_session_store().preferences)
-            result = await plugin.drawpic_preferences_set_v2("actual-stream", json.dumps(patch))
+            result = await plugin.drawpic_preferences_set("actual-stream", patch)
             assert result["error"]["code"] == "INVALID_REQUEST"
             assert not result["error"]["retry_submit"]
             assert plugin._require_session_store().preferences == before
@@ -95,7 +95,7 @@ def test_preferences_requires_existing_session_and_failed_write_does_not_publish
             with monkeypatch.context() as scoped:
                 scoped.setattr(store, "_persist", fail)
                 with pytest.raises(OSError, match="disk"):
-                    await plugin.drawpic_preferences_set_v2("actual-stream", '{"novelai_mode":"anime"}')
+                    await plugin.drawpic_preferences_set("actual-stream", {'novelai_mode': 'anime'})
             assert store.preferences == before
         finally:
             await plugin.on_unload()
@@ -156,7 +156,7 @@ def test_task_overrides_bytes_and_readonly_request_recovery(make_plugin, monkeyp
             assert len(generated) == 1
             page = await client.tasks(status="completed")
             assert page["total"] == 1 and page["items"][0]["task_id"] == result.task_id
-            encoded = next(args for name, _, args in api.calls if name.endswith("drawpic_submit_v2"))["source_images"][0]
+            encoded = next(args for name, _, args in api.calls if name.endswith("drawpic_submit"))["source_images"][0]
             assert base64.b64decode(encoded) == image_bytes()
         finally:
             await plugin.on_unload()
@@ -172,14 +172,14 @@ def test_default_options_preserve_old_idempotency_signature(make_plugin, monkeyp
                 return [image_bytes()]
 
             monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
-            receipt = await plugin.drawpic_submit_v2("cat", request_id="old-signature-request")
+            receipt = await plugin.drawpic_submit("cat", request_id="old-signature-request")
             record = plugin._task_store.get_task(receipt["task_id"])
             expected = sha256(json.dumps(["cat", "", "", "", "draw", "", None, None], ensure_ascii=False).encode()).hexdigest()
             assert record.submission["signature"] == expected
             await asyncio.gather(*tuple(plugin._require_draw_service().background_tasks))
             reused = await plugin.drawpic_submit("cat", request_id="old-signature-request")
             assert reused["reused"] and reused["task_id"] == receipt["task_id"]
-            rejected = await plugin.drawpic_submit_v2("cat", novelai_mode="bad")
+            rejected = await plugin.drawpic_submit("cat", novelai_mode="bad")
             assert rejected["error"]["code"] == "INVALID_REQUEST" and not rejected["accepted"]
         finally:
             await plugin.on_unload()

@@ -10,19 +10,19 @@ from .models import DrawingTransportError
 
 
 class APIProxy(Protocol):
-    async def call(self, api_name: str, version: str = "1", **kwargs: Any) -> Any: ...
+    async def call(self, api_name: str, **kwargs: Any) -> Any: ...
 
 
 class DrawingRPC:
     def __init__(self, api: APIProxy, timeout: float) -> None:
         self.api, self.timeout = api, timeout
 
-    async def call(self, name: str, /, *, version: str = "2", **kwargs: Any) -> Dict[str, Any]:
+    async def call(self, name: str, /, **kwargs: Any) -> Dict[str, Any]:
         handles = {"task_id": kwargs.get("task_id"), "request_id": kwargs.get("request_id", "")}
         try:
             async with asyncio.timeout(self.timeout):
                 response = await self.api.call(
-                    f"maimai-drawpic-plugin.drawpic_{name}{'_v2' if version == '2' else ''}", version=version, **kwargs
+                    f"maimai-drawpic-plugin.drawpic_{name}", **kwargs
                 )
         except TimeoutError as exc:
             raise DrawingTransportError("RPC 等待结束，远端响应未确认", **handles) from exc

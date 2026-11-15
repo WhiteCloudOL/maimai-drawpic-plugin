@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union, Unpack
 from uuid import uuid4
 import asyncio
-import json
 import math
 import re
 
@@ -61,10 +60,9 @@ class DrawingClient:
         if kwargs.get("source_images") is not None:
             kwargs["source_images"] = await asyncio.to_thread(encode_sources, kwargs["source_images"])
         if "reference_options" in kwargs:
-            reference_options = kwargs.pop("reference_options")
+            reference_options = kwargs["reference_options"]
             if not isinstance(reference_options, dict):
                 raise ValueError("reference_options 必须为对象")
-            kwargs["reference_options_json"] = json.dumps(reference_options, ensure_ascii=False, allow_nan=False)
         task_id = None
         try:
             result = await self.rpc.call("submit", prompt=prompt, request_id=request_id, **kwargs)
@@ -112,7 +110,8 @@ class DrawingClient:
         return result
 
     async def models(self) -> Dict[str, Any]:
-        result = await self.rpc.call("models", version="1")
+        result = await self.rpc.call("models")
+        self._resource_error(result)
         if not isinstance(result.get("models"), list) or any(
             not isinstance(model, dict) or not isinstance(model.get("name"), str) for model in result["models"]
         ):
@@ -143,7 +142,7 @@ class DrawingClient:
         ):
             raise ValueError("未知绘图偏好字段或值不是文本")
         return await self._preferences(
-            "preferences_set", stream_id, preference_json=json.dumps(patch, ensure_ascii=False, allow_nan=False)
+            "preferences_set", stream_id, preferences=patch
         )
 
     async def _preferences(self, action: str, stream_id: str, **kwargs: Any) -> Dict[str, Any]:
@@ -184,7 +183,7 @@ class DrawingClient:
             raise ValueError("预设名称应为不超过 80 个字符的文本")
         result = await self.rpc.call(
             "presets", operation=operation, name=name,
-            preset_json=json.dumps(preset, ensure_ascii=False, allow_nan=False) if preset is not None else "",
+            preset=preset,
         )
         self._resource_error(result)
         if operation == "get":

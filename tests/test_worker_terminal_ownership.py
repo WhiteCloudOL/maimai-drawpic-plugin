@@ -33,12 +33,12 @@ def test_sync_worker_keeps_quota_until_actual_exit(make_plugin, monkeypatch, tim
         if timeout:
             monkeypatch.setattr(service, 'resolve_request_timeout_seconds', lambda: .01)
         try:
-            receipt = await plugin.drawpic_submit_v2('cat', stream_id='mock-stream', request_id='owned-worker-key')
+            receipt = await plugin.drawpic_submit('cat', stream_id='mock-stream', request_id='owned-worker-key')
             assert await asyncio.to_thread(entered.wait, 2)
             if timeout:
                 await asyncio.sleep(.03)
             else:
-                result = await plugin.drawpic_cancel_v2(receipt['task_id'])
+                result = await plugin.drawpic_cancel(receipt['task_id'])
                 assert result['cancel_requested'] and result['status'] == 'running'
             assert service.has_active_work and len(service.background_tasks) == 1
             assert remaining(plugin) == 0
@@ -77,11 +77,11 @@ def test_cancelled_sync_workers_still_enforce_four_task_capacity(make_plugin, mo
         monkeypatch.setattr(service, 'CANCEL_WAIT_SECONDS', .01)
         try:
             for index in range(4):
-                receipt = await plugin.drawpic_submit_v2('cat', request_id=f'capacity-worker-{index}')
+                receipt = await plugin.drawpic_submit('cat', request_id=f'capacity-worker-{index}')
                 assert receipt['accepted']
                 assert await asyncio.to_thread(entered[index].wait, 2)
-                await plugin.drawpic_cancel_v2(receipt['task_id'])
-            blocked = await plugin.drawpic_submit_v2('cat', request_id='capacity-worker-4')
+                await plugin.drawpic_cancel(receipt['task_id'])
+            blocked = await plugin.drawpic_submit('cat', request_id='capacity-worker-4')
             assert not blocked['accepted'] and blocked['error']['code'] == 'CONCURRENCY_LIMIT'
             assert len(service.background_tasks) == len(calls) == 4
         finally:
@@ -116,7 +116,7 @@ def test_terminal_retry_never_regenerates_or_resends(make_plugin, monkeypatch, f
         def fail_save():
             raise OSError('persistent mock disk failure')
         try:
-            receipt = await plugin.drawpic_submit_v2('cat', stream_id='mock-stream', request_id='terminal-retry-key')
+            receipt = await plugin.drawpic_submit('cat', stream_id='mock-stream', request_id='terminal-retry-key')
             await asyncio.wait_for(asyncio.gather(*tuple(service.background_tasks)), 2)
             assert calls == sends == [1] and remaining(plugin) == 0
             assert all(item == writes[0] for item in writes)
@@ -125,18 +125,18 @@ def test_terminal_retry_never_regenerates_or_resends(make_plugin, monkeypatch, f
             if failures == 100:
                 assert len(writes) == 3 and record.persistence_pending
                 monkeypatch.setattr(store, 'save', fail_save)
-                detail = await plugin.drawpic_task_v2(receipt['task_id'])
+                detail = await plugin.drawpic_task(receipt['task_id'])
                 assert detail['persistence_pending'] and detail['status'] == 'completed'
                 assert detail['delivery']['status'] == 'sent'
                 assert '终态尚未落盘' in detail['message']
                 assert json.loads(store.path.read_text(encoding="utf-8"))['tasks'][record.task_id]['status'] == 'running'
                 monkeypatch.setattr(store, 'save', original_save)
-                detail = await plugin.drawpic_task_v2(receipt['task_id'])
+                detail = await plugin.drawpic_task(receipt['task_id'])
                 assert not detail['persistence_pending']
             else:
                 assert len(writes) == failures + 1 and not record.persistence_pending
             assert json.loads(store.path.read_text(encoding="utf-8"))['tasks'][record.task_id]['status'] == 'completed'
-            reused = await plugin.drawpic_submit_v2('cat', stream_id='mock-stream', request_id='terminal-retry-key')
+            reused = await plugin.drawpic_submit('cat', stream_id='mock-stream', request_id='terminal-retry-key')
             assert reused['reused'] and calls == sends == [1]
         finally:
             monkeypatch.setattr(store, 'save', original_save)
@@ -161,7 +161,7 @@ def test_unload_keeps_pending_terminal_and_logs_until_storage_recovers(make_plug
         monkeypatch.setattr(service, '_run_image_request_attempt', generate)
         monkeypatch.setattr(store, 'update_task', update)
         try:
-            receipt = await plugin.drawpic_submit_v2('cat', request_id='unload-terminal-key')
+            receipt = await plugin.drawpic_submit('cat', request_id='unload-terminal-key')
             await asyncio.wait_for(asyncio.gather(*tuple(service.background_tasks)), 2)
             assert store.get_task(receipt['task_id']).persistence_pending
             with pytest.raises(OSError, match='mock unavailable disk'):

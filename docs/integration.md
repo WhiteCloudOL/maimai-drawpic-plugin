@@ -4,33 +4,27 @@
 
 插件 ID 为 `maimai-drawpic-plugin`。所有接口均通过 Host 转发的 `ctx.api.call` 调用，没有额外 HTTP 监听、令牌或跨实例服务。
 
-2.3.0 新增自我参考、两类绘图预设及素材来源选项；原 2.2.1 release 不包含这些新增契约。接入时须使用包含 `drawpic_references_v2` 和 `reference_options_json` 的源码版本。运行环境最低为 **MaiBot 1.3.19、插件 SDK 2.20.0、Python 3.12**，具体上限见 [_manifest.json](../_manifest.json)。[MaiBot 1.3.19 的依赖声明](https://github.com/Mai-with-u/MaiBot/blob/v1.3.19/pyproject.toml)首次将 SDK 最低依赖提升至 2.20.0。
+2.3.0 提供统一的 11 个公开接口，包含自我参考、两类绘图预设、素材来源、幂等任务恢复和会话偏好。接口及客户端需一起更新，不提供旧协议兼容入口。运行环境最低为 **MaiBot 1.3.19、插件 SDK 2.20.0、Python 3.12**，具体上限见 [_manifest.json](../_manifest.json)。[MaiBot 1.3.19 的依赖声明](https://github.com/Mai-with-u/MaiBot/blob/v1.3.19/pyproject.toml)首次将 SDK 最低依赖提升至 2.20.0。
 
-目录：[接口目录](#接口目录) · [接入准备](#接入准备) · [最小调用](#最小调用) · [任务提交](#drawpic_submit_v2提交任务) · [参考与素材](#参考与素材选项) · [查询恢复](#任务查询与恢复) · [图片读取](#drawpic_image_v2读取图片) · [取消与列表](#任务取消与列表) · [模型目录](#drawpic_models模型目录) · [会话偏好](#会话偏好读写) · [绘图预设](#drawpic_presets_v2绘图预设管理) · [参考目录](#drawpic_references_v2只读参考目录) · [客户端](#drawingclient方法与结果) · [完整示例](#完整接入示例) · [错误处理](#错误与恢复规则) · [v1 兼容](#v1-兼容接口) · [权限与资源](#权限与资源边界)。
+目录：[接口目录](#接口目录) · [接入准备](#接入准备) · [最小调用](#最小调用) · [任务提交](#drawpic_submit提交任务) · [参考与素材](#参考与素材选项) · [查询恢复](#任务查询与恢复) · [图片读取](#drawpic_image读取图片) · [取消与列表](#任务取消与列表) · [模型目录](#drawpic_models模型目录) · [会话偏好](#会话偏好读写) · [绘图预设](#drawpic_presets绘图预设管理) · [参考目录](#drawpic_references只读参考目录) · [客户端](#drawingclient方法与结果) · [完整示例](#完整接入示例) · [错误处理](#错误与恢复规则) · [权限与资源](#权限与资源边界)。
 
 ## 接口目录
 
-调用时建议始终填写完整名称 `maimai-drawpic-plugin.<API 名>` 和明确版本。v2 接口名带 `_v2`，版本为字符串 `"2"`；v1 使用原名称和 `"1"`，避免 Host 对未指定版本的旧调用产生歧义。
+调用时填写完整名称 `maimai-drawpic-plugin.<API 名>`，无需选择 API 版本。每个名称仅注册一个契约；SDK 元数据统一使用默认版本 `"1"`。所有接口均返回 `error` 字段，成功为 `null`，失败为结构化错误对象。
 
-| API 名 | 版本 | 作用 | DrawingClient 方法 |
-| --- | --- | --- | --- |
-| `drawpic_submit_v2` | 2 | 受理文生图/图生图，立即返回持久任务句柄 | `submit`；`generate` 内部也调用它 |
-| `drawpic_task_v2` | 2 | 查询单个任务、错误、结果引用和投递状态 | `task`、`wait` |
-| `drawpic_request_v2` | 2 | 回执丢失后按原 request_id 只读找回任务 | `request`、`recover` |
-| `drawpic_image_v2` | 2 | 读取原图分块、预览或缩略图 | `read_image`、`save_image` |
-| `drawpic_cancel_v2` | 2 | 请求取消当前实例的本地后台等待 | `cancel` |
-| `drawpic_tasks_v2` | 2 | 分页列出任务，支持状态和文字筛选 | `tasks` |
-| `drawpic_preferences_v2` | 2 | 读取真实聊天流的会话绘图覆盖值 | `preferences` |
-| `drawpic_preferences_set_v2` | 2 | 部分更新会话模型、兼容模式和 NAI 偏好 | `set_preferences` |
-| `drawpic_presets_v2` | 2 | 列出、读取、保存、重命名或删除两类预设 | `presets`、`preset`、`save_preset`、`delete_preset` |
-| `drawpic_references_v2` | 2 | 读取自我图库元数据和功能可用状态 | `references` |
-| `drawpic_models` | 1 | 列出完整模型名、文生图/图生图能力及输入限制 | `models` |
-| `drawpic_submit` | 1 | 历史提交协议，返回 task_id/reused | 直接 SDK 调用 |
-| `drawpic_task` | 1 | 历史任务查询协议 | 直接 SDK 调用 |
-| `drawpic_tasks` | 1 | 历史分页任务目录 | 直接 SDK 调用 |
-| `drawpic_image` | 1 | 历史图片读取协议，默认读取 preview | 直接 SDK 调用 |
-| `drawpic_cancel` | 1 | 历史取消协议 | 直接 SDK 调用 |
-| `drawpic_presets` | 1 | 历史文字风格管理，不开放图生图类型预设 | 直接 SDK 调用 |
+| API 名 | 作用 | DrawingClient 方法 |
+| --- | --- | --- |
+| `drawpic_submit` | 受理文生图/图生图，立即返回持久任务句柄 | `submit`；`generate` 内部也调用它 |
+| `drawpic_task` | 查询单个任务、错误、结果引用和投递状态 | `task`、`wait` |
+| `drawpic_request` | 回执丢失后按原 request_id 只读找回任务 | `request`、`recover` |
+| `drawpic_image` | 读取原图分块、预览或缩略图 | `read_image`、`save_image` |
+| `drawpic_cancel` | 请求取消当前实例的本地后台等待 | `cancel` |
+| `drawpic_tasks` | 分页列出任务，支持状态和文字筛选 | `tasks` |
+| `drawpic_preferences` | 读取真实聊天流的会话绘图覆盖值 | `preferences` |
+| `drawpic_preferences_set` | 部分更新会话模型、兼容模式和 NAI 偏好 | `set_preferences` |
+| `drawpic_presets` | 列出、读取、保存、重命名或删除两类预设 | `presets`、`preset`、`save_preset`、`delete_preset` |
+| `drawpic_references` | 读取自我图库元数据和功能可用状态 | `references` |
+| `drawpic_models` | 列出完整模型名、文生图/图生图能力及输入限制 | `models` |
 
 `workspace_*` 是工作台绑定的私有 API，不属于第三方插件接入契约。平台密钥、通用配置写入、图库上传/删除/设默认和运行日志查询不公开。没有 `compose_image`、独立素材搜索 RPC 或长等待的 `drawpic_generate` RPC。
 
@@ -42,7 +36,7 @@
 {"capabilities": ["api.call"]}
 ```
 
-需要发现接口时再加入 `api.get`、`api.list`。例如读取 `maimai-drawpic-plugin.drawpic_references_v2` 的元信息，可以判断目标主线是否提供新参考目录；不存在时明确提示升级，不剥掉参考选项重试，也不降级成另一种绘图。
+需要发现接口时再加入 `api.get`、`api.list`。例如读取 `maimai-drawpic-plugin.drawpic_references` 的元信息，可以判断目标主线是否提供新参考目录；不存在时明确提示升级，不剥掉参考选项重试，也不降级成另一种绘图。
 
 独立 DrawingClient 单独采用 [MIT 协议](../clients/maimai_drawing_client/LICENSE)。推荐整体复制 [clients/maimai_drawing_client](../clients/maimai_drawing_client) 到调用插件的 `vendor/`，保留许可证和版权声明；绘图插件主体采用 AGPL-3.0。
 
@@ -73,16 +67,18 @@ LLM Tool 应优先使用 `submit` 并快速返回句柄；后续另查状态。�
 直接 SDK 调用时，**SDK 2.20.0 与 2.22.1 均已解开 Host 的 `success/result` 包装**。`ctx.api.call` 直接返回下文的业务对象，不能再取一次 `response["result"]`：
 
 ```python
-async def call_v2(ctx, operation, **args):
-    return await ctx.api.call(
-        f"maimai-drawpic-plugin.drawpic_{operation}_v2",
-        version="2", **args,
-    )
+import asyncio
+
+async def call_drawing(ctx, endpoint, /, **args):
+    async with asyncio.timeout(8):
+        return await ctx.api.call(
+            f"maimai-drawpic-plugin.drawpic_{endpoint}", **args,
+        )
 ```
 
 SDK/传输异常与业务错误分别处理。一次调用正常返回，不表示绘图成功；继续检查 `accepted/status/error`、`results_readable` 和 `delivery`。
 
-## drawpic_submit_v2：提交任务
+## drawpic_submit：提交任务
 
 用途：校验请求并持久化任务与幂等映射，随后在原任务中完成必要素材准备、审核、提供商调用、缓存与可选投递。接口不等待图片生成。
 
@@ -99,7 +95,7 @@ SDK/传输异常与业务错误分别处理。一次调用正常返回，不表�
 | `openai_compatibility_mode` | 字符串，`""` | 本次 OpenAI 兼容格式覆盖；只对对应平台生效 |
 | `novelai_mode` | 字符串，`""` | 本次 NovelAI 模式覆盖；可用枚举见当前实例模式配置 |
 | `novelai_artist_tags` | 字符串 / `null` | `null` 不显式覆盖；空字符串表示本次显式清除画师标签覆盖 |
-| `reference_options_json` | JSON 字符串，`""` | 下节的单次参考选项，最多 60 KiB；客户端用 `reference_options={...}` 自动序列化 |
+| `reference_options` | 对象 / `null` | 下节的单次参考选项；直接传字典，序列化后最多 60 KiB，最多 16 层、5000 个元素 |
 
 `model` 省略时不自动切换为会话模型。需要会话覆盖时先调用偏好读取接口，再显式传入所需值。API 不推断 QQ 号、OpenID 或自行生成会话 hash。
 
@@ -134,13 +130,13 @@ SDK/传输异常与业务错误分别处理。一次调用正常返回，不表�
 | `self_reference_tags` | `[]` | 最多 32 个、每个 1～80 字符；未指定 ID 时按规范化 tag/原始请求匹配，未命中用指定默认图 |
 | `material_sources` | `[]` | `chat`、`web` 的子集，不得重复；本次限制不能打开全局关闭的来源 |
 
-旧 API 调用及未传选项的新 v2 调用不会因管理员打开全局设置而突然读取聊天或联网。聊天工具和工作台按各自显式选择接入这些能力，外部 API 必须主动选择。
+未传参考选项的调用不会因管理员打开全局设置而突然读取聊天或联网。聊天工具和工作台按各自显式选择接入这些能力，外部 API 必须主动选择。
 
 ### 自我参考
 
 管理员先在“预设参考 → 自我参考”开启自我参考、上传 tag 图片并设置默认图。首张自我图片成为默认图；后续上传不自动更换默认项。图库存在并不代表功能已开启。名称/别称用于 auto 的语义判断；触发关键词仅在 planner 请求中提醒判断绘图，不用于直接认定人物。
 
-聊天工具优先由宿主 LLM 明确给出 self_reference；空值、错拼或非法类型会在工具入口归一为 auto，再依据真实原话判断。此修正仅适用于聊天工具，公开 v1/v2 API 继续严格校验参数；没有原话不能拿改写 prompt 代替。
+聊天工具优先由宿主 LLM 明确给出 self_reference；空值、错拼或非法类型会在工具入口归一为 auto，再依据真实原话判断。此修正仅适用于聊天工具，公开 API 继续严格校验参数；没有原话不能拿改写 prompt 代替。
 
 - `required` 在全局关闭时明确拒绝；`auto` 在关闭时跳过识别，不注入图片。
 - 全局关闭时不能指定自我 ID/tag；`off` 也不能附带自身选图条件。
@@ -219,7 +215,7 @@ async def draw_group(ctx, real_stream_id, saved_request_id):
 
 ## 任务查询与恢复
 
-### drawpic_task_v2
+### drawpic_task
 
 参数只有 `task_id`：当前实例的 12 位小写十六进制任务 ID。它只读，不重新生成、不重新发送。
 
@@ -245,7 +241,7 @@ async def query_task(ctx, task_id):
 
 `delivery.status` 为 `not_requested/pending/sent/partial/failed/unconfirmed`。生成成功、结果可读、消息发送成功是三个不同事实：例如 `generation_completed=true` 但 `results_readable=false` 可能是缓存失败/过期；`completed` 也不能证明全部消息已发送。
 
-### drawpic_request_v2
+### drawpic_request
 
 参数只有 `request_id`，格式与提交一致。只查询保留期内的持久映射，成功直接返回上面的任务快照，**没有额外 `accepted/record` 包装**。
 
@@ -258,7 +254,7 @@ async def recover_receipt(ctx, saved_request_id):
 
 找不到时为 `REQUEST_NOT_FOUND`。可能仍在受理、查询了错误实例或记录已淘汰，不能据此认定从未受理。`recover` 内部只读找回并继续等待，不会重新提交提示词或图片。
 
-## drawpic_image_v2：读取图片
+## drawpic_image：读取图片
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -289,25 +285,25 @@ async def obtain_image(ctx, task_id, output_path):
 
 ## 任务取消与列表
 
-### drawpic_cancel_v2
+### drawpic_cancel
 
 参数 `task_id` 必填。返回任务的实际快照，另有 `cancel_requested` 与 `upstream_cancelled`（当前为 null）。客户端：`await client.cancel(task_id)`。
 
 只请求停止本地等待。上游可能已经受理并计费，不能承诺远端撤单；完成与取消竞争时保留实际终态。已完成任务不会为了取消而再次生成或投递。
 
-### drawpic_tasks_v2
+### drawpic_tasks
 
 | 参数 | 默认值 | 限制 |
 | --- | --- | --- |
 | `page` | 1 | 整数 1～100，每页固定 12 条 |
-| `status` | `""` | 空值或任一 v2 任务状态 |
+| `status` | `""` | 空值或任一任务状态 |
 | `search` | `""` | 最多 200 字符，按任务号、模型和消息文字筛选 |
 
 返回 `items/total/page/page_size/error`，items 为任务快照，不夹带缩略图内容。示例：`await client.tasks(page=1, status="running")`。这是当前实例的可信插件管理目录；调用插件不能直接无条件开放给普通聊天用户。
 
 ## drawpic_models：模型目录
 
-唯一仍由正式客户端使用的 v1 发现接口，版本为 `"1"`，没有参数。示例：`await client.models()`。
+统一的模型目录接口，没有参数。示例：`await client.models()`。
 
 返回 `models/default_model/default_model_error`。每个模型包含完整 `name`、实例/提供商与真实模型信息，以及：
 
@@ -320,13 +316,13 @@ async def obtain_image(ctx, task_id, output_path):
 
 ## 会话偏好读写
 
-### drawpic_preferences_v2
+### drawpic_preferences
 
 必填参数 `stream_id`，返回 `stream_id/preferences/error`。偏好字段始终是字符串，空值表示没有对应会话覆盖。
 
-### drawpic_preferences_set_v2
+### drawpic_preferences_set
 
-必填 `stream_id` 与 `preference_json`（JSON 对象文本），只部分更新提供的字段：
+必填 `stream_id` 与 `preferences`（字典对象），只部分更新提供的字段：
 
 | 字段 | 最大长度 | 含义 |
 | --- | --- | --- |
@@ -346,15 +342,15 @@ async def choose_session_model(ctx, real_stream_id, full_model_name):
 
 写入不自动重试。回执未知时先读取核对；勿将这些管理能力无条件暴露给群成员。
 
-## drawpic_presets_v2：绘图预设管理
+## drawpic_presets：绘图预设管理
 
-参数为 `operation="list"`、`name=""`、`preset_json=""`。名称最多 80 字符，两类预设名称全局唯一。此接口不修改全局开关或默认项。
+参数为 `operation="list"`、`name=""`、`preset=None`。名称最多 80 字符，两类预设名称全局唯一。此接口不修改全局开关或默认项。
 
 | operation | 参数 | 返回/作用 | 客户端 |
 | --- | --- | --- | --- |
 | `list` | 无需其他参数 | presets、default_style、image_edit_presets_enabled、default_image_edit_preset、error | `presets()` |
 | `get` | name | preset/error | `preset(name)` |
-| `save` | preset_json；更新/重命名时 name 为旧名 | 创建或更新，返回最新目录；省略新增字段保留已有值 | `save_preset(preset, name=旧名)` |
+| `save` | preset 对象；更新/重命名时 name 为旧名 | 创建或更新，返回最新目录；省略新增字段保留已有值 | `save_preset(preset, name=旧名)` |
 | `delete` | name | 删除并更新默认引用，返回目录 | `delete_preset(name)` |
 
 预设字段：
@@ -377,7 +373,7 @@ async def choose_session_model(ctx, real_stream_id, full_model_name):
 管理规则：
 
 1. 文生图预设不绑定图片；图生图预设不可勾选跨模式标记。
-2. 图生图预设总开关默认关闭，关闭时 v2 图生图不自动套用任何预设；显式要求套用则拒绝。总开关不影响图生图能力和独立自我参考。
+2. 图生图预设总开关默认关闭，关闭时图生图不自动套用任何预设；显式要求套用则拒绝。总开关不影响图生图能力和独立自我参考。
 3. 开启后，图生图使用图生图类型或已勾选兼容的文生图类型；一次只应用一条模板。
 4. 显式选择优先；否则匹配当前模式允许的 tag，再使用模式默认项。图生图默认项未设置时，才考虑已勾选兼容的默认文生图预设。配置的默认项无效时明确报错。
 5. 不会仅为套默认图生图预设而向纯文生图加入图片。图生图需要真实源图；显式图生图预设可以提供自己的关联图。
@@ -398,7 +394,7 @@ async def save_watercolor(ctx):
 
 全局图生图开关仍需管理员在工作台打开。保存该标记不会偷偷启用总开关。
 
-## drawpic_references_v2：只读参考目录
+## drawpic_references：只读参考目录
 
 可选参数 `page=1`，范围 1～10，每页 12 条。用于展示可选自我图、tag、默认项和实际可用状态。
 
@@ -446,7 +442,7 @@ async def list_self_options(ctx):
 | `preferences(stream_id)` / `set_preferences(stream_id, **patch)` | 会话绘图覆盖值读写 |
 | `presets()` / `preset(name)` / `save_preset(preset,name=...)` / `delete_preset(name)` | 预设目录与管理 |
 
-`DrawingRequest` 支持提交表中的本次参数；`source_images` 可传 bytes 或现成 Base64。参考对象用 `reference_options`，不要把 RPC 专用的 `reference_options_json` 当客户端 kwargs 传入。
+`DrawingRequest` 支持提交表中的本次参数；`source_images` 可传 bytes 或现成 Base64。参考对象直接用 `reference_options`，与 SDK 直接调用保持一致。
 
 `TaskHandle` 重点读取 task_id、request_id、status、reused、error。`DrawingResult` 另有 images（下载成功的 GeneratedImage，字节在 `.data`）、image_references、generation_completed、results_readable、delivery 和 wait_expired。等待到期保留句柄，不自动取消。
 
@@ -540,7 +536,7 @@ async def resume_drawing(ctx, saved, wait_seconds=120):
 
 ## 错误与恢复规则
 
-v2 的可预期业务错误使用：
+全部公开接口的可预期业务错误使用：
 
 ```json
 {"code":"MATERIAL_SOURCE_DISABLED","message":"素材来源尚未开启：web","retry_query":false,"retry_submit":false}
@@ -574,37 +570,9 @@ v2 的可预期业务错误使用：
 
 未知运行异常仍由 SDK 报错并记录完整脱敏日志，不伪装为正常空状态。
 
-## v1 兼容接口
-
-v1 名称、参数、历史文字风格语义保留；不会自动注入自我图、预设图或进行素材搜索。历史文字风格仍可作用于 v1 图生图，这是与新 v2 图生图预设开关/跨模式勾选的兼容区别。
-
-下面 helper 返回已经由 SDK 解包的原业务值。v1 不承诺 v2 的结构化错误与生成/缓存/投递分离字段：
-
-```python
-import asyncio
-async def call_drawpic(plugin, name, **args):
-    async with asyncio.timeout(8):
-        return await plugin.ctx.api.call(
-            f"maimai-drawpic-plugin.{name}", version="1", **args
-        )
-```
-
-
-| v1 API | 参数 | 用法与差异 |
-| --- | --- | --- |
-| `drawpic_models` | 无 | 现行模型发现接口，能力字段见前文 |
-| `drawpic_submit` | prompt；model/negative_prompt/style/task_type/stream_id/source_images/request_id 可选 | 返回 task_id/reused；没有 accepted。文生图不带源图，图生图要求显式真实源图；不支持单次参考选项 |
-| `drawpic_task` | task_id | 返回旧任务详情；取消后的底层失败状态等不做 v2 状态映射 |
-| `drawpic_tasks` | page=1,status="",search="" | 每页 12 条，旧目录包含 counts 和缩略图；状态仅 pending/running/completed/failed/rejected |
-| `drawpic_image` | task_id,index=0,kind="preview",offset=0 | 默认 preview；original 分块规则相同，原图/预览没有 v2 error 契约保证 |
-| `drawpic_cancel` | task_id | 保留旧取消响应，不具有 v2 upstream_cancelled 等保证 |
-| `drawpic_presets` | operation/name/preset_json | 只投影历史文字风格字段；旧保存保留新增元数据，不允许读取、覆盖或删除图生图类型预设 |
-
-v1 `style=""`/default 继续使用历史默认文字风格；`none` 跳过。升级调用方到 v2 时，必须按实际任务模式核对图生图预设开关与逐条兼容标记，而不是把旧参数原样解释为新图生图预设。
-
 ## 权限与资源边界
 
-- 联动总开关位于“插件设置 → 运行设置”，默认开启。关闭后全部公开 API 拒绝；v2 返回 `PERMISSION_DENIED`，v1 沿用异常；工作台私有接口与聊天入口独立。已受理任务继续执行，不据此重提。
+- 联动总开关位于“插件设置 → 运行设置”，默认开启。关闭后全部公开 API 拒绝；统一返回 `PERMISSION_DENIED`；工作台私有接口与聊天入口独立。已受理任务继续执行，不据此重提。
 - 指定 stream_id 的提交与偏好操作依据宿主真实身份检查群聊/私聊名单。参考搜索的聊天来源额外要求真实会话；调用方参数不能覆盖该身份。调用插件仍负责自己的用户授权，接口不提供跨插件的用户鉴权系统。
 - 没有 stream_id 时只生成并保留结果，不扣聊天额度、不自动发送；有 stream_id 时沿用会话权限和额度，调用方不要重复发送同一结果。
 - 管理员可以单独开启成功投递生成图同步到 MaiSaka 历史。`delivery.status="sent"` 只确认消息投递，不确认视觉上下文已读取图片；同步失败不构成重发理由。

@@ -326,8 +326,7 @@ class ImageExecutionMixin:
             await _notify_task_unsuccessful(status, message)
             self.ctx.logger.warning("绘图请求已终止: task_id=%s status=%s reason=%s", task_id, status, message)
         except ImageDeliveryUnconfirmedError as exc:
-            # Keep v1 terminal semantics while retaining the independent unknown
-            # delivery outcome for v2, including partial confirmed sends.
+            # 本地终态保留已生成结果；独立记录投递未知，已确认发送的部分不代表全部送达。
             status = "completed" if exc.sent_count > 0 else "failed"
             await _update_terminal(
                 status=status, message=str(exc), sent_count=exc.sent_count,

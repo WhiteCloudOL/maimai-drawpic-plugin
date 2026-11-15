@@ -13,7 +13,6 @@ from ...infrastructure.media.images import validate_image_bytes
 from ...interfaces.chat.message_images import decode_image_base64
 from ...infrastructure.storage.results import ImageResultStore
 from ...infrastructure.storage.atomic import write_json_atomically
-from ...domain.styles import StylePromptResolver
 from ...domain.references import ReferenceOptions
 from ..references.service import freeze_reference_request
 from ...infrastructure.storage.reference_assets import ReferenceAssetStore
@@ -147,7 +146,6 @@ class WorkspaceTaskService:
         novelai_artist_tags: str | None = None,
         require_existing_stream: bool = False,
         reference_options_json: str = "",
-        legacy_style: bool = False,
     ) -> Dict[str, Any]:
         if origin == "plugin":
             require_integration_api(self.get_config().general, self.ctx.logger, "submit")
@@ -227,8 +225,6 @@ class WorkspaceTaskService:
             images = await self._sources(source_ids or [], source_images or [])
             if task_type == "draw" and images:
                 raise ValueError("文生图不能附带源图，请选择图生图")
-            if legacy_style and task_type == "edit_image" and not images:
-                raise ValueError("图生图需要真实源图片")
             service = self.get_service()
             router = service.router
             resolved_model = router.resolve_model_name(model, allow_unknown_model=False)
@@ -239,28 +235,23 @@ class WorkspaceTaskService:
             await asyncio.to_thread(router.validate_forced_command_task, resolved_model, task_type)
             if images:
                 router.validate_local_source_images(resolved_model)
-            preparation = None
-            if not legacy_style:
-                preparation = await freeze_reference_request(
-                    ctx=self.ctx, config=self.get_config(), store=self.references, streams=service.stream_service,
-                    prompt=prompt, style=style, negative=negative_prompt, stream_id=stream_id,
-                    options=reference_options, images=images, urls=[""] * len(images), required_mode=task_type,
-                    get_config=self.get_config,
-                )
-                if task_type == "edit_image" and not images and not preparation.self_ids and not reference_options.material_sources and not preparation.frozen:
-                    raise TaskRequestError("SOURCE_IMAGE_REQUIRED", "图生图需要真实源图片，请提供图片或选择已开启的参考来源")
-                known = list(images)
-                if reference_options.self_reference == "required":
-                    known.extend(preparation.frozen[key].raw for key in preparation.self_ids)
-                explicit_preset = next((item for item in self.get_config().style.presets if item.name.casefold() == style.casefold()), None)
-                if explicit_preset is not None:
-                    known.extend(preparation.frozen[binding.asset_id].raw for binding in explicit_preset.reference_bindings)
-                router.validate_source_image_count(resolved_model, len(known))
-                if known:
-                    router.validate_local_source_images(resolved_model)
-            resolved_style = StylePromptResolver(self.get_config().style).resolve(
-                style_name=style if legacy_style else "none", user_prompt=prompt, user_negative_prompt=negative_prompt
+            preparation = await freeze_reference_request(
+                ctx=self.ctx, config=self.get_config(), store=self.references, streams=service.stream_service,
+                prompt=prompt, style=style, negative=negative_prompt, stream_id=stream_id,
+                options=reference_options, images=images, urls=[""] * len(images), required_mode=task_type,
+                get_config=self.get_config,
             )
+            if task_type == "edit_image" and not images and not preparation.self_ids and not reference_options.material_sources and not preparation.frozen:
+                raise TaskRequestError("SOURCE_IMAGE_REQUIRED", "图生图需要真实源图片，请提供图片或选择已开启的参考来源")
+            known = list(images)
+            if reference_options.self_reference == "required":
+                known.extend(preparation.frozen[key].raw for key in preparation.self_ids)
+            explicit_preset = next((item for item in self.get_config().style.presets if item.name.casefold() == style.casefold()), None)
+            if explicit_preset is not None:
+                known.extend(preparation.frozen[binding.asset_id].raw for binding in explicit_preset.reference_bindings)
+            router.validate_source_image_count(resolved_model, len(known))
+            if known:
+                router.validate_local_source_images(resolved_model)
             submission = {
                 "origin": origin,
                 "request_id": request_id or uuid4().hex,
@@ -268,9 +259,8 @@ class WorkspaceTaskService:
                 "prompt": prompt,
                 "style": style,
             }
-            if preparation is not None:
-                submission["reference_options"] = reference_values
-                submission["reference_versions"] = {key: image.version for key, image in preparation.frozen.items()}
+            submission["reference_options"] = reference_values
+            submission["reference_versions"] = {key: image.version for key, image in preparation.frozen.items()}
             if origin == "plugin":
                 require_integration_api(self.get_config().general, self.ctx.logger, "submit")
             if context:
@@ -282,11 +272,11 @@ class WorkspaceTaskService:
                         raise TaskRequestError("STREAM_UNAVAILABLE", "必须提供当前实例中已存在的真实聊天流 ID")
                     require_chat_access(self.get_config().general, context, self.ctx.logger)
                 result = await self.submit_chat(
-                    prompt=resolved_style.positive_prompt,
+                    prompt=prompt,
                     stream_id=stream_id,
                     requested_model=resolved_model,
                     request_negative_prompt=negative_prompt,
-                    style_negative_prompt_template=resolved_style.negative_prompt_template,
+                    style_negative_prompt_template="",
                     requested_openai_compatibility_mode=options["openai_compatibility_mode"],
                     requested_novelai_mode=options["novelai_mode"],
                     requested_novelai_artist_tags=options.get("novelai_artist_tags"),
@@ -300,7 +290,7 @@ class WorkspaceTaskService:
                 )
             else:
                 result = await service.start_background_image_request(
-                    prompt=resolved_style.positive_prompt,
+                    prompt=prompt,
                     stream_id="",
                     resolved_model=resolved_model,
                     resolved_openai_mode=options["openai_compatibility_mode"],
@@ -308,7 +298,7 @@ class WorkspaceTaskService:
                     novelai_artist_tags=options.get("novelai_artist_tags", ""),
                     provider_name=router.get_model_provider(resolved_model),
                     request_negative_prompt=negative_prompt,
-                    style_negative_prompt_template=resolved_style.negative_prompt_template,
+                    style_negative_prompt_template="",
                     source_image_bytes_list=images,
                     prompt_reviewed=False,
                     submission=submission,

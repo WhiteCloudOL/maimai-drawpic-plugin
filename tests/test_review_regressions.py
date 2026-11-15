@@ -160,7 +160,7 @@ def test_generation_endpoint_does_not_follow_upstream_redirects():
 
 @pytest.mark.parametrize(
     "failure_kind,expected_status",
-    [("moderation", "rejected"), ("result", "failed"), ("timeout", "failed"), ("unknown", "failed")],
+    [("moderation", "rejected"), ("result", "failed"), ("timeout", "unconfirmed"), ("unknown", "failed")],
 )
 def test_non_retryable_failures_never_resubmit_or_switch_models(
     make_plugin, monkeypatch, failure_kind, expected_status

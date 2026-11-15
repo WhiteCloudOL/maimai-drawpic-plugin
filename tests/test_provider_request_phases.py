@@ -91,7 +91,7 @@ def test_accepted_task_query_never_resubmits_or_uses_fallback(make_plugin, monke
             result = await plugin.drawpic_task(task["task_id"])
             assert accepted == ["queued-1"] and len(attempts) == 1
             assert queries == ["queued-1"] * (1 if failure == "query_rate_limit" else 3)
-            assert result["status"] == ("completed" if failure == "recover" else "failed")
+            assert result["status"] == ("completed" if failure == "recover" else "failed" if failure == "query_rate_limit" else "unconfirmed")
             if failure != "recover":
                 assert len(failures) == 1 and failures[0].remote_task_id == "queued-1"
                 assert not failures[0].retryable and not failures[0].allow_fallback

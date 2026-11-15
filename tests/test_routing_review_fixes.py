@@ -6,6 +6,7 @@ import importlib
 import json
 
 import pytest
+import re
 
 from test_workspace import _PACKAGE, image_bytes, make_plugin as make_plugin, storage
 
@@ -255,10 +256,9 @@ def test_aliyun_extra_negatives_use_the_selected_model_protocol(
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("entry", ["api", "api_v2"])
 @pytest.mark.parametrize("style", [None, "", "default", "none", "sketch"])
 def test_public_submission_uses_configured_style_unless_explicitly_overridden(
-    make_plugin, monkeypatch, entry, style,
+    make_plugin, monkeypatch, style,
 ):
     async def run():
         plugin = make_plugin(False)
@@ -279,7 +279,7 @@ def test_public_submission_uses_configured_style_unless_explicitly_overridden(
 
             monkeypatch.setattr(module("infrastructure.providers.openai").OpenaiImage, "_post_json", post)
             service = plugin._require_draw_service()
-            submit = plugin.drawpic_submit if entry == "api" else plugin.drawpic_submit_v2
+            submit = plugin.drawpic_submit
             receipt = await submit("a cat", **({"style": style} if style is not None else {}))
             await asyncio.gather(*tuple(service.background_tasks))
             result = await plugin.drawpic_task(receipt["task_id"])
@@ -668,8 +668,9 @@ def test_nonempty_invalid_default_rejects_submit_but_discovery_remains_usable(ma
             router = plugin._require_router()
             with pytest.raises(ValueError, match="平台"):
                 router.resolve_model_name()
-            with pytest.raises(ValueError, match="平台"):
-                await plugin.drawpic_submit("a cat")
+            rejection = await plugin.drawpic_submit("a cat")
+            assert rejection["error"] is not None
+            assert re.search("平台", rejection["error"]["message"])
             assert plugin._task_store.get_task_count() == 0
             assert router.resolve_model_name("Second/sample-image") == "Second/sample-image"
             for result in [await plugin.drawpic_models(), await plugin.workspace_bootstrap()]:

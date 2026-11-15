@@ -163,15 +163,16 @@ def test_deepseek_key_is_masked_preserved_rotated_and_explicitly_cleared(make_pl
             assert error.get("__workspace_error__") and invalid_key not in json.dumps(error)
             await save("")
             assert plugin.config.general.references.deepseek_api_key == "first-fake-secret"
-            for endpoint in (plugin.drawpic_presets, plugin.drawpic_presets_v2):
-                await endpoint("save", preset_json=json.dumps({"name": "搜索验证", "positive_prompt_template": "{prompt}"}))
-                assert plugin.config.general.references.deepseek_api_key == "first-fake-secret"
-                await endpoint("delete", "搜索验证")
-                assert plugin.config.general.references.deepseek_api_key == "first-fake-secret"
+            saved = await plugin.drawpic_presets("save", preset={"name": "搜索验证", "positive_prompt_template": "{prompt}"})
+            assert saved["error"] is None and saved["presets"]
+            assert plugin.config.general.references.deepseek_api_key == "first-fake-secret"
+            deleted = await plugin.drawpic_presets("delete", "搜索验证")
+            assert deleted["error"] is None and not deleted["presets"]
+            assert plugin.config.general.references.deepseek_api_key == "first-fake-secret"
             await save("second-fake-secret")
             assert "first-fake-secret" not in plugin._redactor.redact("first-fake-secret second-fake-secret")
             assert "second-fake-secret" not in plugin._redactor.redact("first-fake-secret second-fake-secret")
-            public = await plugin.drawpic_references_v2()
+            public = await plugin.drawpic_references()
             assert public["web_search_provider"] == "deepseek" and "deepseek_api_key" not in public
             assert "references" not in plugin.get_default_config().get("general", {})
             await save("", clear=True)
