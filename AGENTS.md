@@ -111,7 +111,7 @@
 
 ## Release 发布格式
 
-- Release 标题使用英文，例如 `Maimai Drawpic v2.3.0`；正文条目使用中文。
+- Release 名称使用中文插件名并附版本号，例如 `麦麦绘图 v2.3.0`；正文条目使用中文。Features、Fixes、New Contributors 和 Full Changelog 等分区标题保留英文。
 - 正文依次使用 `# Features`、`# Fixes` 两个英文标题，分别列出新增功能和修复；条目有关联 issue 或 PR 时附上对应链接，不虚构引用。
 - 仅在存在首次贡献者时添加 `## New Contributors`，使用中文说明其首次贡献并引用对应 PR。
 - 正文末尾使用 `**Full Changelog**`，链接到上一发布标签和本次标签之间的 GitHub compare 页面。
