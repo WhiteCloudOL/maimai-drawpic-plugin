@@ -559,6 +559,124 @@ def test_chat_materials_reject_host_response_exceeding_search_limit():
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("origin", ["input", "self", "preset"])
+def test_reference_limit_counts_unique_images_before_acceptance(make_plugin, monkeypatch, origin):
+    from test_drawing_client import DrawingClient, LocalAPI
+
+    async def run():
+        plugin = make_plugin()
+        await plugin.on_load()
+        try:
+            raw = image_bytes()
+            style, options = "", {}
+            if origin != "input":
+                snapshot = await asyncio.to_thread(
+                    plugin._workspace().tasks.references.update, revision=0, operation="save",
+                    name="参考", tags=[], kind=origin, raw=raw,
+                )
+                workspace = await plugin.workspace_bootstrap()
+                if origin == "self":
+                    workspace["settings"]["general"]["references"]["self_reference_enabled"] = True
+                    options = {"self_reference": "required"}
+                else:
+                    workspace["settings"]["style"].update(image_edit_presets_enabled=True, presets=[{
+                        "name": "参考", "preset_type": "image_to_image",
+                        "reference_bindings": [{"asset_id": snapshot["assets"][0]["id"]}],
+                    }])
+                    style = "参考"
+                await plugin.workspace_settings_save(json.dumps(workspace["settings"]), workspace["revision"])
+            calls = []
+
+            async def generate(**kwargs):
+                calls.append(kwargs)
+                return [raw]
+
+            monkeypatch.setattr(module("application.routing.capabilities").TaskCapabilityMixin,
+                                "get_max_source_images", lambda self, model: 1)
+            monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
+            result = await DrawingClient(LocalAPI(plugin), poll_interval=0.001).generate(
+                "画猫", task_type="edit_image", style=style, request_id=f"unique-reference-{origin}",
+                source_images=[raw, raw] if origin == "input" else [raw],
+                reference_options=options, wait_seconds=5,
+            )
+            assert result.status == "completed" and len(calls) == 1
+            assert calls[0]["source_image_bytes_list"] == [raw]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("selection", ["explicit", "default", "tag"])
+def test_preset_source_limit_is_checked_before_task_creation(make_plugin, monkeypatch, selection):
+    async def run():
+        plugin = make_plugin()
+        await plugin.on_load()
+        try:
+            snapshot = await asyncio.to_thread(
+                plugin._workspace().tasks.references.update, revision=0, operation="save",
+                name="参考", tags=[], kind="preset", raw=image_bytes(),
+            )
+            workspace = await plugin.workspace_bootstrap()
+            workspace["settings"]["style"].update(
+                image_edit_presets_enabled=True, default_image_edit_preset="参考" if selection == "default" else "",
+                presets=[{"name": "参考", "preset_type": "image_to_image", "tags": ["水彩"],
+                          "reference_bindings": [{"asset_id": snapshot["assets"][0]["id"]}]}],
+            )
+            await plugin.workspace_settings_save(json.dumps(workspace["settings"]), workspace["revision"])
+            monkeypatch.setattr(module("application.routing.capabilities").TaskCapabilityMixin,
+                                "get_max_source_images", lambda self, model: 1)
+            result = await plugin.drawpic_submit(
+                "水彩猫" if selection == "tag" else "画猫", task_type="edit_image",
+                style=" 参考 " if selection == "explicit" else "",
+                source_images=[base64.b64encode(image_bytes() + b"different-input").decode("ascii")],
+            )
+            assert not result["accepted"] and "最多支持 1" in result["error"]["message"]
+            assert plugin._task_store.get_task_count() == 0
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("kind", ["self", "preset"])
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_reference_dedup_preserves_multi_image_confirmation(tmp_path, kind, confirmed):
+    async def run():
+        config_module = module("domain.configuration.models")
+        config = config_module.DrawpicConfig()
+        store = module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path)
+        raw = image_bytes()
+        snapshot = store.update(revision=0, operation="save", name="参考", tags=[], kind=kind, raw=raw)
+        options = module("domain.references").ReferenceOptions()
+        style = ""
+        if kind == "self":
+            config.general.references.self_reference_enabled = True
+            config.general.references.multi_reference_confirmed = confirmed
+            options = module("domain.references").ReferenceOptions(self_reference="required")
+        else:
+            config.style.image_edit_presets_enabled = True
+            config.style.presets = [config_module.StylePresetConfig(
+                name="参考", preset_type="image_to_image", multi_reference_confirmed=confirmed,
+                reference_bindings=[{"asset_id": snapshot["assets"][0]["id"]}],
+            )]
+            style = "参考"
+        preparation = await module("application.references.service").freeze_reference_request(
+            ctx=SimpleNamespace(logger=logging.getLogger("reference-test")), config=config, store=store,
+            streams=None, prompt="画猫", style=style, negative="", stream_id="", options=options,
+            images=[raw, raw + b"second"], urls=["", ""], required_mode="edit_image",
+        )
+        if confirmed:
+            result = await preparation.prepare("dedup-test")
+            assert result.images == [raw, raw + b"second"] and result.strict_reference_inputs
+        else:
+            with pytest.raises(ValueError) as failure:
+                await preparation.prepare("dedup-test")
+            assert failure.value.code == "MULTI_REFERENCE_CONFIRMATION_REQUIRED"
+
+    asyncio.run(run())
+
+
 def test_multi_reference_rejection_never_switches_to_fallback_model(make_plugin, monkeypatch):
     from test_drawing_client import DrawingClient, LocalAPI
 

@@ -14,6 +14,7 @@ from ...interfaces.chat.message_images import decode_image_base64
 from ...infrastructure.storage.results import ImageResultStore
 from ...infrastructure.storage.atomic import write_json_atomically
 from ...domain.references import ReferenceOptions
+from ...domain.styles import StylePromptResolver
 from ..references.service import freeze_reference_request
 from ...infrastructure.storage.reference_assets import ReferenceAssetStore
 from ...infrastructure.storage.tasks import DrawTaskStore
@@ -126,7 +127,7 @@ class WorkspaceTaskService:
             await asyncio.to_thread(validate_image_bytes, raw)
         if sum(map(len, images)) > 40 * 1024 * 1024:
             raise ValueError("源图片总大小不能超过 40 MiB")
-        return images
+        return await asyncio.to_thread(lambda: list({sha256(raw).digest(): raw for raw in images}.values()))
 
     async def submit(
         self,
@@ -231,7 +232,6 @@ class WorkspaceTaskService:
             capability = router.evaluate_model_task_capability(resolved_model, task_type)
             if not capability.allowed:
                 raise ValueError(capability.reason)
-            router.validate_source_image_count(resolved_model, len(images))
             await asyncio.to_thread(router.validate_forced_command_task, resolved_model, task_type)
             if images:
                 router.validate_local_source_images(resolved_model)
@@ -246,10 +246,13 @@ class WorkspaceTaskService:
             known = list(images)
             if reference_options.self_reference == "required":
                 known.extend(preparation.frozen[key].raw for key in preparation.self_ids)
-            explicit_preset = next((item for item in self.get_config().style.presets if item.name.casefold() == style.casefold()), None)
-            if explicit_preset is not None:
-                known.extend(preparation.frozen[binding.asset_id].raw for binding in explicit_preset.reference_bindings)
-            router.validate_source_image_count(resolved_model, len(known))
+            selected_preset = StylePromptResolver(preparation.config.style).select_for_task(
+                style, task_type, reference_options.user_request or prompt,
+            )
+            if selected_preset is not None:
+                known.extend(preparation.frozen[binding.asset_id].raw for binding in selected_preset.reference_bindings)
+            unique_count = await asyncio.to_thread(lambda: len({sha256(raw).digest() for raw in known}))
+            router.validate_source_image_count(resolved_model, unique_count)
             if known:
                 router.validate_local_source_images(resolved_model)
             submission = {

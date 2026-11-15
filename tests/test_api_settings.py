@@ -222,7 +222,8 @@ def test_novelai_task_overrides_inherit_without_mutating_preferences(make_plugin
             assert generated[0].novelai_mode == "furry" and generated[0].novelai_artist_tags == expected
             assert (await client.preferences("actual-stream"))["preferences"] == original["preferences"]
             with pytest.raises(DrawingError, match="最多支持 1"):
-                await client.submit("cat", model=model["name"], task_type="edit_image", source_images=[image_bytes()] * 2)
+                await client.submit("cat", model=model["name"], task_type="edit_image",
+                                    source_images=[image_bytes(), image_bytes() + b"second-source"])
             assert len(generated) == 1
         finally:
             await plugin.on_unload()

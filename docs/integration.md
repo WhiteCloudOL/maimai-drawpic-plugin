@@ -368,7 +368,7 @@ async def choose_session_model(ctx, real_stream_id, full_model_name):
 | `reference_bindings` | `[]` | 仅图生图类型可关联真实预设图片，最多 8 条用途绑定 |
 | `multi_reference_confirmed` | false | 工作台 dialog 的已确认配置；公开 API 不能自行设置为 true 或变更多图绑定来绕过确认 |
 
-每个绑定包含 `asset_id`、`role`、`subject_id`、`note`。role 为 `identity/clothing/scene/lighting/composition/base`；note 最多 500 字符。身份参考标明对应人物，服装参考不额外增加一个出镜人物。同图可承担不同用途，最终编号一致并按真实内容去重。
+每个绑定包含 `asset_id`、`role`、`subject_id`、`note`。role 为 `identity/clothing/scene/lighting/composition/base`；note 最多 500 字符。身份参考标明对应人物，服装参考不额外增加一个出镜人物。同图可承担不同用途，最终编号一致并按真实内容去重。模型参考图数量上限按去重后的图片计算；相同图片来自上传、自我参考或预设时仍保留各来源的多图确认要求。
 
 管理规则：
 

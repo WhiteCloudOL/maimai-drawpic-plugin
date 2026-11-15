@@ -149,8 +149,10 @@ class ReferencePreparation:
                 uses[digest].append(label)
         if len(unique) > 8 or sum(len(image.raw) for image in unique.values()) > 40 * 1024 * 1024:
             raise TaskRequestError("REFERENCE_LIMIT_EXCEEDED", "合并后的源图最多 8 张、总计 40 MiB")
-        if len(unique) > 1 and any(image.source in {"self", "preset"} for image in unique.values()):
-            if any(image.source == "self" for image in unique.values()) and not refs.multi_reference_confirmed:
+        # 同图去重后仍保留所有来源的约束，不能因上传图覆盖参考图而绕过多图确认。
+        sources = {image.source for image in images}
+        if len(unique) > 1 and sources & {"self", "preset"}:
+            if "self" in sources and not refs.multi_reference_confirmed:
                 raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请在工作台通过 dialog 确认自我参考与其他图片合用的多图能力")
             if preset is not None and preset.reference_bindings and not preset.multi_reference_confirmed:
                 raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请在工作台确认预设的多图合用方式")
@@ -164,7 +166,7 @@ class ReferencePreparation:
                              task_id, mode, len(unique), resolved.style_name)
         return PreparedRequest(prompt, resolved.negative_prompt_template, [image.raw for image in unique.values()],
                                [image.url for image in unique.values()], mode, resolved.style_name,
-                               len(unique) > 1 and any(image.source != "input" for image in unique.values()))
+                               len(unique) > 1 and bool(sources - {"input"}))
 
 
 async def freeze_reference_request(*, ctx: Any, config: Any, store: ReferenceAssetStore, streams: Any,

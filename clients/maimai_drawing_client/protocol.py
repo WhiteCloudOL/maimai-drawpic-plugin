@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 WhiteCloudOL
 # SPDX-License-Identifier: MIT
 
-"""只校验客户端依赖的 v2 字段；允许服务器增加额外诊断字段。"""
+"""只校验客户端依赖的任务字段；允许服务器增加额外诊断字段。"""
 
 from typing import Any, Dict
 
