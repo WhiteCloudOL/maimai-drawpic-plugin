@@ -178,10 +178,23 @@ async def quick_draw(ctx, prompt, saved_request_id, reference_id=""):
 
 先在工作台或通过下文的参考设置和图库 API 开启自我参考、上传 tag 图片并设置默认图。首张自我图片成为默认图；后续上传不自动更换默认项。图库存在并不代表功能已开启。名称/别称用于 auto 的语义判断；触发关键词仅在 planner 请求中提醒判断绘图，不用于直接认定人物。
 
-聊天工具优先由宿主 LLM 明确给出 self_reference；空值、错拼或非法类型会在工具入口归一为 auto，再依据真实原话判断。此修正仅适用于聊天工具，公开 API 继续严格校验参数；没有原话不能拿改写 prompt 代替。
+聊天工具的 `auto` 只读取宿主随本次调用传入的原始消息段，可提取文本、语音转写和提及对象。仅有模型填写的 `user_request`、宿主处理后的展示文本或图片描述时，会按 `off` 继续绘图，并清除本次自我选图 ID 和 tag。未填或填错模式也按 `off` 处理。明确的 `required` 可直接使用自我图库。
+
+聊天工具的素材取材独立读取请求文本。插件优先使用本轮消息，宿主未传消息时可使用调用方提供的 `user_request`。显式指定 `chat` 或 `web` 仍须有原话；未提供可用文本时不继承全局自动取材来源。
+
+外部联动 API 根据调用方的 `reference_options` 判断**画面是否包含机器人自身**。支持以下三个小写字符串：
+
+| 用户意图 | 填写方式 |
+| --- | --- |
+| 明确描绘机器人，或机器人与其他人物合照 | `"self_reference": "required"` |
+| 画其他人物、动物或场景，或明确不使用自我图库 | `"self_reference": "off"` |
+| 无法确定是否描绘机器人自身 | `"self_reference": "auto"`，同时填写非空的 `user_request` 用户原话 |
+
+`true`、`false`、`yes`、`no`、机器人名字及 tag 均不是合法值。`auto` 识别为其他主体时跳过自我图片；识别为自身时才使用选中的自我图片，tag 未命中使用默认图。缺少原话与 tag 未命中不同：聊天工具缺原话时停用 auto，公开 API 显式要求 auto 时仍返回参数校验错误。
 
 - `required` 在全局关闭时明确拒绝；`auto` 在关闭时跳过识别，不注入图片。
 - 全局关闭时不能指定自我 ID/tag；`off` 也不能附带自身选图条件。
+- 聊天工具会忽略全局关闭时模型传入的自我选项；公开 API 保持严格拒绝。已使用自我图片的在途任务会在素材准备后及绘图平台调用前重新检查开关，关闭后返回 `SELF_REFERENCE_DISABLED`，不继续提交自我图片。
 - `auto` 返回自身、其他、不明确三种分类。“你的自拍”可以指向机器人；“我的照片/给我自拍”不能仅凭“自拍”就指向机器人。
 - 不明确时返回 `SELF_SUBJECT_UNCERTAIN`，不能把默认图当作身份判断的替代。
 - 图库只绑定机器人；同框的其他人物仍需要独立素材，不用同名网图替代机器人或用户本人。
@@ -533,6 +546,8 @@ async def copy_reference_image(ctx, asset_id, destination):
 ## drawpic_reference_settings_set：部分更新设置
 
 必填 `settings` 对象（非空补丁）、`revision` 配置修订号，可选 `confirm_multi_reference=false`。可写上表除 multi_reference_confirmed 外的字段；未传字段保留，不允许传其他配置或密钥。名称和触发关键词各最多 32 个、每项 1～80 字符；固定自身图最多 8 个，必须是已有 self 资产。默认预设必须存在、已启用且类型匹配；空字符串清除默认。
+
+自我参考关闭时可预先保存多图 ID，无需立即确认；这不会启用识别或图片注入。之后启用时，未确认的多图组合仍返回 `MULTI_REFERENCE_CONFIRMATION_REQUIRED`，须先完成 dialog 再传 `confirm_multi_reference=true`。
 
 改变固定图片组合会清除原组合的确认。多选前须由用户完成 dialog 确认，再用独立 `confirm_multi_reference=true` 写入；这个参数不应由 LLM 决定。传入完整状态对象前应移除只读字段，推荐只发送需要改动的补丁。
 
