@@ -37,6 +37,34 @@ def test_tool_self_reference_recovers_to_auto_after_host_schema_validation(suppl
             module("domain.references").ReferenceOptions.model_validate({"self_reference": supplied, "user_request": "原话"})
 
 
+def test_auto_without_user_request_degrades_to_off_instead_of_failing():
+    """没有可用的消息原文时，auto 无法做指向识别：降级 off（跳过垫图）而不是让整张图失败。"""
+    options = module("interfaces.tools.drawing").DrawingToolMixin._drawing_reference_options(
+        {}, {"self_reference": "auto"},
+    )
+    parsed = module("domain.references").ReferenceOptions.model_validate(options)
+    assert parsed.self_reference == "off"
+
+
+def test_illegal_self_reference_without_message_also_degrades_to_off():
+    """非法值先归一为 auto；若同时取不到原话，同样降级 off，不能抛校验错。"""
+    for supplied in ("yes", True, 1):
+        options = module("interfaces.tools.drawing").DrawingToolMixin._drawing_reference_options(
+            {}, {"self_reference": supplied},
+        )
+        parsed = module("domain.references").ReferenceOptions.model_validate(options)
+        assert parsed.self_reference == "off"
+
+
+def test_auto_with_blank_message_text_degrades_to_off():
+    """消息存在但正文为空（纯图片/表情轮）时，user_request 补不上，也要降级 off。"""
+    options = module("interfaces.tools.drawing").DrawingToolMixin._drawing_reference_options(
+        {"message": {"processed_plain_text": "   ", "raw_message": []}}, {"self_reference": "auto"},
+    )
+    parsed = module("domain.references").ReferenceOptions.model_validate(options)
+    assert parsed.self_reference == "off"
+
+
 def test_auto_recognition_uses_bot_names_without_treating_drawing_words_as_identity(monkeypatch):
     async def run():
         recognition = module("application.references.recognition")

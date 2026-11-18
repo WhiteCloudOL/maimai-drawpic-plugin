@@ -32,6 +32,10 @@ class DrawingToolMixin:
                                if isinstance(segment, dict) and segment.get("type") == "text" and isinstance(segment.get("data"), str)) if isinstance(segments, list) else ""
             if text.strip():
                 values["user_request"] = text.strip()
+        # 没有用户原话时 auto 无法做指向识别：降级为 off（跳过垫图、照常出图），
+        # 不因 ReferenceOptions 校验抛错让整个绘图任务失败。
+        if values.get("self_reference") == "auto" and not str(values.get("user_request") or "").strip():
+            values["self_reference"] = "off"
         return values
 
     @Tool(
