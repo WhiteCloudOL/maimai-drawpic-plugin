@@ -207,10 +207,10 @@ class GeneralConfig(PluginConfigBase):
     )
     failure_reason_enabled: bool = Field(
         default=True,
-        description="是否由插件主动发送绘图失败状态和简要原因。关闭后仅保留日志、任务状态和工具返回，不主动发送通知",
+        description="是否主动向会话发送非命令绘图的失败状态和简要原因。关闭后报错记入日志，不发送失败通知；聊天命令始终即时通知",
         json_schema_extra={
             "label": "失败通知附带原因",
-            "hint": "开启后，工具和指令失败时会主动发送状态及截断、脱敏后的简要原因；关闭后仅通知 LLM、保留日志和任务状态，不主动发送消息",
+            "hint": "关闭时不向聊天发送工具绘图的报错，错误保留在日志；开启时发送简短原因。聊天命令的错误始终即时通知。",
             "order": 3.5,
         },
     )

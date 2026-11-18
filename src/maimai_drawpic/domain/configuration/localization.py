@@ -481,6 +481,11 @@ _OPENAI_MODE_HINTS = (
 
 
 _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
+    "GeneralConfig.failure_reason_enabled": (
+        "When off, tool drawing errors are logged without sending a chat notification. When on, a brief reason is sent. Chat command errors are always reported immediately.",
+        "オフの場合、描画ツールのエラーはログに記録し、チャットには通知しません。オンの場合は簡潔な理由を送信します。チャットコマンドのエラーは常に直ちに通知します。",
+        "끄면 그리기 도구의 오류는 로그에 기록하고 채팅에 알리지 않습니다. 켜면 간단한 원인을 보냅니다. 채팅 명령 오류는 항상 즉시 알립니다.",
+    ),
     "ReferenceConfig.material_model": (
         "A fast multimodal model is recommended. Use planner, replyer, vlm, or a configured MaiBot model name.",
         "高速なマルチモーダルモデルを推奨します。planner、replyer、vlm、またはMaiBotに設定済みのモデル名を指定できます。",

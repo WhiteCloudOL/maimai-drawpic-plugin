@@ -50,6 +50,7 @@ class StyleCommandMixin:
             if not positive_prompt and not source_images and not template_text:
                 raise ValueError("请提供正向提示词，或在同一条消息中附带/引用图片")
             result = await self._start_background_image_request(
+                from_command=True,
                 defer_prompt_review=True,
                 prompt=positive_prompt,
                 drawing_style=style_name,
@@ -70,6 +71,7 @@ class StyleCommandMixin:
         except Exception as exc:
             self.ctx.logger.error("/绘图 风格命令启动失败: %s", exc, exc_info=True)
             await self._send_draw_failure_notice(
+                from_command=True,
                 reason=outward_error(self, exc),
                 stream_id=stream_id,
                 user_id=user_id,

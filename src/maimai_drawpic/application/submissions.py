@@ -39,6 +39,7 @@ class RequestMixin:
         reference_options: Optional[Dict[str, Any]] = None,
         drawing_style: str = "",
         reference_task_type: str = "",
+        from_command: bool = False,
     ) -> dict[str, Any]:
         """按当前会话设置启动后台绘图，源图为空时文生图，存在源图时图生图。"""
 
@@ -219,6 +220,7 @@ class RequestMixin:
                     platform=resolved_platform,
                     task_id=task_id,
                     status=status,
+                    from_command=from_command,
                 )
 
             async def _handle_task_successful(task_id: str, status: str, reason: str) -> None:

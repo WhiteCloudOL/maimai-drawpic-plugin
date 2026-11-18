@@ -92,6 +92,23 @@ def test_failure_notice_uses_rotated_runtime_secrets():
     assert 'FAKE_' not in probe._summarize_failure_reason(encoded)
 
 
+def test_muted_failure_notice_keeps_safe_reason_in_log():
+    probe = module('interfaces.chat.replies').ReplyMixin()
+    probe.config = SimpleNamespace(general=module('domain.configuration.models').GeneralConfig(failure_reason_enabled=False))
+    probe._redactor = module('infrastructure.observability.redaction').SecretRedactor()
+    probe._redactor.add(['FAKE_CREDENTIAL'])
+    output = StringIO()
+    logger = logging.Logger('muted-failure-test', logging.INFO)
+    logger.addHandler(logging.StreamHandler(output))
+    probe.ctx = SimpleNamespace(logger=logger)
+    result = asyncio.run(probe._send_draw_failure_notice(
+        reason='mock validation error FAKE_CREDENTIAL', stream_id='mock-stream',
+    ))
+    assert result is False
+    assert 'mock validation error' in output.getvalue()
+    assert 'FAKE_CREDENTIAL' not in output.getvalue()
+
+
 def test_bounded_queue_drops_nonblocking_and_stops_when_full(tmp_path):
     Logs = module('infrastructure.observability.logging').WorkspaceLogStore
     logger = logging.Logger('bounded-test', logging.INFO)

@@ -146,6 +146,7 @@ class ImageCommandMixin:
                 matched_message_id,
             )
             start_result = await self._start_background_image_request(
+                from_command=True,
                 defer_prompt_review=True,
                 use_reference_features=True,
                 reference_options={"user_request": "/绘图 图生图 " + rest_payload},
