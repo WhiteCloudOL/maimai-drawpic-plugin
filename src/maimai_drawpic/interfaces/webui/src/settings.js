@@ -48,7 +48,7 @@
       <details class="settings-card settings-disclosure"><summary><span>固定参考组合</span><span class="disclosure-note">可选 ${icon("chevron")}</span></summary><div class="settings-card-body">${U.forms.html(pick(["self_reference_ids", "multi_reference_confirmed"]), values)}</div></details>`;
   }
   function materialFields(fields, values) {
-    return `<p class="hint feature-preview-note" role="note">${icon("info")}<span>本页功能处于测试阶段，如遇问题可通过 <a href="https://github.com/WhiteCloudOL/maimai-drawpic-plugin/issues/new" target="_blank" rel="noopener noreferrer">GitHub Issue</a> 反馈。</span></p><section class="settings-card">${U.forms.html(fields, values)}</section>`;
+    return `<section class="settings-card">${U.forms.html(fields, values)}</section>`;
   }
   async function showSettings(view) {
     const keys = view === "library" ? ["style", "references", "materials"] : ["general", "review", "access"];
@@ -60,7 +60,8 @@
     let clearSearchKey = () => false;
     const save = $("#save-settings");
     const navigation = (keys, caption) => `<span class="settings-nav-caption" aria-hidden="true">${caption}</span>${keys.map(name => `<button id="settings-tab-${name}" class="settings-tab" data-section="${name}" role="tab" aria-controls="settings-panel-${name}">${icon(sectionIcons[name])}<span>${e(sections[name])}</span>${icon("chevron")}</button>`).join("")}`;
-    $("#workspace-content").innerHTML = `<div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="配置分类">${navigation(keys, view === "library" ? "创作资源" : "运行管理")}</nav><section class="settings-workspace"><div class="settings-page-heading"><h2 id="settings-heading"></h2><button type="button" id="reset-settings" class="button secondary compact">${icon("reset")}恢复本类默认</button></div><form id="settings-form"></form></section></div>`;
+    const previewNote = view === "library" ? `<p class="hint feature-preview-note" role="note">${icon("info")}<span>预设参考功能处于测试阶段，如遇问题可通过 <a href="https://github.com/WhiteCloudOL/maimai-drawpic-plugin/issues/new" target="_blank" rel="noopener noreferrer">GitHub Issue</a> 反馈。</span></p>` : "";
+    $("#workspace-content").innerHTML = `${previewNote}<div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="配置分类">${navigation(keys, view === "library" ? "创作资源" : "运行管理")}</nav><section class="settings-workspace"><div class="settings-page-heading"><h2 id="settings-heading"></h2><button type="button" id="reset-settings" class="button secondary compact">${icon("reset")}恢复本类默认</button></div><form id="settings-form"></form></section></div>`;
     const form = $("#settings-form");
     let requiresRefresh = false;
     function renderSection(name, values) {
