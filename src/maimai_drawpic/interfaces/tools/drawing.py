@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from ...application.access import ChatAccessDenied
 from ...infrastructure.observability.redaction import outward_error
 from ..chat.access import chat_access_endpoint
+from ..chat.context import user_request_from_segments
 from ..chat.message_images import collect_command_source_image_inputs, decode_image_base64, find_source_image_inputs
 from .schemas import DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA
 
@@ -13,25 +14,35 @@ from .schemas import DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCH
 class DrawingToolMixin:
     """tools/drawing.py 对应的插件行为。"""
 
-    @staticmethod
-    def _drawing_reference_options(kwargs: Dict[str, Any], reference_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """显式原话优先；否则只读取当前真实消息的文本，不使用改写后的 prompt。"""
+    def _drawing_reference_options(self, kwargs: Dict[str, Any], reference_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """自身识别只读取宿主本轮原话，素材取材沿用独立的请求文本。"""
         values = dict(reference_options or {})
         if "multi_reference_confirmed" in values:
             raise ValueError("多图能力必须由用户确认，不能由聊天模型声明已确认")
-        if "self_reference" in values:
-            supplied = values["self_reference"]
+        if not self.config.general.references.self_reference_enabled:
+            values["self_reference"] = "off"
+        else:
+            supplied = values.get("self_reference", "off")
             normalized = supplied.strip().casefold() if isinstance(supplied, str) else ""
-            values["self_reference"] = normalized if normalized in {"off", "auto", "required"} else "auto"
+            values["self_reference"] = normalized if normalized in {"off", "auto", "required"} else "off"
         message = kwargs.get("message")
-        if "user_request" not in values and isinstance(message, dict):
-            text = message.get("processed_plain_text")
-            if not isinstance(text, str):
-                segments = message.get("raw_message", [])
-                text = "".join(segment["data"] for segment in segments
-                               if isinstance(segment, dict) and segment.get("type") == "text" and isinstance(segment.get("data"), str)) if isinstance(segments, list) else ""
-            if text.strip():
-                values["user_request"] = text.strip()
+        host_request = ""
+        if isinstance(message, dict):
+            segments = message.get("raw_message")
+            if isinstance(segments, list) and segments:
+                host_request = user_request_from_segments(segments)
+                values["user_request"] = host_request
+            else:
+                text = message.get("processed_plain_text")
+                values["user_request"] = text.strip() if isinstance(text, str) else ""
+        if values["self_reference"] == "auto" and not host_request:
+            values["self_reference"] = "off"
+        request = values.get("user_request", "")
+        if not isinstance(request, str) or not request.strip():
+            values.setdefault("material_sources", [])
+        if values["self_reference"] == "off":
+            values.pop("self_reference_ids", None)
+            values.pop("self_reference_tags", None)
         return values
 
     @Tool(
@@ -212,15 +223,9 @@ class DrawingToolMixin:
                 normalized_stream_id,
                 message=current_message,
             )
-            refs = self.config.general.references
-            configured_input = (refs.self_reference_enabled and (reference_options or {}).get("self_reference", "auto") != "off"
-                                or refs.allow_chat_material_search or refs.allow_web_material_search
-                                or any(preset.name.casefold() == style.casefold() and preset.reference_bindings for preset in self.config.style.presets))
             if not source_message_id and not source_image_base64:
                 source_image_inputs = await collect_command_source_image_inputs(self.ctx, lookup_stream_ids, current_message) if isinstance(current_message, dict) else []
                 matched_message_id = str(current_message.get("message_id", "")) if isinstance(current_message, dict) else ""
-                if not source_image_inputs and not configured_input:
-                    raise ValueError("请提供本条图片、引用前图，或开启聊天取材以继续改图")
             else:
                 source_image_inputs, matched_message_id = await find_source_image_inputs(
                     self.ctx, lookup_stream_ids, source_message_id=source_message_id,

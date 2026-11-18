@@ -244,8 +244,6 @@ class WorkspaceTaskService:
                 options=reference_options, images=images, urls=[""] * len(images), required_mode=task_type,
                 get_config=self.get_config,
             )
-            if task_type == "edit_image" and not images and not preparation.self_ids and not reference_options.material_sources and not preparation.frozen:
-                raise TaskRequestError("SOURCE_IMAGE_REQUIRED", "图生图需要真实源图片，请提供图片或选择已开启的参考来源")
             known = list(images)
             known.extend(preparation.frozen[key].raw for key in reference_options.reference_ids)
             if reference_options.self_reference == "required":

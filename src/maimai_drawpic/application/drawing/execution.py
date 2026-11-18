@@ -166,6 +166,8 @@ class ImageExecutionMixin:
                 request_negative_prompt=request_negative_prompt,
                 style_negative_prompt_template=style_negative_prompt_template,
                 strict_reference_inputs=strict_reference_inputs,
+                validate_reference_usage=(reference_preparation.validate_self_reference_usage
+                                          if reference_preparation is not None else None),
             )
 
             if successful_attempt is None:

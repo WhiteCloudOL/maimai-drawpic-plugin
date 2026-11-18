@@ -57,18 +57,23 @@ for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
     schema["properties"]["style"] = {"type": "string", "description": "可选，已配置的绘图预设名称；none 表示不使用预设"}
     schema["properties"]["reference_options"] = {
         **ReferenceOptions.model_json_schema(),
-        "description": "已启用参考或素材搜索时，user_request 必须原样复制用户原始请求，不能用改写的绘图提示词代替。自我图只用于机器人；素材来源只能使用工作台已开启的 chat/web。省略各项时遵循聊天入口已开启的功能。",
+        "description": "按画面中的人物明确填写 self_reference。显式请求 chat/web 取材时提供用户原话，只使用已开启的素材来源。",
     }
     schema["properties"]["reference_options"]["properties"].pop("multi_reference_confirmed")
+    self_reference_field = schema["properties"]["reference_options"]["properties"]["self_reference"]
     schema["properties"]["reference_options"]["properties"]["self_reference"] = {
-        "description": "正常使用 required（明确描绘机器人自身）、off（其他人物）、auto（指向不明确）。优先依据当前对话明确选择；异常值统一按 auto 重新识别，不会直接注入默认人物图。",
-        "default": "auto",
+        "description": "只填小写字符串。画面明确包含机器人（如“画你的自拍”“画你和甘雨合照”）填 required；画其他主体（如“你帮我画甘雨”“画我的自拍”）或明确不用自我图库填 off。结合上下文仍不确定是否包含机器人才填 auto。auto 只读取宿主本轮原话，取不到时按 off 继续。tag 仅用于选图。",
+        "examples": self_reference_field["examples"],
+        "default": "off",
         "anyOf": [
             {"type": "string"}, {"type": "null"}, {"type": "boolean"},
             {"type": "number"}, {"type": "array", "items": {}},
             {"type": "object", "additionalProperties": True},
         ],
     }
+    schema["properties"]["reference_options"]["properties"]["user_request"]["description"] = (
+        "显式搜索素材时逐字复制本轮用户请求，插件优先读取本轮消息。无需为 auto 补写此字段；模型传入的文本不能启动自身识别。"
+    )
 
 
 DRAW_STATUS_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {

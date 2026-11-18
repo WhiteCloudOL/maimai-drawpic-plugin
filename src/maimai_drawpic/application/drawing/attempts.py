@@ -1,12 +1,12 @@
 """按配置顺序执行模型尝试，并在单个模型内进行有界重试。"""
 
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 import aiohttp
 
 from ...domain.errors import ProviderError, ProviderOutcomeUnknown, ProviderRequestError, ProviderResultError, ProviderSubmittedError
 from .types import ImageRequestAttempt
 from .admission import update_task_owned
-from ...domain.task_errors import provider_task_error
+from ...domain.task_errors import TaskRequestError, provider_task_error
 
 
 class RequestAttemptRunnerMixin:
@@ -27,6 +27,7 @@ class RequestAttemptRunnerMixin:
         request_negative_prompt: str,
         style_negative_prompt_template: str = "",
         strict_reference_inputs: bool = False,
+        validate_reference_usage: Optional[Callable[[], None]] = None,
     ) -> Tuple[List[bytes], Optional[ImageRequestAttempt], List[str]]:
         # 模式参数只携带调用方/会话的显式覆盖；空值由每个备选实例自行解析默认值。
         errors: List[str] = []
@@ -66,6 +67,8 @@ class RequestAttemptRunnerMixin:
                     provider=attempt.provider_name,
                     message=f"{'备选' if position else '首选'}模型 {attempt.model}，第 {retry + 1}/{retry_count + 1} 次尝试",
                 )
+                if validate_reference_usage is not None:
+                    validate_reference_usage()
                 try:
                     images = await self._run_image_request_attempt(
                         attempt=attempt,
@@ -77,6 +80,7 @@ class RequestAttemptRunnerMixin:
                         matched_message_id=matched_message_id,
                         request_negative_prompt=request_negative_prompt,
                         style_negative_prompt_template=style_negative_prompt_template,
+                        validate_reference_usage=validate_reference_usage,
                     )
                     if not images:
                         raise ProviderResultError("已收到图片平台响应，但没有可用图片；未重新提交生成")
@@ -90,6 +94,8 @@ class RequestAttemptRunnerMixin:
                         len(source_image_bytes_list),
                     )
                     return images, attempt, errors
+                except TaskRequestError:
+                    raise
                 except Exception as exc:
                     if isinstance(exc, ProviderError):
                         failure = exc

@@ -1,9 +1,25 @@
 """runtime/context.py 的插件组件。"""
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Dict, List
 
 from ...domain.platform_identity import is_qq_identifier, is_qq_platform
+
+
+def user_request_from_segments(segments: List[Any]) -> str:
+    """读取宿主原始消息段中的用户文本、语音转写和提及对象。"""
+    parts: List[str] = []
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        data = segment.get("data")
+        if segment.get("type") in {"text", "voice"} and isinstance(data, str):
+            parts.append(data)
+        elif segment.get("type") == "at" and isinstance(data, dict):
+            name = data.get("target_user_cardname") or data.get("target_user_nickname") or data.get("target_user_id")
+            if isinstance(name, str) and name.strip():
+                parts.append("@" + name.strip())
+    return "".join(parts).strip()
 
 
 class ContextMixin:

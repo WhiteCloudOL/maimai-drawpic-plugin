@@ -80,9 +80,21 @@ def test_planner_hook_preserves_host_fields_without_starting_models_or_tasks(mak
         assert changed["session_id"] == "real-session" and changed["selection_reason"] == "宿主放行"
         assert changed["tool_definitions"] == TOOLS and changed["selected_history_count"] == 1
         assert result["action"] == "continue"
+        assert "self_reference" not in changed["items"][-1]["parts"][0]["text"]
         plugin.config.general.references.self_keywords = []
         assert "modified_kwargs" not in await plugin.handle_drawing_keyword_reminder(**args)
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en-US", "ja-JP"])
+def test_self_reference_reminder_is_only_injected_when_enabled(locale):
+    planner = module("application.references.planner")
+    history = [user("画张自拍")]
+    off = planner.drawing_reminder_items(history, TOOLS, ["画"], locale=locale)
+    on = planner.drawing_reminder_items(history, TOOLS, ["画"], locale=locale, self_reference_enabled=True)
+    assert "self_reference" not in off[-1]["parts"][0]["text"]
+    assert "self_reference" in on[-1]["parts"][0]["text"]
+    assert on[:-1] == off[:-1] == history
 
 
 def test_planner_hook_respects_chat_access(make_plugin, monkeypatch):

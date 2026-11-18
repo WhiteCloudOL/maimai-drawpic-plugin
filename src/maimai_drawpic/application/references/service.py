@@ -27,6 +27,18 @@ class ReferencePreparation:
         self.recognizer = ReferenceRecognizer(ctx, config.general.references.material_model)
         self.sources = MaterialSource(ctx, config)
         self.get_config = get_config
+        self.self_reference_used = False
+
+    @property
+    def self_reference_enabled(self) -> bool:
+        live = self.get_config() if self.get_config is not None else self.config
+        return (self.config.general.references.self_reference_enabled
+                and self.options.self_reference != "off" and live.general.references.self_reference_enabled)
+
+    def validate_self_reference_usage(self) -> None:
+        """自我图片提交生成前仍须保持开启。"""
+        if self.self_reference_used and not self.self_reference_enabled:
+            raise TaskRequestError("SELF_REFERENCE_DISABLED", "自我参考已关闭，本次任务未继续使用自我图片")
 
     @property
     def expected_mode(self) -> str:
@@ -62,7 +74,7 @@ class ReferencePreparation:
                 raise TaskRequestError("MATERIAL_SOURCE_DISABLED", f"素材来源已关闭：{source}")
         images = list(self.images)
         images.extend(self.frozen[identifier] for identifier in self.options.reference_ids)
-        if refs.self_reference_enabled and self.options.self_reference != "off":
+        if self.self_reference_enabled:
             subject = "self" if self.options.self_reference == "required" else await self.recognizer.self_subject(
                 self.options.user_request, refs.self_names)
             if subject == "uncertain":
@@ -70,6 +82,8 @@ class ReferencePreparation:
             if subject == "self":
                 if not self.self_ids:
                     raise TaskRequestError("SELF_REFERENCE_MISSING", "自我参考图库为空，请先上传图片")
+                self.self_reference_used = True
+                self.validate_self_reference_usage()
                 images.extend(self.frozen[identifier] for identifier in self.self_ids)
 
         resolver = StylePromptResolver(self.config.style)
@@ -103,7 +117,10 @@ class ReferencePreparation:
                 images.append(previous)
             visual_calls = 0
             for need in plan.needs:
-                if need.role == "identity" and (need.kind == "bot" or normalize_tag(need.subject) in {normalize_tag(name) for name in refs.self_names}):
+                self_enabled = self.self_reference_enabled
+                if need.role == "identity" and (need.kind == "bot" or self_enabled and normalize_tag(need.subject) in {normalize_tag(name) for name in refs.self_names}):
+                    if not self_enabled:
+                        continue
                     if not any(image.source == "self" for image in images):
                         raise TaskRequestError("SELF_REFERENCE_MISSING", "机器人自身形象需要已启用的自我参考，不能用同名网图替代")
                     continue
@@ -124,6 +141,7 @@ class ReferencePreparation:
                         except Exception as exc:
                             raise TaskRequestError("WEB_MATERIAL_UNAVAILABLE", f"网络素材获取失败（{type(exc).__name__}）") from exc
                     for candidate in candidates:
+                        self.validate_self_reference_usage()
                         if visual_calls >= 12:
                             raise TaskRequestError("MATERIAL_BUDGET_EXCEEDED", "素材识别已达到本次 12 张次上限，请直接补充参考图")
                         visual_calls += 1
@@ -175,6 +193,7 @@ class ReferencePreparation:
             prompt += "\nReference image uses (apply only the listed features):\n" + mapping
         self.ctx.logger.info("素材准备完成: task_id=%s task_type=%s source_image_count=%s preset=%s",
                              task_id, mode, len(unique), resolved.style_name)
+        self.validate_self_reference_usage()
         return PreparedRequest(prompt, resolved.negative_prompt_template, [image.raw for image in unique.values()],
                                [image.url for image in unique.values()], mode, resolved.style_name,
                                len(unique) > 1 and bool(sources - {"input"}))
@@ -234,6 +253,8 @@ async def freeze_reference_request(*, ctx: Any, config: Any, store: ReferenceAss
             for binding in preset.reference_bindings:
                 frozen[binding.asset_id] = await asyncio.to_thread(store.read, binding.asset_id, kind="preset",
                                                                   role=binding.role, subject=binding.subject_id)
+    if required_mode == "edit_image" and not (images or frozen or options.material_sources):
+        raise TaskRequestError("SOURCE_IMAGE_REQUIRED", "图生图需要真实源图片，请提供图片或选择已开启的参考来源")
     return ReferencePreparation(ctx=ctx, config=config.model_copy(deep=True), options=options, prompt=prompt, style=style,
                                 negative=negative, stream_id=stream_id, required_mode=required_mode,
                                 images=[ReferenceImage(raw, "input", url=url) for raw, url in zip(images, urls, strict=True)],

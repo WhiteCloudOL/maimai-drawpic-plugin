@@ -354,6 +354,17 @@ test('references: declining multi-image confirmation leaves the proposed referen
   assert.equal(JSON.stringify(all), before);
 });
 
+test('references: disabled self references do not request multi-image confirmation', async () => {
+  const h = harness('references');
+  h.document.createElement = () => { throw Error('disabled self references must not open a dialog'); };
+  const all = { general: { references: { ...referenceDefaults, self_reference_enabled: false,
+    self_reference_ids: ['first', 'second'], multi_reference_confirmed: true } }, style: { presets: [] } };
+  const previous = structuredClone(all);
+  previous.general.references.self_reference_ids = ['first', 'third'];
+  assert.equal(await h.U.referenceUI.confirmSettings(all, previous), true);
+  assert.equal(all.general.references.multi_reference_confirmed, false);
+});
+
 test('settings: failed saves retain both category drafts and allow editing', async () => {
   const h = await settings();
   h.panel('general').values.timeout = 245;

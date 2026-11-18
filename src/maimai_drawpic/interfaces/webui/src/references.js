@@ -325,8 +325,9 @@
   async function confirmSettings(all, previous) {
     const refs = all.general.references, old = previous.general.references;
     const changed = JSON.stringify(refs.self_reference_ids) !== JSON.stringify(old.self_reference_ids);
-    const combination = refs.self_reference_enabled && (refs.allow_chat_material_search || refs.allow_web_material_search || all.style.image_edit_presets_enabled && all.style.presets.some(preset => preset.reference_bindings.length));
-    const selfNeeds = (refs.self_reference_ids.length > 1 && changed) || ((refs.self_reference_ids.length > 1 || combination) && !refs.multi_reference_confirmed);
+    if (!refs.self_reference_enabled && changed) refs.multi_reference_confirmed = false;
+    const combination = refs.allow_chat_material_search || refs.allow_web_material_search || all.style.image_edit_presets_enabled && all.style.presets.some(preset => preset.reference_bindings.length);
+    const selfNeeds = refs.self_reference_enabled && (refs.self_reference_ids.length > 1 || combination) && (changed || !refs.multi_reference_confirmed);
     const presets = all.style.presets.filter(preset => {
       const before = previous.style.presets.find(item => item.name === preset.name);
       return preset.reference_bindings.length > 1 && (!preset.multi_reference_confirmed || JSON.stringify(preset.reference_bindings) !== JSON.stringify(before?.reference_bindings));

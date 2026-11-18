@@ -315,7 +315,7 @@ class WorkspaceService:
                     raise ValueError("默认预设不存在、已停用或类型不符，请重新选择")
         if len(refs.self_reference_ids) > 8:
             raise ValueError("自我参考最多选择 8 张图片")
-        if len(refs.self_reference_ids) > 1 and not refs.multi_reference_confirmed:
+        if refs.self_reference_enabled and len(refs.self_reference_ids) > 1 and not refs.multi_reference_confirmed:
             raise ValueError("请先确认所用模型支持自我多图配置")
         for identifier in refs.self_reference_ids:
             await asyncio.to_thread(self.tasks.references.read, identifier, kind="self")

@@ -15,11 +15,28 @@ class ReferenceOptions(BaseModel):
 
     self_reference: Literal["off", "auto", "required"] = Field(
         default="off",
-        description="描绘机器人自身时用 required，其他人物用 off；指向不确定时用 auto。依据用户原话判断，不依据改写提示词中的第一人称。",
+        description=(
+            "仅填写小写字符串 off、auto、required。required：画面明确包含机器人自身，包括与其他人物合照；"
+            "off：明确不包含机器人自身，或本次不使用自我图库；auto：无法确定是否包含机器人自身，必须同时提供 user_request 用户原话。"
+            "这是主体判断，不是 tag 匹配；未命中 tag 时使用默认自我图，不自动变成 off。"
+            "不要填写 true/false、yes/no、机器人名字或 tag，也不要仅凭‘自拍’认定主体。全局开关关闭时不能启用。"
+        ),
+        examples=["off", "required", "auto"],
     )
-    user_request: str = Field(default="", max_length=16000)
-    self_reference_ids: List[str] = Field(default_factory=list, max_length=8)
-    self_reference_tags: List[str] = Field(default_factory=list, max_length=32)
+    user_request: str = Field(
+        default="", max_length=16000,
+        description=("本次用户原始绘图请求，直接复制用户原话；不能用改写后的 prompt、图片描述或编造的请求代替。"
+                     "self_reference=auto 或 material_sources 非空时必填；明确使用 required 且不取材时可省略。"),
+        examples=["画你穿冬装在海边的样子"],
+    )
+    self_reference_ids: List[str] = Field(
+        default_factory=list, max_length=8,
+        description="明确选择的自我图库图片 ID，优先于 tag；仅用于选图，不判断是否描绘机器人。self_reference=off 时不要传入。",
+    )
+    self_reference_tags: List[str] = Field(
+        default_factory=list, max_length=32,
+        description="自我图片的选图标签，例如冬装；不用于判断人物身份。未指定图片 ID 时按 tag/原话选图，未命中使用默认图。self_reference=off 时不要传入。",
+    )
     reference_ids: List[str] = Field(default_factory=list, max_length=8)
     multi_reference_confirmed: bool = False
     material_sources: List[Literal["chat", "web"]] = Field(default_factory=list, max_length=2)

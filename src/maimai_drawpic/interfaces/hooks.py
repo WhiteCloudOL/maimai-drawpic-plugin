@@ -27,7 +27,9 @@ class HookMixin:
             return result
         if item_schema_version != 1:
             raise ValueError(f"不支持的规划上下文版本：{item_schema_version}")
-        updated = drawing_reminder_items(items, tool_definitions, self.config.general.references.self_keywords)
+        refs = self.config.general.references
+        updated = drawing_reminder_items(items, tool_definitions, refs.self_keywords,
+                                        self_reference_enabled=refs.self_reference_enabled)
         if updated is None:
             return result
         if access_restricted(self.config.general):

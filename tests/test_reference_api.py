@@ -256,17 +256,19 @@ def test_multi_reference_confirmation_is_explicit_and_not_an_llm_field(make_plug
             second = await client.save_reference({"name": "侧面"}, revision=first["revision"], image=image_bytes() + b"side")
             settings = await client.reference_settings()
             ids = [first["asset_id"], second["asset_id"]]
+            staged = await client.set_reference_settings(revision=settings["revision"], self_reference_ids=ids)
+            assert not staged["settings"]["self_reference_enabled"]
+            assert not staged["settings"]["multi_reference_confirmed"]
             with pytest.raises(DrawingError) as required:
-                await client.set_reference_settings(revision=settings["revision"], self_reference_ids=ids)
+                await client.set_reference_settings(revision=staged["revision"], self_reference_enabled=True)
             assert required.value.code == "MULTI_REFERENCE_CONFIRMATION_REQUIRED"
-            confirmed = await client.set_reference_settings(revision=settings["revision"],
-                self_reference_ids=ids, confirm_multi_reference=True)
+            confirmed = await client.set_reference_settings(revision=staged["revision"],
+                self_reference_enabled=True, confirm_multi_reference=True)
             assert confirmed["settings"]["multi_reference_confirmed"]
             schema = module("interfaces.tools.schemas").DRAW_TOOL_PARAMETERS_SCHEMA
             assert "multi_reference_confirmed" not in schema["properties"]["reference_options"]["properties"]
             with pytest.raises(ValueError, match="不能由聊天模型"):
-                module("interfaces.tools.drawing").DrawingToolMixin._drawing_reference_options(
-                    {}, {"multi_reference_confirmed": True})
+                plugin._drawing_reference_options({}, {"multi_reference_confirmed": True})
         finally:
             await plugin.on_unload()
 

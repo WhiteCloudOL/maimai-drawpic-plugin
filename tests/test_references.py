@@ -1,6 +1,7 @@
 """持久参考资产、实际任务模式与显式开关；不调用真实模型。"""
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 import asyncio
 import base64
 import importlib
@@ -18,23 +19,278 @@ def module(name):
 
 @pytest.mark.parametrize("supplied,expected", [
     ("off", "off"), (" AUTO ", "auto"), ("required", "required"),
-    ("self", "auto"), ("", "auto"), (None, "auto"), (True, "auto"),
-    (1, "auto"), ([], "auto"), ({"value": "required"}, "auto"),
+    ("self", "off"), ("", "off"), (None, "off"), (True, "off"),
+    (1, "off"), ([], "off"), ({"value": "required"}, "off"),
 ])
-def test_tool_self_reference_recovers_to_auto_after_host_schema_validation(supplied, expected):
+def test_tool_self_reference_defaults_invalid_values_to_off_after_host_schema_validation(make_plugin, supplied, expected):
     from jsonschema import validate
 
     schema = module("interfaces.tools.schemas").DRAW_TOOL_PARAMETERS_SCHEMA
     request = {"prompt": "海边的麦麦", "reference_options": {"self_reference": supplied}}
     validate(request, schema)
-    options = module("interfaces.tools.drawing").DrawingToolMixin._drawing_reference_options(
-        {"message": {"processed_plain_text": "画你在海边的样子"}}, request["reference_options"],
+    plugin = make_plugin(False)
+    plugin.config.general.references.self_reference_enabled = True
+    options = plugin._drawing_reference_options(
+        {"message": {"raw_message": [{"type": "text", "data": "画你在海边的样子"}]}}, request["reference_options"],
     )
     parsed = module("domain.references").ReferenceOptions.model_validate(options)
     assert parsed.self_reference == expected and parsed.user_request == "画你在海边的样子"
     if supplied != expected:
         with pytest.raises(ValueError):
             module("domain.references").ReferenceOptions.model_validate({"self_reference": supplied, "user_request": "原话"})
+
+
+@pytest.mark.parametrize("supplied", ["auto", "required", "self", None, True])
+def test_disabled_self_reference_ignores_llm_selection(make_plugin, supplied):
+    plugin = make_plugin(False)
+    assert not plugin.config.general.references.self_reference_enabled
+    result = plugin._drawing_reference_options({}, {
+        "self_reference": supplied, "self_reference_ids": ["missing"], "self_reference_tags": ["自拍"],
+    })
+    assert result == {"self_reference": "off", "material_sources": []}
+
+
+@pytest.mark.parametrize("selection", [
+    {}, {"self_reference": "auto"}, {"self_reference": True},
+    {"self_reference": "auto", "self_reference_ids": ["missing"], "self_reference_tags": ["冬装"]},
+])
+def test_tool_without_original_request_disables_optional_recognition(make_plugin, selection):
+    plugin = make_plugin(False)
+    plugin.config.general.references.self_reference_enabled = True
+    values = plugin._drawing_reference_options({}, selection)
+    parsed = module("domain.references").ReferenceOptions.model_validate(values)
+    assert parsed.self_reference == "off" and parsed.material_sources == []
+    assert not parsed.self_reference_ids and not parsed.self_reference_tags
+
+
+@pytest.mark.parametrize("sources", [["chat"], ["web"], ["chat", "web"]])
+def test_missing_host_message_only_disables_auto_for_explicit_material_search(make_plugin, sources):
+    plugin = make_plugin(False)
+    plugin.config.general.references.self_reference_enabled = True
+    options = {"self_reference": "auto", "material_sources": sources, "self_reference_tags": ["冬装"]}
+    values = plugin._drawing_reference_options({}, options)
+    assert values["self_reference"] == "off" and values["material_sources"] == sources
+    with pytest.raises(ValueError, match="user_request"):
+        module("domain.references").ReferenceOptions.model_validate(values)
+    values = plugin._drawing_reference_options({}, {**options, "user_request": "画甘雨"})
+    parsed = module("domain.references").ReferenceOptions.model_validate(values)
+    assert parsed.self_reference == "off" and parsed.self_reference_tags == []
+    assert parsed.material_sources == sources and parsed.user_request == "画甘雨"
+
+
+@pytest.mark.parametrize("message,expected,mode", [
+    ({"processed_plain_text": "画你穿冬装的样子"}, "画你穿冬装的样子", "off"),
+    ({"raw_message": [], "processed_plain_text": "图中是麦麦"}, "图中是麦麦", "off"),
+    ({"processed_plain_text": " ", "raw_message": [{"type": "text", "data": "画你穿冬装的样子"}]}, "画你穿冬装的样子", "auto"),
+    ({"processed_plain_text": "图片里有一位人物", "raw_message": [{"type": "image", "data": "图片里有一位人物"}]}, "", "off"),
+    ({"raw_message": [{"type": "text", "data": "画你"}, {"type": "image", "data": "人物描述"}, {"type": "text", "data": "在海边"}]}, "画你在海边", "auto"),
+    ({"raw_message": [{"type": "text", "data": "画"}, {"type": "at", "data": {"target_user_nickname": "麦麦"}}]}, "画@麦麦", "auto"),
+    ({"raw_message": [{"type": "voice", "data": "画你在海边"}]}, "画你在海边", "auto"),
+])
+def test_tool_uses_current_message_instead_of_llm_rewritten_request(make_plugin, message, expected, mode):
+    plugin = make_plugin(False)
+    plugin.config.general.references.self_reference_enabled = True
+    values = plugin._drawing_reference_options({"message": message}, {"self_reference": "auto", "user_request": "LLM 改写的提示词"})
+    assert values["user_request"] == expected and values["self_reference"] == mode
+
+
+def test_current_message_fills_auto_request_without_llm_input(make_plugin):
+    plugin = make_plugin(False)
+    plugin.config.general.references.self_reference_enabled = True
+    values = plugin._drawing_reference_options(
+        {"message": {"raw_message": [{"type": "text", "data": "画你在海边"}]}}, {"self_reference": "auto"},
+    )
+    parsed = module("domain.references").ReferenceOptions.model_validate(values)
+    assert parsed.self_reference == "auto" and parsed.user_request == "画你在海边"
+
+
+@pytest.mark.parametrize("selection", [
+    {}, {"self_reference": "auto"}, {"self_reference": True}, {"self_reference": "required"},
+    {"self_reference": "auto", "user_request": "画你的自拍", "self_reference_ids": ["missing"], "material_sources": []},
+])
+def test_chat_without_original_request_still_generates_without_optional_recognition(make_plugin, monkeypatch, selection):
+    from test_api_settings import provide_streams
+
+    async def run():
+        plugin = make_plugin()
+        values = plugin.get_plugin_config_data()
+        values["general"].update(failure_reason_enabled=False)
+        values["general"]["references"].update(
+            self_reference_enabled=True, allow_chat_material_search=True, allow_web_material_search=True,
+        )
+        plugin.set_plugin_config(values)
+        await plugin.on_load()
+        try:
+            provide_streams(plugin, monkeypatch)
+            requires_self = selection.get("self_reference") == "required"
+            if requires_self:
+                await asyncio.to_thread(plugin._workspace().tasks.references.update,
+                                        revision=0, operation="save", name="默认图", tags=[], raw=image_bytes())
+            service = plugin._require_draw_service()
+            generate = AsyncMock(return_value=[image_bytes()])
+            llm = AsyncMock(side_effect=AssertionError("missing original must not trigger recognition"))
+            monkeypatch.setattr(service, "_run_image_request_attempt", generate)
+            monkeypatch.setattr(plugin.ctx.llm, "generate", llm)
+            monkeypatch.setattr(plugin._require_stream_service(), "send_generated_images_with_fallback", AsyncMock(return_value=1))
+            result = await plugin.handle_draw(
+                "cat", reference_options=selection or None,
+                stream_id="actual-stream", user_id="A" * 32, group_id="B" * 32, platform="qq",
+            )
+            assert result["success"]
+            await asyncio.gather(*tuple(service.background_tasks))
+            record = plugin._task_store.get_task(result["task_id"])
+            assert record.status == "completed" and generate.await_count == 1
+            assert generate.call_args.kwargs["source_image_bytes_list"] == ([image_bytes()] if requires_self else [])
+            llm.assert_not_awaited()
+        finally:
+            await plugin.on_unload()
+    asyncio.run(run())
+
+
+def test_chat_edit_requires_an_effective_image_source_before_submission(make_plugin, monkeypatch):
+    from test_api_settings import provide_streams
+
+    async def run():
+        plugin = make_plugin()
+        config = plugin.get_plugin_config_data()
+        config["general"]["references"]["self_reference_enabled"] = True
+        config["general"]["failure_reason_enabled"] = False
+        plugin.set_plugin_config(config)
+        await plugin.on_load()
+        try:
+            provide_streams(plugin, monkeypatch)
+            stream = {"stream_id": "actual-stream", "user_id": "A" * 32, "group_id": "B" * 32, "platform": "qq"}
+            service = plugin._require_draw_service()
+            generate = AsyncMock(return_value=[image_bytes()])
+            monkeypatch.setattr(service, "_run_image_request_attempt", generate)
+            monkeypatch.setattr(plugin._require_stream_service(), "send_generated_images_with_fallback", AsyncMock(return_value=1))
+            denied = await plugin.handle_edit_image("换背景", reference_options={"self_reference": "auto"}, **stream)
+            assert not denied["success"] and "图生图需要真实源图片" in denied["message"]
+            assert not plugin._task_store.snapshot()
+            asset = await asyncio.to_thread(plugin._workspace().tasks.references.update, revision=0, operation="save",
+                                            kind="preset", name="夜景", tags=[], raw=image_bytes())
+            accepted = await plugin.handle_edit_image("换背景", reference_options={
+                "self_reference": "off", "reference_ids": [asset["assets"][0]["id"]],
+            }, **stream)
+            assert accepted["success"]
+            await asyncio.gather(*tuple(service.background_tasks))
+            assert plugin._task_store.get_task(accepted["task_id"]).status == "completed"
+            assert generate.await_args.kwargs["source_image_bytes_list"] == [image_bytes()]
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("selection", ["off", "auto"])
+@pytest.mark.parametrize("kind", ["bot", "character"])
+def test_disabled_self_reference_never_reads_gallery_or_recognizes_self(monkeypatch, selection, kind):
+    async def run():
+        config = module("domain.configuration.models").DrawpicConfig()
+        config.general.references.self_names = ["甘雨"]
+        config.general.references.self_reference_ids = ["stale-first", "stale-second"]
+        config.general.references.allow_web_material_search = True
+        recognition = module("application.references.recognition")
+        references = module("domain.references")
+        self_subject = AsyncMock(side_effect=AssertionError("disabled self recognition"))
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "self_subject", self_subject)
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "needs", AsyncMock(return_value=recognition.MaterialNeeds(
+            chat_followup=False, needs=[recognition.MaterialNeed(
+                subject="甘雨", mention="甘雨", role="identity", kind=kind, web_search=True, query="甘雨 角色图鉴",
+            )],
+        )))
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "matches", AsyncMock(return_value=True))
+        web = AsyncMock(return_value=[references.ReferenceImage(image_bytes(), "web")])
+        monkeypatch.setattr(module("infrastructure.references.materials").MaterialSource, "web", web)
+        store = SimpleNamespace(
+            snapshot=Mock(side_effect=AssertionError("disabled gallery snapshot")),
+            read=Mock(side_effect=AssertionError("disabled gallery read")),
+            select_self=Mock(side_effect=AssertionError("disabled gallery selection")),
+        )
+        preparation = await module("application.references.service").freeze_reference_request(
+            ctx=SimpleNamespace(logger=logging.getLogger("disabled-reference-test")), config=config, store=store,
+            streams=None, prompt="画甘雨", style="", negative="", stream_id="",
+            options=references.ReferenceOptions(self_reference=selection, user_request="画甘雨", material_sources=["web"]),
+            images=[], urls=[],
+        )
+        result = await preparation.prepare("disabled-self")
+        assert not preparation.frozen and not preparation.self_ids and not preparation.self_reference_used
+        self_subject.assert_not_awaited()
+        assert web.await_count == int(kind == "character")
+        assert result.task_type == ("edit_image" if kind == "character" else "draw")
+        assert "identity: bot" not in result.prompt
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("stage", ["self_recognition", "materials"])
+def test_disabling_self_reference_during_preparation_prevents_use(tmp_path, monkeypatch, stage):
+    async def run():
+        config = module("domain.configuration.models").DrawpicConfig()
+        config.general.references.self_reference_enabled = True
+        config.general.references.allow_web_material_search = True
+        store = module("infrastructure.storage.reference_assets").ReferenceAssetStore(tmp_path)
+        store.update(revision=0, operation="save", name="默认自我图", tags=[], raw=image_bytes())
+        recognition = module("application.references.recognition")
+
+        async def subject(*args):
+            if stage == "self_recognition":
+                config.general.references.self_reference_enabled = False
+            return "self"
+
+        async def needs(*args, **kwargs):
+            config.general.references.self_reference_enabled = False
+            return recognition.MaterialNeeds(chat_followup=False, needs=[recognition.MaterialNeed(
+                subject="围巾", mention="围巾", role="clothing", kind="object", web_search=True, query="围巾",
+            )])
+
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "self_subject", subject)
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "needs", needs)
+        match = AsyncMock(side_effect=AssertionError("关闭后不能把已选的自我图发送给素材识别模型"))
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "matches", match)
+        preparation = await module("application.references.service").freeze_reference_request(
+            ctx=SimpleNamespace(logger=logging.getLogger("disabled-reference-test")), config=config, store=store,
+            streams=None, prompt="画你的自拍", style="", negative="", stream_id="",
+            options=module("domain.references").ReferenceOptions(self_reference="auto", user_request="画你的自拍", material_sources=["web"]),
+            images=[], urls=[], get_config=lambda: config,
+        )
+        with pytest.raises(module("domain.task_errors").TaskRequestError) as failure:
+            await preparation.prepare("disabled-inflight")
+        assert failure.value.code == "SELF_REFERENCE_DISABLED"
+        match.assert_not_awaited()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("stage", ["review", "rewrite"])
+def test_disabling_self_reference_before_provider_call_prevents_generation(make_plugin, monkeypatch, stage):
+    from test_drawing_client import DrawingClient, LocalAPI
+
+    async def run():
+        plugin = make_plugin()
+        values = plugin.get_plugin_config_data()
+        values["general"]["references"]["self_reference_enabled"] = True
+        plugin.set_plugin_config(values)
+        await plugin.on_load()
+        try:
+            store = plugin._workspace().tasks.references
+            await asyncio.to_thread(store.update, revision=0, operation="save", name="默认自我图", tags=[], raw=image_bytes())
+            service = plugin._require_draw_service()
+
+            async def disable(prompt, *args, **kwargs):
+                plugin.config.general.references.self_reference_enabled = False
+                return prompt
+
+            method = "review_prompt_or_raise" if stage == "review" else "rewrite_prompt_to_english_if_needed"
+            monkeypatch.setattr(service, method, disable)
+            platform = Mock(side_effect=AssertionError("disabled reference reached provider"))
+            monkeypatch.setattr(service.router, "require_platform_for_model", platform)
+            result = await DrawingClient(LocalAPI(plugin), poll_interval=0.001).generate(
+                "麦麦的自拍", task_type="edit_image", reference_options={"self_reference": "required"}, wait_seconds=5,
+            )
+            assert result.status == "failed" and result.error.code == "SELF_REFERENCE_DISABLED"
+            platform.assert_not_called()
+        finally:
+            await plugin.on_unload()
+    asyncio.run(run())
 
 
 def test_auto_recognition_uses_bot_names_without_treating_drawing_words_as_identity(monkeypatch):
@@ -364,6 +620,14 @@ def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, m
             assert directory["assets"][0]["default"]
             conflict = await plugin.drawpic_submit("麦麦", reference_options=options)
             assert conflict["accepted"] is False and conflict["error"]["code"] == "TASK_MODE_CONFLICT"
+            recognize = AsyncMock(return_value={"content": '{"subject":"self"}'})
+            monkeypatch.setattr(plugin.ctx.llm, "generate", recognize)
+            auto = await client.generate("肖像", task_type="edit_image", request_id="self-refs-auto",
+                                         reference_options={"self_reference": "auto", "user_request": "给麦麦画一张肖像"},
+                                         wait_seconds=5)
+            assert auto.status == "completed" and calls[-1]["source_image_bytes_list"] == [image_bytes()]
+            recognize.assert_awaited_once()
+            assert "给麦麦画一张肖像" in recognize.await_args.args[0]
         finally:
             await plugin.on_unload()
 

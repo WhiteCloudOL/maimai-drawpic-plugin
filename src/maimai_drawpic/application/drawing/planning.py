@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable, Optional
 import asyncio
 import inspect
 
@@ -167,6 +167,7 @@ class RequestPlanningMixin:
         matched_message_id: str,
         request_negative_prompt: str = "",
         style_negative_prompt_template: str = "",
+        validate_reference_usage: Optional[Callable[[], None]] = None,
     ) -> list[bytes]:
         """执行单次图片请求尝试。"""
 
@@ -223,6 +224,8 @@ class RequestPlanningMixin:
                 provider_prompt, f"Negative prompt: {provider_negative_prompt}",
             )
             provider_negative_prompt = ""
+        if validate_reference_usage is not None:
+            validate_reference_usage()
         image_platform, provider_name = self.router.require_platform_for_model(
             attempt.model,
             attempt.openai_compatibility_mode,

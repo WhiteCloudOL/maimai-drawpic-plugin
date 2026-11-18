@@ -154,7 +154,7 @@ class ReferenceAPIService:
                 refs["multi_reference_confirmed"] = True
             # SDK 配置模型默认允许类型转换，公开写入复用工作台的严格字段校验。
             _validate_fields(type(base.general.references), refs)
-            if len(refs["self_reference_ids"]) > 1 and not refs["multi_reference_confirmed"]:
+            if refs["self_reference_enabled"] and len(refs["self_reference_ids"]) > 1 and not refs["multi_reference_confirmed"]:
                 raise TaskRequestError("MULTI_REFERENCE_CONFIRMATION_REQUIRED", "请先由用户确认模型支持多图参考")
             checked = DrawpicConfig.model_validate(current)
             await self.workspace._validate_reference_assets(checked)
