@@ -3484,7 +3484,7 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
           ? U.formControls.choice(
               raw,
               ["", ...U.formOptions.dimensions(options.kind)],
-              { label: "模型分辨率", size: true, kind: options.kind },
+              { label: "模型分辨率", size: true, kind: options.kind, labels: { "": "继承默认分辨率" } },
             )
           : `<input data-value aria-label="此模型的接口地址" value="${e(raw)}" placeholder="完整 URL 或接口路径…" autocomplete="off">`;
       return `<div class="model-override-row" data-array-row data-model-override><label>绘图模型<select data-model-key aria-label="覆盖配置的模型"><option value="${e(model)}" selected>${e(model || "请先选择模型")}</option></select></label><div><span class="control-caption">${key === "model_size_overrides" ? "输出尺寸" : "接口地址"}</span>${valueControl}</div>${remove}</div>`;
@@ -3521,6 +3521,7 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
       const value = control
         ? U.formControls.read(control)
         : $("[data-value]", node).value.trim();
+      if (key === "model_size_overrides" && !value) return "";
       if (!model && !value) return "";
       if (!model || !value)
         invalid(

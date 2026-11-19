@@ -499,6 +499,18 @@ test('typed values retain zero, false, literal strings and exact JSON integers',
   assert.match(input.error, /数字范围/);
 });
 
+test('model size overrides can inherit the default size', () => {
+  const h = harness('forms');
+  const row = node({ hasAttribute: name => name === 'data-model-override' });
+  h.get('[data-model-key]').value = 'qwen-image-3.0';
+  const select = h.get('[data-choice-select]');
+  select.value = '2048*2048';
+  assert.equal(h.U.formCollections.readRow('model_size_overrides', row), 'qwen-image-3.0=2048*2048');
+  select.value = '';
+  assert.equal(h.U.formCollections.readRow('model_size_overrides', row), '');
+  assert.match(h.U.formCollections.row('model_size_overrides', 'qwen-image-3.0=', { kind: 'aliyun' }), /继承默认分辨率/);
+});
+
 test('dimensions use the platform separator and preserve nonstandard saved values', () => {
   const h = harness('forms');
   const control = node({ dataset: { control: 'dimension', kind: 'aliyun' } });
