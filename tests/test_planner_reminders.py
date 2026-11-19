@@ -128,7 +128,7 @@ def test_recognition_routes_task_default_and_strict_configured_names(model, expe
         async def rpc(capability, **kwargs):
             assert capability == "llm.generate"
             requests.append(kwargs)
-            return {"content": json.dumps({"subject": "other"})}
+            return {"success": True, "response": json.dumps({"subject": "other"})}
         llm = LLMCapability(SimpleNamespace(call_capability=rpc))
         recognizer = module("application.references.recognition").ReferenceRecognizer(SimpleNamespace(llm=llm), model)
         assert await recognizer.self_subject("画只猫", ["麦麦"]) == "other"

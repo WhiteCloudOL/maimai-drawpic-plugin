@@ -354,6 +354,60 @@ def test_unconfirmed_receipt_settles_chat_quota_and_notice(make_plugin, monkeypa
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("notify,command", [(False, False), (True, False), (False, True), (True, True)])
+def test_recognition_host_error_preserves_safe_reason_and_refunds_quota(make_plugin, monkeypatch, notify, command):
+    async def run():
+        plugin = await configured_plugin(make_plugin, monkeypatch, mock_notice=False)
+        try:
+            plugin.config.general.failure_reason_enabled = notify
+            plugin.config.general.references.allow_web_material_search = True
+            service = plugin._require_draw_service()
+            notice = AsyncMock(return_value=True)
+            draw = AsyncMock()
+            web = AsyncMock()
+            rpc = AsyncMock(return_value={
+                "success": False,
+                "error": "HTTP 429 request_id=req-llm Authorization: Bearer FAKE_TOKEN https://example.invalid/chat?sig=FAKE_SIGNATURE",
+                "response": '{"chat_followup":false,"needs":[]}',
+            })
+            monkeypatch.setattr(plugin.ctx, "call_capability", rpc)
+            monkeypatch.setattr(service, "_run_image_request_attempt", draw)
+            monkeypatch.setattr(service.stream_service, "send_text_with_fallback", notice)
+            monkeypatch.setattr(module("infrastructure.references.materials").MaterialSource, "web", web)
+            request = {
+                "prompt": "画甘雨", "stream_id": "mock-stream",
+                "reference_options": {"user_request": "画甘雨", "material_sources": ["web"]},
+            }
+            if command:
+                receipt = await plugin._start_background_image_request(
+                    **request, from_command=True, use_reference_features=True, notify_start=False,
+                )
+            else:
+                receipt = await plugin.drawpic_submit(**request, task_type="edit_image", request_id="recognition-failure")
+                assert receipt["accepted"]
+            await asyncio.gather(*tuple(service.background_tasks))
+
+            result = await plugin.drawpic_task(receipt["task_id"])
+            assert result["status"] == "failed"
+            assert result["error"]["code"] == "REFERENCE_RECOGNITION_FAILED"
+            assert remaining(plugin) == 1
+            assert rpc.await_count == 1 and rpc.await_args.args == ("llm.generate",)
+            web.assert_not_awaited()
+            draw.assert_not_awaited()
+            assert notice.await_count == int(notify or command)
+
+            diagnostics = [result["error"]["message"], plugin._task_store.path.read_text(encoding="utf-8")]
+            if notify or command:
+                diagnostics.append(notice.await_args.kwargs["text"])
+            for text in diagnostics:
+                assert "HTTP 429 request_id=req-llm" in text
+                assert "FAKE_TOKEN" not in text and "FAKE_SIGNATURE" not in text
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
 def test_old_zero_receipt_task_loads_as_generated(tmp_path):
     cls = module("infrastructure.storage.tasks").DrawTaskStore
     store = cls(tmp_path / "tasks.json")

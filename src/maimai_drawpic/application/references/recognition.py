@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 import asyncio
 import base64
 import json
+import re
 
 from ...domain.references import ReferenceImage
 from ...domain.task_errors import TaskRequestError
@@ -49,14 +50,35 @@ class ReferenceRecognizer:
                     route["model_name"] = self.model.removeprefix("model:")
                 response = await self.ctx.llm.generate(messages, **route,
                                                      temperature=0.0, max_tokens=900, rpc_timeout_ms=20000)
-            value = json.loads(response["content"])
-            if not isinstance(value, dict):
-                raise ValueError("识别结果必须为 JSON 对象")
-            return value
         except asyncio.CancelledError:
             raise
+        except TimeoutError as exc:
+            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "参考素材识别模型调用超时") from exc
         except Exception as exc:
-            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", f"参考素材识别失败（{type(exc).__name__}）") from exc
+            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", f"参考素材识别模型调用失败（{type(exc).__name__}）") from exc
+
+        if not isinstance(response, dict) or not isinstance(response.get("success"), bool):
+            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "宿主返回了无效的参考素材识别状态")
+        if not response["success"]:
+            detail = response.get("error")
+            if not isinstance(detail, str) or not detail.strip():
+                detail = "宿主未提供错误原因"
+            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", f"参考素材识别模型调用失败：{detail.strip()}")
+
+        body = response.get("response")
+        if not isinstance(body, str) or not body.strip():
+            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "参考素材识别模型未返回有效文本")
+        body = body.strip()
+        fenced = re.fullmatch(r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n```", body, re.IGNORECASE | re.DOTALL)
+        if fenced:
+            body = fenced.group(1)
+        try:
+            value = json.loads(body)
+        except (ValueError, RecursionError):
+            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "参考素材识别模型返回了无效 JSON") from None
+        if not isinstance(value, dict):
+            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "参考素材识别结果必须为 JSON 对象")
+        return value
 
     async def self_subject(self, request: str, names: List[str]) -> str:
         value = await self._json(PROMPTS["zh-CN"]["self"].format(request=request, names=json.dumps(names, ensure_ascii=False)))

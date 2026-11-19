@@ -436,7 +436,8 @@ def test_cached_chat_description_reuses_text_before_viewing_image(status, expect
         async def generate(prompt, **kwargs):
             assert kwargs["task_name"] == "vlm" and kwargs["model_name"] == "fast-multimodal"
             prompts.append(prompt)
-            return {"content": json.dumps({"result": status} if len(prompts) == 1 else {"matches": True})}
+            payload = {"result": status} if len(prompts) == 1 else {"matches": True}
+            return {"success": True, "response": json.dumps(payload)}
 
         classifier = recognition.ReferenceRecognizer(SimpleNamespace(llm=SimpleNamespace(generate=generate)), "fast-multimodal")
         image = module("domain.references").ReferenceImage(image_bytes(), "chat", description="蓝发角色甘雨")
@@ -687,7 +688,7 @@ def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, m
             settings = await client.reference_settings()
             await client.set_reference_settings(revision=settings["revision"], self_reference_prompt="把本次画面画成单幅插画")
             monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
-            recognize = AsyncMock(return_value={"content": '{"subject":"self"}'})
+            recognize = AsyncMock(return_value={"success": True, "response": '{"subject":"self"}'})
             monkeypatch.setattr(plugin.ctx.llm, "generate", recognize)
             auto = await client.generate("肖像", task_type="edit_image", request_id="self-refs-auto",
                                          reference_options={"self_reference": "auto", "user_request": "给麦麦画一张肖像"},
@@ -720,7 +721,8 @@ def test_source_flags_and_missing_chat_do_not_create_tasks(make_plugin):
     asyncio.run(run())
 
 
-def test_search_verifies_each_subject_and_reuse_does_not_search_again(make_plugin, monkeypatch):
+@pytest.mark.parametrize("attached_matches", [False, True])
+def test_search_verifies_each_subject_and_reuse_does_not_search_again(make_plugin, monkeypatch, attached_matches):
     from test_drawing_client import DrawingClient, LocalAPI
 
     async def run():
@@ -730,40 +732,55 @@ def test_search_verifies_each_subject_and_reuse_does_not_search_again(make_plugi
         plugin.set_plugin_config(values)
         await plugin.on_load()
         try:
-            counts = {"needs": 0, "web": 0, "generation": 0}
-            recognizer = module("application.references.recognition")
+            counts = {"web": 0, "generation": 0}
             images = module("domain.references")
 
-            async def needs(self, request, *, source_count=0):
-                counts["needs"] += 1
-                return recognizer.MaterialNeeds(chat_followup=False, needs=[recognizer.MaterialNeed(subject="甘雨", mention="甘雨", web_search=True, role="identity", query="原神 甘雨 官方")])
+            needs = {"chat_followup": False, "needs": [
+                {"subject": "甘雨", "mention": "甘雨", "web_search": True, "role": "identity", "query": "原神 甘雨 官方"},
+            ]}
+            replies = [
+                {"success": True, "response": f"```json\n{json.dumps(needs, ensure_ascii=False)}\n```"},
+                {"success": True, "response": json.dumps({"matches": attached_matches})},
+            ]
+            if not attached_matches:
+                replies.append({"success": True, "response": '{"matches":true}'})
+            recognize = AsyncMock(side_effect=replies)
 
-            async def matches(self, image, need):
-                return image.raw.endswith(b"ganyu")
+            attached = image_bytes()
+            web_image = attached + b"ganyu"
+            expected_images = [attached] if attached_matches else [attached, web_image]
+            expected_urls = [""] if attached_matches else ["", "https://example.org/ganyu.png"]
 
             async def web(self, query, *, subject=""):
                 counts["web"] += 1
-                return [images.ReferenceImage(image_bytes() + b"ganyu", "web", url="https://example.org/ganyu.png")]
+                assert query == "原神 甘雨 官方" and subject == "甘雨"
+                return [images.ReferenceImage(web_image, "web", url="https://example.org/ganyu.png")]
 
             async def generate(**kwargs):
                 counts["generation"] += 1
-                assert len(kwargs["source_image_bytes_list"]) == 2
-                assert kwargs["source_image_urls"] == ["", "https://example.org/ganyu.png"]
+                assert kwargs["source_image_bytes_list"] == expected_images
+                assert kwargs["source_image_urls"] == expected_urls
                 assert "identity: 甘雨" in kwargs["prompt"]
                 return [image_bytes()]
 
-            monkeypatch.setattr(recognizer.ReferenceRecognizer, "needs", needs)
-            monkeypatch.setattr(recognizer.ReferenceRecognizer, "matches", matches)
+            monkeypatch.setattr(plugin.ctx.llm, "generate", recognize)
             monkeypatch.setattr(module("infrastructure.references.materials").MaterialSource, "web", web)
             monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
             client = DrawingClient(LocalAPI(plugin), poll_interval=0.001)
             options = {"user_request": "让图中的人物与甘雨合照", "material_sources": ["web"]}
-            result = await client.generate("人物与甘雨合照", task_type="edit_image", source_images=[image_bytes()],
+            result = await client.generate("人物与甘雨合照", task_type="edit_image", source_images=[attached],
                                            reference_options=options, request_id="search-refs-001", wait_seconds=5)
             assert result.status == "completed"
-            receipt = await client.submit("人物与甘雨合照", task_type="edit_image", source_images=[image_bytes()],
+            receipt = await client.submit("人物与甘雨合照", task_type="edit_image", source_images=[attached],
                                           reference_options=options, request_id="search-refs-001")
-            assert receipt.reused and counts == {"needs": 1, "web": 1, "generation": 1}
+            assert receipt.reused and counts == {"web": int(not attached_matches), "generation": 1}
+            assert recognize.await_count == 1 + len(expected_images)
+            needs_call, *match_calls = recognize.await_args_list
+            assert options["user_request"] in needs_call.args[0]
+            for call, raw in zip(match_calls, expected_images, strict=True):
+                image_part = call.args[0][0]["content"][1]
+                assert image_part["type"] == "image"
+                assert base64.b64decode(image_part["image_base64"]) == raw
         finally:
             await plugin.on_unload()
 
@@ -1080,15 +1097,12 @@ def test_multi_reference_rejection_never_switches_to_fallback_model(make_plugin,
     ("needs", {"needs": [], "unexpected": True}),
     ("matches", {"matches": "true"}),
 ])
-def test_invalid_recognition_has_stable_error(monkeypatch, operation, payload):
+def test_invalid_recognition_has_stable_error(operation, payload):
     async def run():
         recognition = module("application.references.recognition")
 
-        async def response(self, prompt, image=None):
-            return payload
-
-        monkeypatch.setattr(recognition.ReferenceRecognizer, "_json", response)
-        recognizer = recognition.ReferenceRecognizer(SimpleNamespace())
+        generate = AsyncMock(return_value={"success": True, "response": json.dumps(payload)})
+        recognizer = recognition.ReferenceRecognizer(SimpleNamespace(llm=SimpleNamespace(generate=generate)))
         with pytest.raises(ValueError) as failure:
             if operation == "self_subject":
                 await recognizer.self_subject("画麦麦", ["麦麦"])
@@ -1100,6 +1114,28 @@ def test_invalid_recognition_has_stable_error(monkeypatch, operation, payload):
         assert failure.value.code == "REFERENCE_RECOGNITION_FAILED"
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("payload,reason", [
+    (None, "无效的参考素材识别状态"),
+    ({"response": '{"subject":"self"}'}, "无效的参考素材识别状态"),
+    ({"success": "true", "response": '{"subject":"self"}'}, "无效的参考素材识别状态"),
+    ({"success": False, "response": '{"subject":"self"}'}, "宿主未提供错误原因"),
+    ({"success": True, "content": '{"subject":"self"}'}, "未返回有效文本"),
+    ({"success": True, "response": "   "}, "未返回有效文本"),
+    ({"success": True, "response": {"subject": "self"}}, "未返回有效文本"),
+    ({"success": True, "response": '说明：{"subject":"self"}'}, "无效 JSON"),
+    ({"success": True, "response": "[]"}, "必须为 JSON 对象"),
+])
+def test_reference_recognizer_rejects_invalid_host_responses(payload, reason):
+    recognition = module("application.references.recognition")
+    generate = AsyncMock(return_value=payload)
+    recognizer = recognition.ReferenceRecognizer(SimpleNamespace(llm=SimpleNamespace(generate=generate)))
+    error_type = module("domain.task_errors").TaskRequestError
+    with pytest.raises(error_type, match=reason) as failure:
+        asyncio.run(recognizer.self_subject("画你的自拍", ["麦麦"]))
+    assert failure.value.code == "REFERENCE_RECOGNITION_FAILED"
+    generate.assert_awaited_once()
 
 
 @pytest.mark.parametrize("markup_in_fetch", [False, True])
