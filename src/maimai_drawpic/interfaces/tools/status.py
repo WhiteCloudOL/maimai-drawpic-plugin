@@ -12,7 +12,7 @@ class StatusToolMixin:
 
     @Tool(
         "draw_status",
-        description="查询最近一个绘图后台任务，或查询指定 task_id 的绘图任务状态",
+        description="查询后台绘图任务的状态。",
         parameters=DRAW_STATUS_TOOL_PARAMETERS_SCHEMA,
     )
     @chat_access_endpoint

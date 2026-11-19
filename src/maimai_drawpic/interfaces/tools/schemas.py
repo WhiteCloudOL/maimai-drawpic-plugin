@@ -9,15 +9,15 @@ DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "properties": {
         "prompt": {
             "type": "string",
-            "description": "图片提示词，尽量描述清楚主体、风格和画面内容",
+            "description": "描述画面主体、内容和风格。",
         },
         "model": {
             "type": "string",
-            "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
+            "description": "指定绘图模型。省略时用会话首选模型。",
         },
         "negative_prompt": {
             "type": "string",
-            "description": "可选，本次绘图的反向提示词；支持独立反向字段的平台会单独传递，否则合并到正向提示词",
+            "description": "反向提示词。平台无独立反向字段时并入正向提示词。",
         },
     },
     "required": ["prompt"],
@@ -30,23 +30,23 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "properties": {
         "prompt": {
             "type": "string",
-            "description": "图片编辑提示词，描述希望基于源图修改成什么样；不要把源图片描述写在这里替代真实图片",
+            "description": "描述对源图的修改。源图须提供真实图片。",
         },
         "source_message_id": {
             "type": "string",
-            "description": "可选，指定要编辑的源图片消息 ID；不填时只取本条或明确引用的图片；接续前图须开启聊天取材，不能任意选择历史图片",
+            "description": "用户指定的源图消息 ID。省略时取本条或引用图。接续未引用的前图须开启聊天取材。",
         },
         "source_image_base64": {
             "type": "string",
-            "description": "可选，直接传入真实源图片 Base64 或 data:image/...;base64；不要传图片描述文本",
+            "description": "真实源图的 Base64 或图片 data URL。",
         },
         "model": {
             "type": "string",
-            "description": "可选，指定要优先使用的图片模型；未传时使用当前会话首选模型",
+            "description": "指定绘图模型。省略时用会话首选模型。",
         },
         "negative_prompt": {
             "type": "string",
-            "description": "可选，本次图生图的反向提示词；会与平台默认反向词合并",
+            "description": "反向提示词，与平台默认反向词合并。",
         },
     },
     "required": ["prompt"],
@@ -54,16 +54,19 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
 
 
 for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
-    schema["properties"]["style"] = {"type": "string", "description": "可选，已配置的绘图预设名称；none 表示不使用预设"}
+    schema["properties"]["style"] = {"type": "string", "description": "绘图预设的精确名称。用 none 跳过预设。"}
     schema["properties"]["reference_options"] = {
         **ReferenceOptions.model_json_schema(),
-        "description": "按画面中的人物明确填写 self_reference。显式请求 chat/web 取材时提供用户原话，只使用已开启的素材来源。",
+        "description": "自我参考、预设参考图和取材选项。",
     }
-    schema["properties"]["reference_options"]["properties"].pop("multi_reference_confirmed")
-    self_reference_field = schema["properties"]["reference_options"]["properties"]["self_reference"]
-    schema["properties"]["reference_options"]["properties"]["self_reference"] = {
-        "description": "只填小写字符串。画面明确包含机器人（如“画你的自拍”“画你和甘雨合照”）填 required；画其他主体（如“你帮我画甘雨”“画我的自拍”）或明确不用自我图库填 off。结合上下文仍不确定是否包含机器人才填 auto。auto 只读取宿主本轮原话，取不到时按 off 继续。tag 仅用于选图。",
-        "examples": self_reference_field["examples"],
+    reference_fields = schema["properties"]["reference_options"]["properties"]
+    reference_fields.pop("multi_reference_confirmed")
+    reference_fields["self_reference"] = {
+        "description": (
+            "用小写字符串。明确画机器人（含合照）填 required。画其他主体或不用自我参考填 off，并省略自我选图字段。"
+            "仅不确定机器人是否入画时填 auto。auto 只读宿主本轮原话，缺原话按 off。"
+        ),
+        "examples": reference_fields["self_reference"]["examples"],
         "default": "off",
         "anyOf": [
             {"type": "string"}, {"type": "null"}, {"type": "boolean"},
@@ -71,8 +74,14 @@ for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
             {"type": "object", "additionalProperties": True},
         ],
     }
-    schema["properties"]["reference_options"]["properties"]["user_request"]["description"] = (
-        "显式搜索素材时逐字复制本轮用户请求，插件优先读取本轮消息。无需为 auto 补写此字段；模型传入的文本不能启动自身识别。"
+    reference_fields["user_request"]["description"] = (
+        "显式取材时照录本轮用户原话，插件优先读取本轮消息。仅用 auto 时省略。"
+    )
+    reference_fields["self_reference_ids"]["description"] = "自我图库图片 ID，优先于 tag。"
+    reference_fields["self_reference_tags"]["description"] = "选图标签，如冬装。未指定 ID 时按标签或原话选图，未命中用默认图。"
+    reference_fields["material_sources"]["description"] = (
+        "只画机器人的自画像或自拍时用自我图库，设 self_reference=required。"
+        "仅缺额外素材时选已开启的来源，其余填 []。接续缺前图用 chat，缺指定角色、物件或明确要求的参考图用 web。"
     )
 
 
@@ -82,7 +91,7 @@ DRAW_STATUS_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "properties": {
         "task_id": {
             "type": "string",
-            "description": "可选，指定要查询的后台绘图任务 ID；不填时默认查询当前会话最近一个任务",
+            "description": "任务 ID。省略时查询当前会话最近的任务。",
         },
     },
     "required": [],
@@ -95,23 +104,23 @@ STYLED_DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "properties": {
         "prompt": {
             "type": "string",
-            "description": "用户正向提示词；图生图时可以留空，由风格模板和源图片共同决定画面",
+            "description": "正向提示词。有源图时可留空，由源图和风格模板决定画面。",
         },
         "style": {
             "type": "string",
-            "description": "可选的插件全平台风格模板名称；不填时按普通 draw/edit_image 行为执行",
+            "description": "绘图预设的精确名称。省略时按普通绘图处理。",
         },
         "negative_prompt": {
             "type": "string",
-            "description": "可选的用户反向提示词，会与风格反向模板及平台默认反向词合并",
+            "description": "反向提示词，与风格及平台的反向词合并。",
         },
         "source_message_id": {
             "type": "string",
-            "description": "可选，指定图生图源图片消息 ID",
+            "description": "源图消息 ID。",
         },
         "source_image_base64": {
             "type": "string",
-            "description": "可选，直接提供真实源图片 Base64 或 data URL",
+            "description": "真实源图的 Base64 或图片 data URL。",
         },
     },
     "required": [],

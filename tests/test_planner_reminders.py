@@ -89,11 +89,12 @@ def test_planner_hook_preserves_host_fields_without_starting_models_or_tasks(mak
 @pytest.mark.parametrize("locale", ["zh-CN", "en-US", "ja-JP"])
 def test_self_reference_reminder_is_only_injected_when_enabled(locale):
     planner = module("application.references.planner")
-    history = [user("画张自拍")]
+    history = [user("@汀芽 自画像")]
     off = planner.drawing_reminder_items(history, TOOLS, ["画"], locale=locale)
     on = planner.drawing_reminder_items(history, TOOLS, ["画"], locale=locale, self_reference_enabled=True)
     assert "self_reference" not in off[-1]["parts"][0]["text"]
-    assert "self_reference" in on[-1]["parts"][0]["text"]
+    assert "self_reference=required" in on[-1]["parts"][0]["text"]
+    assert "material_sources=[]" in on[-1]["parts"][0]["text"]
     assert on[:-1] == off[:-1] == history
 
 

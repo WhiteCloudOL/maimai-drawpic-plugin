@@ -21,9 +21,8 @@ class StyleToolMixin:
     @Tool(
         "draw_styles",
         description=(
-            "列出插件配置中当前可用的全平台绘图风格。用户要求指定风格、询问风格列表或准备调用 styled_draw 时，"
-            "必须先调用本工具，依据 style_details 中的 description 与用户需求做语义匹配，"
-            "再从 styles 中选择精确名称，并检查 preset_details.available_tasks 是否支持本次模式。"
+            "指定风格或询问风格列表时先用本工具。按 style_details.description 匹配需求，"
+            "从 styles 取精确名称，并用 preset_details.available_tasks 核对绘图模式。"
         ),
         parameters=DRAW_STYLES_TOOL_PARAMETERS_SCHEMA,
     )
@@ -62,10 +61,8 @@ class StyleToolMixin:
     @Tool(
         "styled_draw",
         description=(
-            "使用插件配置的全平台风格提示词模板执行文生图或图生图。"
-            "有风格需求时必须先调用 draw_styles，依据 style_details.description 与用户需求做语义匹配，"
-            "再把精确名称填入 style。"
-            "有真实源图片时自动图生图；没有源图片时文生图。style 不填时保持普通 draw/edit_image 行为。"
+            "按绘图预设生成图片。有风格需求时先用 draw_styles 选出预设，再填入 style。"
+            "有源图走图生图，否则走文生图。"
         ),
         parameters=STYLED_DRAW_TOOL_PARAMETERS_SCHEMA,
     )

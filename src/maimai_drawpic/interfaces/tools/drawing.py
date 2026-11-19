@@ -48,8 +48,7 @@ class DrawingToolMixin:
     @Tool(
         "draw",
         description=(
-            "根据纯文本提示创建独立的后台绘图任务，并在完成后发送到当前聊天流；可选传入反向提示词。"
-            "用户要求修改、编辑、重绘已有图片时不要调用本工具，应调用 edit_image"
+            "提交新图任务，完成后发到当前会话。明确接续、修改或重绘已有图时用 edit_image。"
         ),
         parameters=DRAW_TOOL_PARAMETERS_SCHEMA,
     )
@@ -107,10 +106,8 @@ class DrawingToolMixin:
     @Tool(
         "edit_image",
         description=(
-            "基于当前聊天中的真实图片执行图生图编辑；仅当用户明确要求修改、编辑、重绘已有图片时调用。"
-            "如果用户回复/引用了一张图片，直接调用本工具，插件会从引用消息中提取真实图片。"
-            "每次调用会创建独立后台任务；找不到真实图片或平台不支持图片编辑时返回原因，"
-            "并按插件配置决定是否直接向聊天流发送失败通知"
+            "用户明确接续、修改或重绘时，提交图生图任务。可自动从本条或引用消息取真实源图。"
+            "缺源图或模型不支持图生图时返回原因，按配置决定是否通知会话。"
         ),
         parameters=EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA,
     )
