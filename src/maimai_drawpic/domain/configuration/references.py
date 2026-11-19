@@ -36,6 +36,15 @@ class ReferenceConfig(PluginConfigBase):
     allow_chat_material_search: bool = Field(default=False, description="允许从当前真实聊天流的有限近期记录中查找素材", json_schema_extra={"label": "允许聊天记录取材", "hint": "仅在继续改图、重新生成等明确接续前图的任务中查找。"})
     chat_material_search_limit: int = Field(default=50, ge=1, le=200, strict=True, description="每次任务最多检查的近期聊天消息条数", json_schema_extra={"label": "聊天记录搜索上限（条）", "hint": "推荐 50 条，可设 1～200 条。仅查找当前聊天最近 24 小时内的消息，最多选取 6 张候选图。"})
     allow_web_material_search: bool = Field(default=False, description="允许通过选定搜索服务查找缺少的素材", json_schema_extra={"label": "允许网络素材搜索", "hint": "仅为具体角色、特定物件或明确的参考图请求搜索。"})
+    allow_material_multi_reference: bool = Field(
+        default=False,
+        strict=True,
+        description="允许把多张聊天或网络素材用于同一次绘图",
+        json_schema_extra={
+            "label": "多图参考",
+            "hint": "默认最多加入一张自动取得的素材图。开启后可为多个明确需求分别取图，请确认绘图模型支持多图输入。",
+        },
+    )
     web_search_provider: Literal["maibot", "deepseek"] = Field(default="maibot", description="网络素材检索所用的搜索服务", json_schema_extra={"label": "搜索服务", "hint": "MaiBot 使用宿主已配置的搜索服务；DeepSeek 使用单独填写的 API Key。"})
     deepseek_api_key: str = Field(default="", max_length=512, description="DeepSeek 搜索 API 密钥，仅保存在工作台设置中", json_schema_extra={"label": "DeepSeek API Key", "input_type": "password", "hint": "留空保留已配置的密钥。Search API 返回网页，插件从网页提取候选图片。"})
 

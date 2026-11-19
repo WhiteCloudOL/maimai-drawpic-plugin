@@ -199,6 +199,7 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
         "allow_chat_material_search": false,
         "chat_material_search_limit": 50,
         "allow_web_material_search": false,
+        "allow_material_multi_reference": false,
         "web_search_provider": "maibot",
         "deepseek_api_key": ""
       }
@@ -267,6 +268,7 @@ NovelAI 实例支持 `v4_negative_prompt.caption.char_captions` 多角色反向�
 
 - `chat_material_search_limit`：每次任务最多读取当前聊天最近 24 小时内的消息条数，推荐默认 50 条，可设 1～200 条，不接受 0 或无限制。每个任务只读取一次，各素材需求共用最多 6 张聊天候选图；在途任务降低上限立即收紧，提高只影响新任务。
 - `multi_reference_confirmed`：记录管理员在工作台 dialog 中确认当前多图配置；不表示插件已经探测到模型支持多图，也不能绕过图生图能力与图片数量限制。不要通过手动设为 `true` 代替确认。
+- `allow_material_multi_reference`：默认 `false`，自动取材最多加入一张图。可在「素材来源」开启并确认模型支持多图后，为多个需求分别取图。
 
 DeepSeek 使用 `https://api.deepseek.com/v1/tools/search`，每次搜索最多返回 3 个网页。正文缺少图片链接时读取同服务的 Fetch，再按下载规则读取网页图片标记。Search API 当前不直接返回搜图候选，本插件未接入模型工具的以图搜图。最多检查 6 张候选；单个不可用网页或图片会记录原因并检查剩余候选，全部不可用时报告错误。测试功能遇到问题可在 [GitHub Issue](https://github.com/WhiteCloudOL/maimai-drawpic-plugin/issues) 反馈。
 

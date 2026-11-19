@@ -470,7 +470,7 @@ async def save_watercolor(ctx):
 | size | 原图字节数 |
 | default | 是否为默认自我参考图 |
 
-目录不含图片字节、任意文件路径、签名链接、候选图或搜索历史。来源状态仍包含 self_reference_enabled、allow_chat_material_search、chat_material_search_limit、material_model、allow_web_material_search、web_search_provider、multi_reference_confirmed，不含密钥。
+目录不含图片字节、任意文件路径、签名链接、候选图或搜索历史。来源状态包含 self_reference_enabled、allow_chat_material_search、chat_material_search_limit、material_model、allow_web_material_search、web_search_provider、allow_material_multi_reference、multi_reference_confirmed，不含密钥。allow_material_multi_reference 为 false 时，聊天和网络合计最多加入一张自动取得的素材图。
 
 ```python
 async def list_self_options(ctx):

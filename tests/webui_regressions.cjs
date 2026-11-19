@@ -239,7 +239,7 @@ async function settings(view = 'settings') {
     bootstrap: async () => {}, render: async () => {},
     submitForm: form => form.onsubmit(event),
   });
-  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_prompt: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, allow_web_material_search: {}, web_search_provider: {}, deepseek_api_key: {} },
+  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_prompt: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, allow_web_material_search: {}, allow_material_multi_reference: {}, web_search_provider: {}, deepseek_api_key: {} },
     schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {}, integration_api_enabled: {}, group_access_ids: {}, private_access_mode: {}, admin_user_ids: {}, group_default_quota: {} } }, style: { fields: { presets: {} } } } },
     settings: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } },
     defaults: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } } };
@@ -291,6 +291,7 @@ test('creative: preset, self-reference and material drafts merge without overwri
   h.panel('references').values.self_reference_enabled = true;
   h.panel('references').values.self_reference_prompt = '保留角色外观并重新构图';
   h.panel('materials').values.allow_web_material_search = true;
+  h.panel('materials').values.allow_material_multi_reference = true;
   h.panel('materials').values.chat_material_search_limit = 80;
   h.panel('materials').values.material_model = 'fast-vision';
   assert.ok(Object.hasOwn(h.panel('materials').fields, 'chat_material_search_limit'));
@@ -303,6 +304,7 @@ test('creative: preset, self-reference and material drafts merge without overwri
   assert.equal(submitted.general.references.self_reference_enabled, true);
   assert.equal(submitted.general.references.self_reference_prompt, '保留角色外观并重新构图');
   assert.equal(submitted.general.references.allow_web_material_search, true);
+  assert.equal(submitted.general.references.allow_material_multi_reference, true);
   assert.equal(submitted.general.references.chat_material_search_limit, 80);
   assert.equal(submitted.general.references.material_model, 'fast-vision');
   assert.equal(submitted.general.timeout, 150);
@@ -354,6 +356,25 @@ test('references: declining multi-image confirmation leaves the proposed referen
   h.get('[data-cancel]').onclick();
   assert.equal(await result, false);
   assert.equal(JSON.stringify(all), before);
+});
+
+test('materials: enabling multiple references requires model confirmation', async () => {
+  const h = harness('references');
+  const dialog = node({ showModal() {}, remove() {}, close() { this.listeners.close(); } });
+  h.document.body = { append() {} };
+  h.document.createElement = () => dialog;
+  const previous = { general: { references: { ...referenceDefaults, allow_material_multi_reference: false } }, style: { presets: [] } };
+  const next = structuredClone(previous);
+  next.general.references.allow_material_multi_reference = true;
+  const cancelled = h.U.referenceUI.confirmSettings(next, previous);
+  h.get('[data-cancel]').onclick();
+  assert.equal(await cancelled, false);
+  const confirmed = h.U.referenceUI.confirmSettings(next, previous);
+  h.get('[data-confirm]').onclick();
+  assert.equal(await confirmed, true);
+  assert.equal(next.general.references.multi_reference_confirmed, false);
+  h.document.createElement = () => { throw Error('already enabled materials should not require confirmation'); };
+  assert.equal(await h.U.referenceUI.confirmSettings(next, next), true);
 });
 
 test('references: disabled self references do not request multi-image confirmation', async () => {

@@ -54,6 +54,7 @@ class ReferenceAPIService:
                 "allow_chat_material_search": refs.allow_chat_material_search,
                 "chat_material_search_limit": refs.chat_material_search_limit, "material_model": refs.material_model,
                 "allow_web_material_search": refs.allow_web_material_search,
+                "allow_material_multi_reference": refs.allow_material_multi_reference,
                 "web_search_provider": refs.web_search_provider, "multi_reference_confirmed": refs.multi_reference_confirmed}
 
     async def get(self, asset_id: str) -> Dict[str, Any]:

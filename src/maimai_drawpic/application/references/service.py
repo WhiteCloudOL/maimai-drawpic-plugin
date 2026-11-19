@@ -92,6 +92,8 @@ class ReferencePreparation:
         )
         images.extend(self._preset_images(initial_preset))
         if self.options.material_sources:
+            allow_multiple_materials = refs.allow_material_multi_reference and live.general.references.allow_material_multi_reference
+            material_selected = False
             plan = await self.recognizer.needs(self.options.user_request, source_count=len(self.images))
             chat_images: Optional[List[ReferenceImage]] = None
             if plan.chat_followup and "chat" in self.options.material_sources:
@@ -115,6 +117,7 @@ class ReferencePreparation:
                 if previous is None:
                     raise TaskRequestError("MATERIAL_MISSING", "没有找到要接续的前图，请回复或补充那张图片")
                 images.append(previous)
+                material_selected = True
             visual_calls = 0
             for need in plan.needs:
                 self_enabled = self.self_reference_enabled
@@ -125,6 +128,8 @@ class ReferencePreparation:
                         raise TaskRequestError("SELF_REFERENCE_MISSING", "机器人自身形象需要已启用的自我参考，不能用同名网图替代")
                     continue
                 if need.kind != "user" and (not need.web_search or "web" not in self.options.material_sources):
+                    continue
+                if need.kind != "user" and material_selected and not allow_multiple_materials:
                     continue
                 found = False
                 candidates = list(images)
@@ -148,6 +153,8 @@ class ReferencePreparation:
                         if await self.recognizer.matches(candidate, need):
                             # 同一真实图片可承担多个用途，最终仅发送一次。
                             images.append(ReferenceImage(candidate.raw, candidate.source, need.role, need.subject, candidate.url))
+                            if source == "web":
+                                material_selected = True
                             found = True
                             break
                     if found:

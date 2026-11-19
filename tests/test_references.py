@@ -367,6 +367,66 @@ def test_material_triggers_only_fetch_sources_needed_for_this_request(tmp_path, 
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("followup", [False, True])
+@pytest.mark.parametrize("multi_reference", [False, True])
+def test_material_multi_reference_limits_automatic_images(make_plugin, monkeypatch, followup, multi_reference):
+    from test_api_settings import provide_streams
+    from test_drawing_client import DrawingClient, LocalAPI
+
+    async def run():
+        service = module("application.references.service")
+        recognition = module("application.references.recognition")
+        references = module("domain.references")
+        raw = image_bytes()
+        chat_image = references.ReferenceImage(raw + b"previous", "chat")
+        subjects = ("甘雨", "刻晴")
+        web_images = {
+            subject: references.ReferenceImage(raw + subject.encode(), "web", url=f"https://example.org/{i}.png")
+            for i, subject in enumerate(subjects)
+        }
+        chat = AsyncMock(return_value=[chat_image, references.ReferenceImage(raw + b"unrelated", "chat")])
+        web = AsyncMock(side_effect=lambda query, *, subject: [web_images[subject]])
+        plan = recognition.MaterialNeeds(chat_followup=followup, needs=[
+            recognition.MaterialNeed(subject=subject, mention=subject, web_search=True, role="identity", query=subject)
+            for subject in subjects
+        ])
+        monkeypatch.setattr(service, "read_chat_materials", chat)
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "needs", AsyncMock(return_value=plan))
+        monkeypatch.setattr(recognition.ReferenceRecognizer, "matches",
+                            AsyncMock(side_effect=lambda image, need: image.raw == web_images[need.subject].raw))
+        monkeypatch.setattr(module("infrastructure.references.materials").MaterialSource, "web", web)
+        plugin = make_plugin()
+        await plugin.on_load()
+        try:
+            workspace = await plugin.workspace_bootstrap()
+            refs = workspace["settings"]["general"]["references"]
+            assert refs["allow_material_multi_reference"] is False
+            refs.update(allow_chat_material_search=True, allow_web_material_search=True,
+                        allow_material_multi_reference=multi_reference)
+            await plugin.workspace_settings_save(json.dumps(workspace["settings"]), workspace["revision"])
+            provide_streams(plugin, monkeypatch)
+            generate = AsyncMock(return_value=[raw])
+            sender = AsyncMock(return_value=1)
+            monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
+            monkeypatch.setattr(plugin._require_stream_service(), "send_generated_images_with_fallback", sender)
+            client = DrawingClient(LocalAPI(plugin), poll_interval=0.001)
+            result = await client.generate("画甘雨和刻晴", task_type="edit_image", stream_id="actual-stream",
+                                           reference_options={"user_request": "画甘雨和刻晴", "material_sources": ["chat", "web"],
+                                                              "multi_reference_confirmed": True}, wait_seconds=5)
+            assert result.status == "completed", result.error
+            candidates = ([chat_image] if followup else []) + list(web_images.values())
+            expected = candidates if multi_reference else candidates[:1]
+            generate.assert_awaited_once()
+            assert generate.await_args.kwargs["source_image_bytes_list"] == [image.raw for image in expected]
+            assert generate.await_args.kwargs["source_image_urls"] == [image.url for image in expected]
+            assert web.await_count == len(expected) - int(followup)
+            assert chat.await_count == int(followup)
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("status,expected,calls", [("match", True, 1), ("mismatch", False, 1), ("uncertain", True, 2)])
 def test_cached_chat_description_reuses_text_before_viewing_image(status, expected, calls):
     async def run():

@@ -506,6 +506,11 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "前図の編集・再生成を明確に続ける場合だけ履歴画像を探します。",
         "이전 그림의 수정이나 재생성을 명확히 이어갈 때만 대화 이미지를 찾습니다.",
     ),
+    "ReferenceConfig.allow_material_multi_reference": (
+        "By default, at most one automatically retrieved image is added. Enable this to use images for multiple needs. Make sure your drawing model accepts multiple images.",
+        "既定では自動取得した素材画像を最大1枚追加します。有効にすると複数の用途に合わせて取得できます。描画モデルが複数画像の入力に対応していることを確認してください。",
+        "기본적으로 자동으로 찾은 소재 이미지를 최대 한 장 추가합니다. 켜면 여러 요구에 맞춰 찾을 수 있습니다. 그리기 모델이 여러 이미지 입력을 지원하는지 확인하세요.",
+    ),
     "ReferenceConfig.self_reference_ids": (
         "Leave empty to select one image by gallery tags, using the default image when no tag matches. Select images only to keep a fixed appearance.",
         "空欄ではギャラリーのタグで1枚を選び、一致しなければ既定画像を使います。外見を固定する場合に画像を選択してください。",
@@ -817,6 +822,7 @@ _FIELD_LABELS.update({
     "self_reference_prompt": ("Self-reference prompt", "自身の参照プロンプト", "자신의 참조 프롬프트"),
     "multi_reference_confirmed": ("Multiple references confirmed", "複数参照を確認済み", "다중 참조 확인됨"),
     "allow_chat_material_search": ("Allow chat materials", "チャット内の素材を許可", "대화 소재 허용"),
+    "allow_material_multi_reference": ("Multiple material references", "複数の素材画像を参照", "여러 소재 이미지 참조"),
     "chat_material_search_limit": ("Chat search limit (messages)", "チャット検索の上限（件）", "대화 검색 상한(메시지 수)"),
     "allow_web_material_search": ("Allow web materials", "ウェブ素材を許可", "웹 소재 허용"),
     "preset_type": ("Preset type", "プリセットの種類", "프리셋 유형"),

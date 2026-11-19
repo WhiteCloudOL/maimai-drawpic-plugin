@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const U = window.DrawpicUI, { state, $, e, icon, call, toast } = U;
-  const notice = "该配置会向绘图模型发送多张参考图。请确认所用服务商及具体模型支持多图参考。插件会校验图生图能力，但不自动探测多图兼容性；切换模型后请重新核实。";
+  const notice = "启用后可能向绘图模型发送多张参考图。请确认所用服务商和具体模型支持多图参考。切换模型后请重新确认。";
 
   function confirmReferenceAction(title, message, detail, confirmText) {
     const dialog = document.createElement("dialog");
@@ -332,7 +332,8 @@
       const before = previous.style.presets.find(item => item.name === preset.name);
       return preset.reference_bindings.length > 1 && (!preset.multi_reference_confirmed || JSON.stringify(preset.reference_bindings) !== JSON.stringify(before?.reference_bindings));
     });
-    if (!selfNeeds && !presets.length) return true;
+    const materialNeeds = refs.allow_material_multi_reference && !old.allow_material_multi_reference;
+    if (!selfNeeds && !presets.length && !materialNeeds) return true;
     if (!(await confirmMultiple())) return false;
     if (selfNeeds) refs.multi_reference_confirmed = true;
     presets.forEach(preset => { preset.multi_reference_confirmed = true; });
