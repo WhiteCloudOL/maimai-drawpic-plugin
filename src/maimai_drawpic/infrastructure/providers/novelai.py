@@ -463,7 +463,7 @@ class NovelAIImage:
                     raise provider_response_error(
                         response.status, content.decode("utf-8", errors="replace"), self.api_key, "novelai 图片接口拒绝"
                     )
-                self._log_info("NovelAI 接口成功: status=%s duration=%.2fs", response.status, duration)
+                self._log_debug("NovelAI 接口成功: status=%s duration=%.2fs", response.status, duration)
                 return content, content_type
 
     @bounded_results
@@ -580,10 +580,10 @@ class NovelAIImage:
             timeout_seconds=self.request_timeout_seconds,
         )
 
-    def _log_info(self, message: str, *args: Any) -> None:
-        """记录信息日志。"""
+    def _log_debug(self, message: str, *args: Any) -> None:
+        """记录调试日志。"""
         if self.logger is not None:
-            self.logger.info(message, *sanitized_log_args(args, self.api_key))
+            self.logger.debug(message, *sanitized_log_args(args, self.api_key))
 
     def _log_warning(self, message: str, *args: Any) -> None:
         """记录警告日志。"""

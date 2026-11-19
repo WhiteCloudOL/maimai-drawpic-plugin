@@ -11,6 +11,7 @@
 - 文生图/图生图能力判断统一走 `ProviderRouter` 的模型任务能力接口；不要在各入口散写 `provider != ...` 之类的分支。
 - 某些平台整体不支持图生图时在路由层内置原因；具体模型优先自动识别，也允许通过 `[general].image_edit_unsupported_models` 与 `[general].text_to_image_unsupported_models` 人工覆盖，不要等上游接口报错。
 - 日志要能定位任务链路：提交、开始执行、能力拒绝、审核失败、平台失败、发送成功至少包含 `task_id`、`task_type`、`provider`、`model`、`source_image_count` 等关键字段。
+- 请求细节、审核通过、逐图发送进度和常规额度检查记 `DEBUG`；任务结果和配置变更记 `INFO`；能力或审核拒绝、重试、送达未知等情况记 `WARNING`；终止任务的执行故障和存储、结算故障记 `ERROR`。
 - 日志严禁输出 API Key、Authorization、完整 Base64、带查询参数的签名 URL；上游错误应保留 HTTP 状态、业务错误码、脱敏 URL、request_id 与耗时。
 - 源图处理必须校验真实图片 Base64，同时保留适配器给出的原始 HTTP(S) URL；不要把图片描述文本当作源图传入。
 - 智谱图片接口默认模型为 `glm-image`；请求必填字段为 `model`、`prompt`，可选字段为 `quality`、`size`、`watermark_enabled`、`user_id`，并保留 `extra_parameters` 供用户自定义。不要重新加入当前官方接口未声明的 `response_format` 或旧 `user` 字段。

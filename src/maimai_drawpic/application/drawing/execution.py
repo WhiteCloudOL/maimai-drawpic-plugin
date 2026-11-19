@@ -208,7 +208,7 @@ class ImageExecutionMixin:
                     provider=successful_attempt.provider_name,
                 )
                 await _notify_task_unsuccessful("rejected", review_reason_text)
-                self.ctx.logger.error(
+                self.ctx.logger.warning(
                     "绘图任务审核未通过: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s error=%s",
                     task_id,
                     task_type,
@@ -309,7 +309,7 @@ class ImageExecutionMixin:
                     delivery_unconfirmed=delivery_started,
                 )
                 await _notify_task_unsuccessful("failed", "任务已取消")
-            self.ctx.logger.warning(
+            self.ctx.logger.info(
                 "绘图任务收到取消请求: task_id=%s task_type=%s model=%s", task_id, task_type, resolved_model
             )
             raise

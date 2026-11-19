@@ -181,7 +181,7 @@ class SiliconFlowImage:
                     )
                     raise provider_response_error(response.status, raw_error, self.api_key, "siliconflow 图片接口拒绝")
                 response_json = await read_response_json(response)
-                self._log_info("硅基流动接口成功: status=%s duration=%.2fs", response.status, duration)
+                self._log_debug("硅基流动接口成功: status=%s duration=%.2fs", response.status, duration)
                 return response_json
 
     @bounded_results
@@ -223,10 +223,10 @@ class SiliconFlowImage:
             timeout_seconds=self.request_timeout_seconds,
         )
 
-    def _log_info(self, message: str, *args: Any) -> None:
-        """记录信息日志。"""
+    def _log_debug(self, message: str, *args: Any) -> None:
+        """记录调试日志。"""
         if self.logger is not None:
-            self.logger.info(message, *sanitized_log_args(args, self.api_key))
+            self.logger.debug(message, *sanitized_log_args(args, self.api_key))
 
     def _log_warning(self, message: str, *args: Any) -> None:
         """记录警告日志。"""

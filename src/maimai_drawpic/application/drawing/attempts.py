@@ -84,7 +84,7 @@ class RequestAttemptRunnerMixin:
                     )
                     if not images:
                         raise ProviderResultError("已收到图片平台响应，但没有可用图片；未重新提交生成")
-                    self.ctx.logger.info(
+                    self.ctx.logger.debug(
                         "模型尝试成功: task_id=%s task_type=%s provider=%s model=%s attempt=%s source_image_count=%s",
                         task_id,
                         task_type,

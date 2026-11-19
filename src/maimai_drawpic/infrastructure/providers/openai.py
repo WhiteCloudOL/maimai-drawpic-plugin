@@ -236,7 +236,7 @@ class OpenaiImage:
         if cached in modes:
             modes.remove(cached)
             modes.insert(0, cached)
-        self._log_info("OpenAI 自动兼容选择: model=%s task_type=%s modes=%s", model, task_type, modes)
+        self._log_debug("OpenAI 自动兼容选择: model=%s task_type=%s modes=%s", model, task_type, modes)
         return modes
 
     def _remember_auto_mode(self, model: str, task_type: str, mode: str) -> None:
@@ -244,7 +244,7 @@ class OpenaiImage:
             self._successful_auto_modes[(task_type, model)] = mode
 
     def _log_endpoint_switch(self, model: str, old: str, new: str, error: OpenAIRequestError) -> None:
-        self._log_info(
+        self._log_warning(
             "OpenAI 端点不支持，切换兼容格式: model=%s from=%s to=%s status=%s code=%s",
             model,
             old,
@@ -278,7 +278,7 @@ class OpenaiImage:
                     **self.proxy_settings.aiohttp_request_kwargs(),
                 ) as response:
                     if response.status != 200:
-                        self._log_info("OpenAI 端点信息不可用: status=%s", response.status)
+                        self._log_debug("OpenAI 端点信息不可用: status=%s", response.status)
                         return {}
                     result = await read_response_json(response, max_bytes=2 * 1024 * 1024)
             if not isinstance(result, dict) or not isinstance(result.get("data"), list):
@@ -615,7 +615,7 @@ class OpenaiImage:
         last_error = None
         for size_index, size in enumerate(size_candidates):
             if size_index == 0:
-                self._log_info(
+                self._log_debug(
                     "OpenAI 图生图尺寸尝试: model=%s source_size=%s request_size=%s default_size=%s image_count=%s",
                     model,
                     source_size,
@@ -642,7 +642,7 @@ class OpenaiImage:
                 ]
             for field_index, (field_name, submitted_images, field_mode) in enumerate(field_candidates):
                 try:
-                    self._log_info(
+                    self._log_debug(
                         "OpenAI 图生图图片字段尝试: model=%s field_name=%s field_mode=%s submitted_image_count=%s total_image_count=%s",
                         model,
                         field_name,
@@ -955,10 +955,10 @@ class OpenaiImage:
         if self.logger is not None:
             self.logger.error(message, *sanitized_log_args(args, self.api_key))
 
-    def _log_info(self, message: str, *args: Any) -> None:
-        """记录信息日志。"""
+    def _log_debug(self, message: str, *args: Any) -> None:
+        """记录调试日志。"""
         if self.logger is not None:
-            self.logger.info(message, *sanitized_log_args(args, self.api_key))
+            self.logger.debug(message, *sanitized_log_args(args, self.api_key))
 
     def _log_warning(self, message: str, *args: Any) -> None:
         """记录警告日志。"""

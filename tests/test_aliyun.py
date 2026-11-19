@@ -679,6 +679,9 @@ def test_draw_service_passes_source_urls_only_to_aliyun_adapter() -> None:
     )
 
     class _Logger:
+        def debug(self, *_args: Any) -> None:
+            return None
+
         def info(self, *_args: Any) -> None:
             return None
 

@@ -232,7 +232,7 @@ class ChatStreamService(ImageDeliveryMixin):
             if user_id and candidate_user_id == user_id and candidate_session_id:
                 return context
 
-        self.ctx.logger.warning(
+        self.ctx.logger.debug(
             "扫描聊天流列表后仍未匹配到活跃聊天流: session_id=%s user_id=%s group_id=%s platform=%s",
             session_id,
             user_id,

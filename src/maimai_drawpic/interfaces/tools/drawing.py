@@ -234,7 +234,7 @@ class DrawingToolMixin:
                 )
             source_image_bytes_list = [decode_image_base64(image.base64_data) for image in source_image_inputs]
             source_image_urls = [image.url for image in source_image_inputs]
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "edit_image 已收集源图: stream_id=%s lookup_stream_ids=%s source_image_count=%s matched_message_id=%s",
                 normalized_stream_id,
                 lookup_stream_ids,

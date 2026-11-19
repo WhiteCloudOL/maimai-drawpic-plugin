@@ -24,7 +24,7 @@ class ImageDeliveryMixin:
         send_options: Dict[str, bool] = {"sync_to_maisaka_history": True} if sync_to_maisaka_history else {}
         for index, image_bytes in enumerate(image_bytes_list, start=1):
             image_base64 = await asyncio.to_thread(lambda raw=image_bytes: base64.b64encode(raw).decode("ascii"))
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "正在发送绘图结果图片: task_id=%s stream_id=%s progress=%s/%s history_sync_requested=%s",
                 task_id,
                 stream_id,

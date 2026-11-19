@@ -125,7 +125,7 @@ def test_review_defaults_retry_twice_and_log_each_attempt(stage: str, failure) -
         assert result.passed
         assert llm.await_count == 3
         assert all(call.kwargs["rpc_timeout_ms"] == 60000 for call in llm.await_args_list)
-        logs = [call.args[0] % call.args[1:] for call in ctx.logger.info.call_args_list]
+        logs = [call.args[0] % call.args[1:] for call in ctx.logger.debug.call_args_list]
         warnings = [call.args[0] % call.args[1:] for call in ctx.logger.warning.call_args_list]
         assert len(warnings) == 2
         assert all("retrying=True" in line for line in warnings)
@@ -181,7 +181,7 @@ def test_cancelling_retry_backoff_stops_and_logs_cancellation() -> None:
         with pytest.raises(asyncio.CancelledError):
             await task
         assert ctx.llm.generate.await_count == 1
-        last = ctx.logger.info.call_args
+        last = ctx.logger.debug.call_args
         assert "审核已取消: task_id=audit-cancel" in last.args[0] % last.args[1:]
 
     asyncio.run(run())
@@ -235,7 +235,7 @@ async def configured_plugin(make_plugin, monkeypatch, *, prompt: bool = False, i
 
 
 def test_review_settings_and_attempts_are_saved_in_safe_task_logs(make_plugin, monkeypatch, caplog) -> None:
-    caplog.set_level("INFO", logger="plugin.maimai-drawpic-plugin")
+    caplog.set_level("DEBUG", logger="plugin.maimai-drawpic-plugin")
 
     async def run():
         plugin, service, generated, sent = await configured_plugin(make_plugin, monkeypatch, prompt=True, image=True)
@@ -264,6 +264,9 @@ def test_review_settings_and_attempts_are_saved_in_safe_task_logs(make_plugin, m
     assert "error_code=REVIEW_TIMEOUT" in task_lines and "retrying=True" in task_lines
     assert "attempt=2 total_attempts=3 result=PASS duration_ms=" in task_lines
     assert "绘图任务完成:" in task_lines
+    assert any(" | DEBUG | 审核请求完成:" in line for line in task_lines.splitlines())
+    assert any(" | WARNING | 审核请求失败:" in line for line in task_lines.splitlines())
+    assert any(" | INFO | 绘图任务完成:" in line for line in task_lines.splitlines())
     for secret in ("private-audit-input-fixture", "secret-fixture-key", base64.b64encode(image_bytes()).decode()):
         assert secret not in text
 

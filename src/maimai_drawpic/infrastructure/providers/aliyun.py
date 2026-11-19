@@ -330,7 +330,7 @@ class AliyunImage:
             request_id = self._response_request_id(response)
 
             if status != previous_status:
-                self._log_info(
+                self._log_debug(
                     "阿里云异步任务状态变化: model=%s task_id=%s from=%s to=%s duration=%.2fs request_id=%s",
                     model,
                     task_id,
@@ -599,6 +599,10 @@ class AliyunImage:
     def _log_info(self, message: str, *args: Any) -> None:
         if self.logger is not None:
             self.logger.info(message, *sanitized_log_args(args, self.api_key))
+
+    def _log_debug(self, message: str, *args: Any) -> None:
+        if self.logger is not None:
+            self.logger.debug(message, *sanitized_log_args(args, self.api_key))
 
     def _log_error(self, message: str, *args: Any) -> None:
         if self.logger is not None:

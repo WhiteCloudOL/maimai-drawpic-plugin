@@ -343,7 +343,7 @@ class CommandMixin:
                     return False, "文生图指令源图检查失败", 1
 
                 if source_image_inputs:
-                    self.ctx.logger.info(
+                    self.ctx.logger.warning(
                         "/绘图 文生图检测到源图，拒绝强制文生图: stream_id=%s lookup_stream_ids=%s source_image_count=%s message_id=%s",
                         normalized_stream_id,
                         lookup_stream_ids,

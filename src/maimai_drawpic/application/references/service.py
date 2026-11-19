@@ -193,7 +193,7 @@ class ReferencePreparation:
         if unique:
             mapping = "\n".join(f"Image {index}: {', '.join(uses[digest])}" for index, digest in enumerate(unique, 1))
             prompt += "\nReference image uses (apply only the listed features):\n" + mapping
-        self.ctx.logger.info("素材准备完成: task_id=%s task_type=%s source_image_count=%s preset=%s",
+        self.ctx.logger.debug("素材准备完成: task_id=%s task_type=%s source_image_count=%s preset=%s",
                              task_id, mode, len(unique), resolved.style_name)
         self.validate_self_reference_usage()
         return PreparedRequest(prompt, resolved.negative_prompt_template, [image.raw for image in unique.values()],

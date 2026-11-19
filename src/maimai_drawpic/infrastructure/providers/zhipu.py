@@ -117,7 +117,7 @@ class ZhipuImage:
                     raise provider_response_error(response.status, raw_error, self.api_key, "zhipu 图片接口拒绝")
                 response_json = await read_response_json(response)
                 data_count = len(response_json.get("data", [])) if isinstance(response_json.get("data"), list) else 0
-                self._log_info(
+                self._log_debug(
                     "智谱接口成功: status=%s duration=%.2fs data_count=%s", response.status, duration, data_count
                 )
                 return response_json
@@ -162,10 +162,10 @@ class ZhipuImage:
             timeout_seconds=self.request_timeout_seconds,
         )
 
-    def _log_info(self, message: str, *args: Any) -> None:
-        """记录信息日志。"""
+    def _log_debug(self, message: str, *args: Any) -> None:
+        """记录调试日志。"""
         if self.logger is not None:
-            self.logger.info(message, *sanitized_log_args(args, self.api_key))
+            self.logger.debug(message, *sanitized_log_args(args, self.api_key))
 
     def _log_error(self, message: str, *args: Any) -> None:
         """记录错误日志。"""

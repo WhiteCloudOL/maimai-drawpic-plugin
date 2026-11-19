@@ -62,7 +62,7 @@ class RequestPlanningMixin:
                     f"{effective_model}，请先在 novelai.models 中启用该模型"
                 )
             if effective_model != model:
-                self.ctx.logger.info(
+                self.ctx.logger.debug(
                     "NovelAI V3 模型按 mode 自动切换: original_model=%s effective_model=%s mode=%s is_fallback=%s",
                     model,
                     effective_model,
@@ -188,7 +188,7 @@ class RequestPlanningMixin:
             attempt.model,
             task_type,
         )
-        self.ctx.logger.info(
+        self.ctx.logger.debug(
             "反向提示词处理: task_id=%s task_type=%s provider=%s model=%s enabled=%s "
             "request_ignored=%s style_present=%s negative_len=%s character_count=%s transport=%s",
             task_id, task_type, provider_name, attempt.model, negative_config.negative_prompt_enabled,
@@ -214,7 +214,7 @@ class RequestPlanningMixin:
                 )
         if v4_negative_prompt is not None:
             v4_negative_prompt["caption"]["base_caption"] = provider_negative_prompt
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "NAI 角色反向词处理完成: task_id=%s model=%s character_count=%s nonempty_count=%s",
                 task_id, attempt.model, len(characters),
                 sum(bool(character.get("char_caption", "")) for character in characters),
@@ -237,7 +237,7 @@ class RequestPlanningMixin:
         )
 
         if task_type == "edit_image":
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "开始绘图任务尝试: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s source_image_count=%s source_image_bytes_lengths=%s matched_message_id=%s prompt_len=%s",
                 task_id,
                 task_type,
@@ -266,7 +266,7 @@ class RequestPlanningMixin:
                 1,
             )
 
-        self.ctx.logger.info(
+        self.ctx.logger.debug(
             "开始绘图任务尝试: task_id=%s task_type=%s provider=%s model=%s is_fallback=%s source_image_count=0 prompt_len=%s",
             task_id,
             task_type,

@@ -22,9 +22,9 @@ class PromptReviewMixin:
             self.ctx.logger.warning("提示词审核终止: task_id=%s error_type=%s", task_id, type(exc).__name__)
             raise
         if review_result.passed:
-            self.ctx.logger.info("提示词审核通过: task_id=%s", task_id)
+            self.ctx.logger.debug("提示词审核通过: task_id=%s", task_id)
         else:
-            self.ctx.logger.info("提示词审核未通过: task_id=%s", task_id)
+            self.ctx.logger.warning("提示词审核未通过: task_id=%s", task_id)
         if not review_result.passed:
             reason_suffix = f"原因：{review_result.reason}" if review_result.reason else "原因：审核模型判定为不通过"
             raise ProviderRequestError(
@@ -65,7 +65,7 @@ class PromptReviewMixin:
             )
             validation_error = self._get_english_prompt_validation_error(rewritten_prompt)
             if not validation_error:
-                self.ctx.logger.info(
+                self.ctx.logger.debug(
                     "提示词英文改写完成: provider=%s model=%s original_len=%s rewritten_len=%s",
                     provider_name,
                     model,
@@ -171,12 +171,12 @@ class PromptReviewMixin:
                 )
                 raise
             if review_result.passed:
-                self.ctx.logger.info("图片审核通过: task_id=%s image_index=%s", task_id, index)
+                self.ctx.logger.debug("图片审核通过: task_id=%s image_index=%s", task_id, index)
                 approved_images.append(image_bytes)
                 continue
 
             rejected_reason = review_result.reason or "审核模型判定为不通过"
-            self.ctx.logger.info("图片审核未通过: task_id=%s image_index=%s", task_id, index)
+            self.ctx.logger.warning("图片审核未通过: task_id=%s image_index=%s", task_id, index)
             rejected_reasons.append(f"第 {index} 张：{rejected_reason}")
 
         return approved_images, rejected_reasons

@@ -131,7 +131,7 @@ async def maintain_workspace(plugin: Any) -> None:
             async with workspace.tasks.lock:
                 counts = await asyncio.to_thread(workspace.tasks.cleanup_storage, protected)
             if any(counts.values()):
-                plugin.ctx.logger.info("已清理过期运行产物: inputs=%s results=%s", counts["inputs"], counts["results"])
+                plugin.ctx.logger.debug("已清理过期运行产物: inputs=%s results=%s", counts["inputs"], counts["results"])
         except (OSError, ValueError):
             plugin.ctx.logger.exception("清理运行产物失败")
 

@@ -313,7 +313,7 @@ class DrawService(
         )
         self.router.validate_source_image_count(primary_attempt.model, len(normalized_source_images))
         if is_image_edit and self.router.get_image_edit_unsupported_reason(primary_attempt.model):
-            self.ctx.logger.info(
+            self.ctx.logger.warning(
                 "拒绝提交图生图任务: model=%s stream_id=%s user_id=%s group_id=%s platform=%s source_image_count=%s reason=%s",
                 primary_attempt.model,
                 stream_id,
@@ -328,7 +328,7 @@ class DrawService(
 
         fallback_models = self.router.resolve_fallback_models(resolved_model)
         fallback_model = fallback_models[0] if fallback_models else ""
-        self.ctx.logger.info(
+        self.ctx.logger.debug(
             "准备提交绘图任务: stream_id=%s task_type=%s provider=%s model=%s fallback_models=%s source_image_count=%s",
             stream_id,
             task_type,

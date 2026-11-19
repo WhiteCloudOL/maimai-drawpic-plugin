@@ -208,7 +208,7 @@ class ComfyUIImage:
             if not isinstance(node.get("class_type"), str) or not node["class_type"].strip() or not isinstance(node.get("inputs"), dict):
                 raise ValueError(f"ComfyUI {task_name}工作流节点 {node_id} 缺少有效的 class_type 或 inputs，请使用 API 格式导出")
 
-        self._log_info("已加载 ComfyUI %s工作流: path=%s node_count=%s", task_name, workflow_path, len(workflow))
+        self._log_debug("已加载 ComfyUI %s工作流: path=%s node_count=%s", task_name, workflow_path, len(workflow))
         return copy.deepcopy(workflow)
 
     def _inject_prompt(
@@ -255,7 +255,7 @@ class ComfyUIImage:
         seed = self.seed if self.seed >= 0 else secrets.randbits(64)
         self._set_node_input(workflow, node_id, self.seed_input_name, seed, f"{task_name}随机种子")
         seed_mode = "固定" if self.seed >= 0 else "随机"
-        self._log_info("ComfyUI %s种子已写入: mode=%s seed=%s node_id=%s", task_name, seed_mode, seed, node_id)
+        self._log_debug("ComfyUI %s种子已写入: mode=%s seed=%s node_id=%s", task_name, seed_mode, seed, node_id)
 
     def _validate_seed_target(self, workflow: Dict[str, Any], configured_node_id: str, task_name: str) -> str:
         """解析并验证种子节点；未配置时自动识别唯一的 seed 输入节点。"""
@@ -338,7 +338,7 @@ class ComfyUIImage:
             history = await self._wait_for_history(prompt_id, start_time, task_name)
             image_descriptors = self._extract_image_descriptors(history, prompt_id)
             images = [await self._download_image(descriptor) for descriptor in image_descriptors]
-        self._log_info(
+        self._log_debug(
             "ComfyUI %s完成: prompt_id=%s image_count=%s duration=%.2fs",
             task_name,
             prompt_id,
@@ -454,7 +454,7 @@ class ComfyUIImage:
         subfolder = response.get("subfolder")
         if isinstance(subfolder, str) and subfolder:
             uploaded_name = f"{subfolder.rstrip('/')}/{uploaded_name}"
-        self._log_info("ComfyUI 图生图源图片上传成功: filename=%s size=%s", uploaded_name, len(image_bytes))
+        self._log_debug("ComfyUI 图生图源图片上传成功: filename=%s size=%s", uploaded_name, len(image_bytes))
         return uploaded_name
 
     async def _download_image(self, descriptor: Dict[str, str]) -> bytes:

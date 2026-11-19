@@ -420,7 +420,7 @@ class VolcengineImage:
                         400, {"code": error_code, "message": error_message}, self.api_key, "火山引擎图片接口返回错误"
                     )
 
-                self._log_info("火山引擎接口成功: status=%s duration=%.2fs", response.status, duration)
+                self._log_debug("火山引擎接口成功: status=%s duration=%.2fs", response.status, duration)
                 return response_json
 
     @staticmethod
@@ -575,10 +575,10 @@ class VolcengineImage:
             timeout_seconds=self.request_timeout_seconds,
         )
 
-    def _log_info(self, message: str, *args: Any) -> None:
-        """记录信息日志。"""
+    def _log_debug(self, message: str, *args: Any) -> None:
+        """记录调试日志。"""
         if self.logger is not None:
-            self.logger.info(message, *sanitized_log_args(args, self.api_key))
+            self.logger.debug(message, *sanitized_log_args(args, self.api_key))
 
     def _log_error(self, message: str, *args: Any) -> None:
         """记录错误日志。"""

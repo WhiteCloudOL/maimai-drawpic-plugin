@@ -80,7 +80,7 @@ class MaterialSource:
                 try:
                     page = await backend.fetch(page_url)
                 except DeepSeekPageUnavailable as exc:
-                    self.ctx.logger.warning("跳过无法抓取的素材候选网页: url=%s reason=%s", sanitize_provider_url(page_url), str(exc))
+                    self.ctx.logger.debug("跳过无法抓取的素材候选网页: url=%s reason=%s", sanitize_provider_url(page_url), str(exc))
                     failures.append(str(exc))
                     continue
                 except TaskRequestError:
@@ -89,7 +89,7 @@ class MaterialSource:
                     if refs.web_search_provider != "maibot":
                         raise
                     reason = sanitize_provider_text(str(exc))
-                    self.ctx.logger.warning("MaiBot 素材候选网页读取失败: url=%s reason=%s", sanitize_provider_url(page_url), reason)
+                    self.ctx.logger.debug("MaiBot 素材候选网页读取失败: url=%s reason=%s", sanitize_provider_url(page_url), reason)
                     failures.append(reason)
                     continue
                 if not isinstance(page, dict) or not isinstance(page.get("content"), str):
@@ -99,7 +99,7 @@ class MaterialSource:
                 try:
                     document = await _download_image(page_url, image_content=False, **options)
                 except ProviderResultError as exc:
-                    self.ctx.logger.warning("素材候选网页不可用: url=%s reason=%s", sanitize_provider_url(page_url), str(exc))
+                    self.ctx.logger.debug("素材候选网页不可用: url=%s reason=%s", sanitize_provider_url(page_url), str(exc))
                     failures.append(str(exc))
                     continue
                 links = await asyncio.to_thread(image_links, document.decode("utf-8"), page_url)
@@ -111,7 +111,7 @@ class MaterialSource:
             try:
                 raw = await download_image(url, **options)
             except ProviderResultError as exc:
-                self.ctx.logger.warning("素材候选图片不可用: url=%s reason=%s", sanitize_provider_url(url), str(exc))
+                self.ctx.logger.debug("素材候选图片不可用: url=%s reason=%s", sanitize_provider_url(url), str(exc))
                 failures.append(str(exc))
                 continue
             if sum(len(image.raw) for image in images) + len(raw) > 40 * 1024 * 1024:

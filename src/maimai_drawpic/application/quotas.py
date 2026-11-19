@@ -56,7 +56,7 @@ class QuotaMixin:
 
         quota_enabled, quota_period, default_quota = self._resolve_quota_config(group_id)
         if not quota_enabled:
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "绘图额度状态: quota_enabled=false stream_id=%s user_id=%s group_id=%s",
                 stream_id,
                 user_id,
@@ -64,7 +64,7 @@ class QuotaMixin:
             )
             return "未启用次数管理"
         if self._is_admin(user_id):
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "绘图额度状态: admin_user=true stream_id=%s user_id=%s group_id=%s",
                 stream_id,
                 user_id,
@@ -91,7 +91,7 @@ class QuotaMixin:
         )
         scope_label = "群聊" if self._is_group_chat(group_id) else "用户"
         scope_value = group_id.strip() or user_id.strip()
-        self.ctx.logger.info(
+        self.ctx.logger.debug(
             "绘图额度状态: quota_key=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
             quota_key,
             remaining,
@@ -114,7 +114,7 @@ class QuotaMixin:
 
         quota_enabled, quota_period, default_quota = self._resolve_quota_config(group_id)
         if not quota_enabled:
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "跳过绘图额度检查: quota_enabled=false stream_id=%s user_id=%s group_id=%s",
                 stream_id,
                 user_id,
@@ -122,7 +122,7 @@ class QuotaMixin:
             )
             return True, "未启用次数管理", ""
         if self._is_admin(user_id):
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "跳过绘图额度检查: admin_user=true stream_id=%s user_id=%s group_id=%s",
                 stream_id,
                 user_id,
@@ -150,7 +150,7 @@ class QuotaMixin:
         scope_label = "群聊" if is_group else "用户"
         scope_value = group_id.strip() or user_id.strip()
         if remaining <= 0:
-            self.ctx.logger.warning(
+            self.ctx.logger.debug(
                 "绘图额度不足: quota_key=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
                 quota_key,
                 remaining,
@@ -165,7 +165,7 @@ class QuotaMixin:
                 f"{scope_label} {scope_value} 的绘图次数已用尽（周期：{quota_period}）",
                 "",
             )
-        self.ctx.logger.info(
+        self.ctx.logger.debug(
             "绘图额度检查通过: quota_key=%s remaining=%s period=%s default_quota=%s stream_id=%s user_id=%s group_id=%s",
             quota_key,
             remaining,
@@ -208,7 +208,7 @@ class QuotaMixin:
                 default_quota=default_quota,
             )
         if not success:
-            self.ctx.logger.warning(
+            self.ctx.logger.debug(
                 "绘图额度预留失败: quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s",
                 quota_key,
                 remaining,
@@ -217,7 +217,7 @@ class QuotaMixin:
                 group_id,
             )
             return False, "绘图次数已用尽", None if return_reservation else ""
-        self.ctx.logger.info(
+        self.ctx.logger.debug(
             "绘图额度已预留: quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s",
             quota_key,
             remaining,
@@ -264,7 +264,7 @@ class QuotaMixin:
                 period=quota_period,
                 default_quota=default_quota,
             )
-        self.ctx.logger.info(
+        self.ctx.logger.debug(
             "绘图额度已退回: quota_key=%s remaining=%s period=%s stream_id=%s group_id=%s task_id=%s",
             normalized_quota_key,
             remaining,

@@ -127,7 +127,7 @@ class HookMixin:
 
         if cached is not None:
             message_id, source_image_count = cached
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "已缓存入站源图: stream_id=%s message_id=%s source_image_count=%s",
                 resolved_stream_id,
                 message_id,

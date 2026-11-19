@@ -97,7 +97,7 @@ class MiniMaxImage:
                 allow_redirects=False, **self.proxy_settings.aiohttp_request_kwargs(),
             ) as response:
                 request_id = response.headers.get("x-request-id", "")
-                self._log("info", "MiniMax 图片响应: status=%s model=%s endpoint=%s request_id=%s elapsed=%.2fs", response.status, payload["model"], self.base_url + path, request_id, time.monotonic() - started)
+                self._log("debug", "MiniMax 图片响应: status=%s model=%s endpoint=%s request_id=%s elapsed=%.2fs", response.status, payload["model"], self.base_url + path, request_id, time.monotonic() - started)
                 if response.status != 200:
                     raw = await read_response_text(response, max_bytes=64 * 1024)
                     try:
@@ -215,7 +215,7 @@ class MiniMaxImage:
                 code = "1027" if all(isinstance(error, dict) and str(error.get("code")) in {"1026", "1027"} for error in errors) else "1000"
                 raise self._error(422 if code == "1027" else 500, {"error": {"code": code, "message": errors}, "request_id": data.get("request_id", "")})
             raise ProviderResultError("MiniMax 没有返回成功图片，未重新生成")
-        self._log("info", "MiniMax 图片结果已读取: success_count=%s failed_count=%s request_id=%s", len(result), len(errors), data.get("request_id", data.get("id", "")))
+        self._log("debug", "MiniMax 图片结果已读取: success_count=%s failed_count=%s request_id=%s", len(result), len(errors), data.get("request_id", data.get("id", "")))
         return result
 
     def _log(self, level: str, message: str, *args: Any) -> None:
@@ -223,4 +223,4 @@ class MiniMaxImage:
             if level == "warning":
                 self.logger.warning(message, *sanitized_log_args(args, self.api_key))
             else:
-                self.logger.info(message, *sanitized_log_args(args, self.api_key))
+                self.logger.debug(message, *sanitized_log_args(args, self.api_key))

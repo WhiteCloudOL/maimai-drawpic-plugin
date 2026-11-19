@@ -112,7 +112,7 @@ class DrawpicModerationService:
         try:
             for attempt in range(1, total_attempts + 1):
                 started = loop.time()
-                self.ctx.logger.info(
+                self.ctx.logger.debug(
                     "审核请求开始: task_id=%s stage=%s image_index=%s model_task=%s attempt=%s total_attempts=%s timeout_seconds=%s",
                     task_id, stage, image_index, model, attempt, total_attempts, timeout_seconds,
                 )
@@ -135,14 +135,14 @@ class DrawpicModerationService:
                         raise
                     await asyncio.sleep(min(0.25 * attempt, 1.0))
                     continue
-                self.ctx.logger.info(
+                self.ctx.logger.debug(
                     "审核请求完成: task_id=%s stage=%s image_index=%s model_task=%s attempt=%s total_attempts=%s result=%s duration_ms=%s",
                     task_id, stage, image_index, model, attempt, total_attempts,
                     "PASS" if result.passed else "REJECT", round((loop.time() - started) * 1000),
                 )
                 return result
         except asyncio.CancelledError:
-            self.ctx.logger.info(
+            self.ctx.logger.debug(
                 "审核已取消: task_id=%s stage=%s image_index=%s model_task=%s attempt=%s total_attempts=%s duration_ms=%s",
                 task_id, stage, image_index, model, attempt, total_attempts,
                 round((loop.time() - started) * 1000),
