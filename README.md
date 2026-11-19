@@ -125,7 +125,7 @@ git clone https://github.com/WhiteCloudOL/maimai-drawpic-plugin.git
 | **Google Gemini** | 视模型支持 | 支持的模型参考图数量有所不同 |
 | **智谱 AI** | 文生图 | 默认内置模型 `glm-image` |
 | **MiniMax** | 全部支持 | 默认 `MiniMax-H3-Image`；image-01 支持主体参考 |
-| **阿里百炼** | 视模型支持 | 可灵/Vidu 等编辑类模型要求原图提供公网 URL |
+| **阿里百炼** | 视模型支持 | 默认提供 Qwen Image 3.0 Pro 和 3.0，可灵/Vidu 等编辑类模型要求原图提供公网 URL |
 | **火山引擎** | 视模型支持 | 适配 Seedream 体系模型与校验能力 |
 | **硅基流动** | 视模型支持 | 生成与图像编辑模型通常独立区分 |
 | **NovelAI / NovelAPI** | 全部支持 | 默认开启反向词与多角色处理；图生图参考图为 1 张 |

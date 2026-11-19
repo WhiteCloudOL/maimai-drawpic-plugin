@@ -13,15 +13,6 @@ AliyunTaskType = Literal["draw", "edit_image"]
 DEFAULT_ALIYUN_MODELS: tuple[str, ...] = (
     "qwen-image-3.0-pro",
     "qwen-image-3.0",
-    "qwen-image-2.0-pro",
-    "qwen-image-2.0",
-    "z-image-turbo",
-    "kling/kling-v3-image-generation",
-    "kling/kling-v3-omni-image-generation",
-    "vidu/vidu-image_reference2image",
-    "vidu/vidu-image-pro_reference2image",
-    "vidu/vidu-image-lite_reference2image",
-    "vidu/viduq3-fast_reference2image",
 )
 
 

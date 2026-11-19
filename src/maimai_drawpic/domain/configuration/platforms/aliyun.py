@@ -47,7 +47,7 @@ class AliyunModelConfig(NegativePromptConfig):
         description="阿里百炼可用图片模型列表，插件会自动识别已知模型能力",
         json_schema_extra={
             "label": "阿里百炼模型列表（必填）",
-            "hint": "必填。默认仅保留千问 3.0/2.0、Z-Image、可灵 v3 和当前 Vidu 图像模型；旧模型与日期快照可按需手动添加",
+            "hint": "默认提供 qwen-image-3.0-pro 和 qwen-image-3.0。可按需添加其他模型。",
             "order": 2,
         },
     )
@@ -56,23 +56,16 @@ class AliyunModelConfig(NegativePromptConfig):
         description="阿里百炼图片默认分辨率。未在按模型覆盖分辨率中配置的模型会使用该值",
         json_schema_extra={
             "label": "默认分辨率",
-            "hint": "格式为 宽*高，例如 2048*2048。不同模型支持范围不同，建议优先通过按模型覆盖分辨率配置",
+            "hint": "格式为 宽*高，例如 2048*2048。请填写所用模型支持的尺寸。",
             "order": 3,
         },
     )
     model_size_overrides: list[str] = Field(
-        default=[
-            "qwen-image-2.0=2048*2048",
-            "qwen-image-2.0-pro=2048*2048",
-            "qwen-image-max=1328*1328",
-            "qwen-image-plus=1328*1328",
-            "qwen-image-edit-max=1024*1024",
-            "qwen-image-edit-plus=1024*1024",
-        ],
+        default_factory=list,
         description="阿里百炼按模型覆盖分辨率。每项格式为 模型名=宽*高",
         json_schema_extra={
             "label": "按模型覆盖分辨率",
-            "hint": "每行填写一个 模型名=宽*高，例如 qwen-image-plus=1328*1328。qwen-image-2.0 系列支持自由宽高，总像素需在 512*512 至 2048*2048",
+            "hint": "为单个模型指定尺寸，例如 qwen-image-3.0=1328*1328。未单独设置的模型使用默认分辨率。",
             "order": 4,
         },
     )

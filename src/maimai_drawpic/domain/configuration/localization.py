@@ -759,12 +759,9 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "Qwen Image 전용입니다. 0이면 전송하지 않습니다. 일반적인 값은 4입니다. Kolors는 guidance_scale을 사용합니다.",
     ),
     "AliyunModelConfig.models": (
-        "Required. Defaults include Qwen 3.0/2.0, Z-Image, Kling v3 and current Vidu image models. "
-        "Add older models or dated snapshots manually when needed.",
-        "必須。既定は Qwen 3.0/2.0、Z-Image、Kling v3 と現行の Vidu 画像モデルです。"
-        "旧モデルや日付付きスナップショットは必要に応じて手動で追加できます。",
-        "필수. 기본 목록에는 Qwen 3.0/2.0, Z-Image, Kling v3와 현재 Vidu 이미지 모델만 포함됩니다. "
-        "이전 모델과 날짜별 스냅샷은 필요할 때 직접 추가할 수 있습니다.",
+        "Defaults to qwen-image-3.0-pro and qwen-image-3.0. Add other models as needed.",
+        "既定は qwen-image-3.0-pro と qwen-image-3.0 です。必要に応じて他のモデルを追加できます。",
+        "기본 모델은 qwen-image-3.0-pro와 qwen-image-3.0입니다. 필요에 따라 다른 모델을 추가할 수 있습니다.",
     ),
     "ZhipuModelConfig.quality": (
         "Leave blank for the model default. GLM-Image supports hd; CogView supports hd or standard.",

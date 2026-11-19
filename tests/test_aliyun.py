@@ -125,20 +125,6 @@ def test_qwen_generation_and_edit_only_models_are_distinguished() -> None:
     assert (editing.supports_draw, editing.supports_edit) == (False, True)
 
 
-def test_default_models_cover_requested_families_without_wan_models() -> None:
-    """默认模型列表遗漏目标族或混入万象都会产生错误的 WebUI 默认配置。"""
-
-    models = _aliyun_models()
-    defaults = models.DEFAULT_ALIYUN_MODELS
-
-    assert "qwen-image-3.0" in defaults
-    assert "z-image-turbo" in defaults
-    assert "kling/kling-v3-omni-image-generation" in defaults
-    assert "vidu/viduq3-fast_reference2image" in defaults
-    assert not any(model.startswith("wan") for model in defaults)
-    assert len(defaults) == len(set(defaults))
-
-
 def test_auto_input_mode_uses_url_only_for_url_models() -> None:
     """自动输入模式必须保持千问 Base64，并为可灵/Vidu 选择 URL。"""
 
@@ -555,21 +541,32 @@ def test_log_url_removes_query_and_business_error_keeps_request_id() -> None:
         raise AssertionError("业务错误响应应抛出异常")
 
 
-def test_aliyun_config_defaults_and_labels_cover_new_model_families() -> None:
-    """默认配置应覆盖目标模型，并明确区分必填和可选字段。"""
+def test_aliyun_config_defaults_and_labels() -> None:
+    """默认模型继承平台分辨率，配置标签明确区分必填和可选字段。"""
 
     config_module = _config_module()
     config = config_module.AliyunModelConfig()
-    defaults = _aliyun_models().DEFAULT_ALIYUN_MODELS
     schema = config_module.AliyunModelConfig.model_json_schema()["properties"]
 
     assert config.base_url == "https://dashscope.aliyuncs.com/api/v1"
-    assert set(defaults).issubset(set(config.models))
-    assert not any(model.startswith("wan") for model in config.models)
+    assert config.models == ["qwen-image-3.0-pro", "qwen-image-3.0"]
+    assert config.default_size == "2048*2048"
+    assert config.model_size_overrides == []
     assert "必填" in schema["base_url"]["label"]
     assert "必填" in schema["api_key"]["label"]
     assert "可选" in schema["qwen_extra_parameters"]["label"]
     assert "可选" in schema["kling_series_amount"]["label"]
+
+
+def test_qwen_3_uses_model_resolution_override_for_both_task_types() -> None:
+    config = _config_module().DrawpicConfig()
+    config.aliyun.model_size_overrides = ["qwen-image-3.0=1328*1328"]
+    provider = _provider_router_class()(config).create_aliyun_provider()
+    build_parameters = _aliyun_models().build_aliyun_parameters
+
+    for task_type in ("draw", "edit_image"):
+        assert build_parameters("qwen-image-3.0", task_type, 1, provider.request_options)["size"] == "1328*1328"
+        assert build_parameters("qwen-image-3.0-pro", task_type, 1, provider.request_options)["size"] == "2048*2048"
 
 
 def test_router_passes_aliyun_family_configuration() -> None:
@@ -601,7 +598,12 @@ def test_router_automatically_recognizes_aliyun_task_capabilities() -> None:
     """阿里云已知模型应在任务提交前自动识别文生图/图生图能力。"""
 
     config = _config_module().DrawpicConfig()
-    config.aliyun.models = [*_aliyun_models().DEFAULT_ALIYUN_MODELS, "qwen-image-edit"]
+    config.aliyun.models += [
+        "qwen-image-edit",
+        "z-image-turbo",
+        "kling/kling-v3-image-generation",
+        "vidu/viduq3-fast_reference2image",
+    ]
     router = _provider_router_class()(config)
 
     assert router.evaluate_model_task_capability(
@@ -628,6 +630,7 @@ def test_router_automatically_recognizes_aliyun_task_capabilities() -> None:
     assert qwen_edit_draw.source == "aliyun_registry"
 
     for model in (
+        "qwen-image-3.0-pro",
         "kling/kling-v3-image-generation",
         "vidu/viduq3-fast_reference2image",
     ):
