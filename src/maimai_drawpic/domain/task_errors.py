@@ -11,6 +11,12 @@ from .errors import (
 )
 
 
+def delivery_unconfirmed_message(sent_count: int) -> str:
+    if sent_count:
+        return f"图片已生成，已确认发送 {sent_count} 张，其余图片送达状态未确认。请先查看聊天记录。"
+    return "图片已生成，送达状态未确认。请先查看聊天记录。"
+
+
 def task_error(code: str, message: str, *, retry_query: bool = False, retry_submit: bool = False) -> Dict[str, Any]:
     return {"code": code, "message": message, "retry_query": retry_query, "retry_submit": retry_submit}
 

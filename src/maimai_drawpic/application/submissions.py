@@ -210,7 +210,7 @@ class RequestMixin:
             if not quota_allowed:
                 raise PermissionError(quota_message)
 
-            async def _handle_task_unsuccessful(task_id: str, status: str, reason: str) -> None:
+            async def _refund_and_notify(task_id: str, status: str, reason: str) -> None:
                 await refund(reservation, task_id)
                 await self._send_draw_failure_notice(
                     reason=reason,
@@ -224,6 +224,10 @@ class RequestMixin:
                 )
 
             async def _handle_task_successful(task_id: str, status: str, reason: str) -> None:
+                if status == "delivery_unconfirmed":
+                    # 生成已完成；没有一张获得发送回执时沿用原额度规则。
+                    await _refund_and_notify(task_id, status, reason)
+                    return
                 if reservation is not None:
                     await settle_quota(self._commit_draw_quota, reservation)
 
@@ -250,7 +254,7 @@ class RequestMixin:
                     matched_message_id=matched_message_id,
                     notify_start=notify_start,
                     prompt_reviewed=not defer_prompt_review,
-                    on_task_unsuccessful=_handle_task_unsuccessful,
+                    on_task_unsuccessful=_refund_and_notify,
                     on_task_successful=_handle_task_successful,
                     submission=submission,
                 )

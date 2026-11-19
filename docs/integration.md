@@ -296,6 +296,8 @@ async def query_task(ctx, task_id):
 
 `delivery.status` 为 `not_requested/pending/sent/partial/failed/unconfirmed`。生成成功、结果可读、消息发送成功是三个不同事实：例如 `generation_completed=true` 但 `results_readable=false` 可能是缓存失败/过期；`completed` 也不能证明全部消息已发送。
 
+图片已生成、发送回执未知时，任务结束，返回 `status="completed"`、`generation_completed=true`、`delivery.status="unconfirmed"` 和诊断码 `DELIVERY_UNCONFIRMED`。`delivery.sent_count` 仅统计已获回执的图片，零张也可能实际送达。调用方应提示「图片已生成，送达状态未确认」，按 `results_readable` 决定是否读取原任务的图片，并避免自动重画或补发。
+
 ### drawpic_request
 
 参数只有 `request_id`，格式与提交一致。只查询保留期内的持久映射，成功直接返回上面的任务快照，**没有额外 `accepted/record` 包装**。

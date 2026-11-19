@@ -17,6 +17,8 @@ class TaskQueryMixin:
                 f"请根据上下文自然告知用户任务仍在生成，并至少等待 {self.STATUS_RECHECK_INTERVAL_SECONDS} 秒后再查一次。"
             )
         if record.status == "completed":
+            if record.delivery_unconfirmed:
+                return f"{record.message} 任务 ID：{record.task_id}"
             return (
                 f"绘图任务已完成：task_id={record.task_id}，类型={record.task_type}，"
                 f"模型={record.model}，已发送 {record.sent_count} 张图片到当前聊天流。"
@@ -98,6 +100,7 @@ class TaskQueryMixin:
             "model": record.model,
             "provider": record.provider,
             "sent_count": record.sent_count,
+            "delivery_unconfirmed": record.delivery_unconfirmed,
             "is_finished": record.status in {"completed", "failed", "rejected"},
             "should_wait": record.status in {"pending", "running"},
             "next_check_after_seconds": next_check_after_seconds,

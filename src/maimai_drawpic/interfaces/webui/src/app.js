@@ -264,7 +264,8 @@
   function empty(title, description, button = "") {
     return `<div class="panel empty">${icon("sparkles")}<h3>${e(title)}</h3><p>${e(description)}</p>${button}</div>`;
   }
-  function statusLabel(status) {
+  function statusLabel(status, deliveryUnconfirmed = false) {
+    if (status === "completed" && deliveryUnconfirmed) return "已生成，送达未确认";
     return (
       {
         pending: "等待执行",

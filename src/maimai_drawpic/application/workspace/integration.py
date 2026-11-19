@@ -105,7 +105,7 @@ class IntegrationTaskService:
         status, error = public_status(detail["status"], detail["error"]), detail["error"]
         if error is None and status in {"failed", "rejected"}:
             error = task_error("MODERATION_REJECTED" if status == "rejected" else "EXECUTION_FAILED", detail["message"])
-        if status == "completed" and not detail["images"]:
+        if status == "completed" and not detail["images"] and error is None:
             error = task_error(
                 "RESULT_EXPIRED" if detail["result_count"] else "RESULT_UNAVAILABLE",
                 "图片结果已过期、被清理或未能缓存；不会重新生成",

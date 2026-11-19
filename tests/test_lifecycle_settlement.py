@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import json
 from threading import Event
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,7 +15,7 @@ def module(name):
     return importlib.import_module(f"{_PACKAGE}.src.maimai_drawpic.{name}")
 
 
-async def configured_plugin(make_plugin, monkeypatch):
+async def configured_plugin(make_plugin, monkeypatch, *, mock_notice=True):
     plugin = make_plugin()
     config = plugin.get_plugin_config_data()
     config["general"].update(private_quota_enabled=True, private_quota_period="daily", private_default_quota=1)
@@ -32,7 +33,8 @@ async def configured_plugin(make_plugin, monkeypatch):
 
     monkeypatch.setattr(plugin._require_stream_service(), "resolve_live_stream_context", context)
     monkeypatch.setattr(plugin.ctx.chat, "get_all_streams", streams)
-    monkeypatch.setattr(plugin, "_send_draw_failure_notice", notice)
+    if mock_notice:
+        monkeypatch.setattr(plugin, "_send_draw_failure_notice", notice)
     return plugin
 
 
@@ -304,6 +306,65 @@ def test_success_commits_quota_and_clears_reservation(make_plugin, monkeypatch):
         finally:
             await plugin.on_unload()
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("confirmed,notify,command,expect_notice", [
+    (0, True, False, True), (0, False, False, False), (0, False, True, True), (1, True, False, False),
+])
+def test_unconfirmed_receipt_settles_chat_quota_and_notice(make_plugin, monkeypatch, confirmed, notify, command, expect_notice):
+    async def run():
+        plugin = await configured_plugin(make_plugin, monkeypatch, mock_notice=False)
+        try:
+            plugin.config.general.failure_reason_enabled = notify
+            service = plugin._require_draw_service()
+            generate = AsyncMock(return_value=[image_bytes()] * (confirmed + 1))
+            missing_receipt = TimeoutError("adapter timed out") if notify else False
+            send = AsyncMock(side_effect=[True] * confirmed + [missing_receipt])
+            notice = AsyncMock(return_value=True)
+            monkeypatch.setattr(service, "_run_image_request_attempt", generate)
+            monkeypatch.setattr(plugin.ctx.send, "image", send)
+            monkeypatch.setattr(service.stream_service, "send_text_with_fallback", notice)
+            request = {"prompt": "cat", "stream_id": "mock-stream", "request_id": "receipt-check-19"}
+            if command:
+                receipt = await plugin._start_background_image_request(prompt="cat", stream_id="mock-stream", from_command=True)
+            else:
+                receipt = await plugin.drawpic_submit(**request)
+                assert receipt["accepted"]
+            await asyncio.gather(*tuple(service.background_tasks))
+            record = plugin._task_store.get_task(receipt["task_id"])
+            assert record.status == "completed" and record.delivery_unconfirmed
+            if not command:
+                recovered = await plugin.drawpic_request(request["request_id"])
+                reused = await plugin.drawpic_submit(**request)
+                assert reused["accepted"] and reused["reused"]
+                for response in (recovered, reused):
+                    assert response["task_id"] == record.task_id and response["status"] == "completed"
+                    assert response["generation_completed"] and response["retry_after_ms"] == 0
+                    assert response["delivery"] == {"requested": True, "status": "unconfirmed", "sent_count": confirmed}
+                    assert response["error"]["code"] == "DELIVERY_UNCONFIRMED" and not response["error"]["retry_submit"]
+            assert remaining(plugin) == (0 if confirmed else 1)
+            assert not plugin._usage_store.records["qq:user:12345678"].reservation_ids
+            assert generate.await_count == 1 and send.await_count == confirmed + 1
+            assert notice.await_count == int(expect_notice)
+            if expect_notice:
+                text = notice.await_args.kwargs["text"]
+                assert "图片已生成，送达状态未确认" in text and "绘图失败" not in text and record.task_id in text
+        finally:
+            await plugin.on_unload()
+    asyncio.run(run())
+
+
+def test_old_zero_receipt_task_loads_as_generated(tmp_path):
+    cls = module("infrastructure.storage.tasks").DrawTaskStore
+    store = cls(tmp_path / "tasks.json")
+    record = store.create_task(session_key="s", stream_id="s", task_type="draw", prompt="cat", model="m", provider="test", message="")
+    store.update_task(record.task_id, status="failed", message="旧投递诊断", generated_count=1, expected_delivery_count=1,
+                      delivery_unconfirmed=True, error={"code": "DELIVERY_UNCONFIRMED", "message": "旧投递诊断"})
+    loaded = cls(store.path)
+    loaded.load()
+    old = loaded.get_task(record.task_id)
+    assert old.status == "completed" and old.error["message"] == "旧投递诊断"
+    assert old.sent_count == 0 and "送达状态未确认" in old.message
 
 
 def test_cancel_during_delivery_preserves_unknown_outcome(make_plugin, monkeypatch):

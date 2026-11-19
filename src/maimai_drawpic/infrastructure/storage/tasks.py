@@ -12,6 +12,7 @@ import re
 
 from .atomic import write_json_atomically
 from ..http import sanitize_provider_text
+from ...domain.task_errors import delivery_unconfirmed_message
 
 
 DrawTaskStatus = Literal["pending", "running", "completed", "failed", "rejected"]
@@ -444,6 +445,11 @@ class DrawTaskStore:
                 if isinstance(last_status_query_raw, str) and last_status_query_raw.strip()
                 else None
             )
+            # 2.3.1 及以前把零回执记录为失败；读取时只纠正已明确标记的投递结果。
+            message = str(payload.get("message") or "")
+            if status == "failed" and payload.get("delivery_unconfirmed") and error and error["code"] == "DELIVERY_UNCONFIRMED":
+                status = "completed"
+                message = delivery_unconfirmed_message(payload.get("sent_count", 0))
             return DrawTaskRecord(
                 task_id=str(payload.get("task_id") or task_id).strip(),
                 session_key=str(payload.get("session_key") or "").strip(),
@@ -452,8 +458,8 @@ class DrawTaskStore:
                 prompt="",
                 model=str(payload.get("model") or "").strip(),
                 provider=str(payload.get("provider") or "").strip(),
-                status=str(payload.get("status") or "pending").strip(),  # type: ignore[arg-type]
-                message=str(payload.get("message") or ""),
+                status=status,
+                message=message,
                 sent_count=int(payload.get("sent_count") or 0),
                 result_count=int(payload.get("result_count") or 0),
                 generated_count=int(payload.get("generated_count") or 0),

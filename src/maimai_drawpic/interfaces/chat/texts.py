@@ -225,5 +225,5 @@ def _format_task(record: DrawTaskRecord | None) -> str:
         "failed": "失败",
         "rejected": "审核拦截",
     }
-    status_text = status_map.get(record.status, record.status)
+    status_text = "已生成，送达未确认" if record.status == "completed" and record.delivery_unconfirmed else status_map.get(record.status, record.status)
     return f"{status_text}，task_id={record.task_id}，模型={record.model}，更新时间={record.updated_at:%m-%d %H:%M}"

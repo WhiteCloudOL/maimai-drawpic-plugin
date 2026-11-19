@@ -86,11 +86,15 @@ class ReplyMixin:
             )
             return False
 
-        title = "绘图未通过审核" if status == "rejected" else "绘图失败"
-        lines = [title]
+        if status == "delivery_unconfirmed":
+            lines = [self._summarize_failure_reason(reason)]
+        else:
+            title = "绘图未通过审核" if status == "rejected" else "绘图失败"
+            lines = [title]
         if task_id.strip():
             lines.append(f"任务 ID：{task_id.strip()}")
-        lines.append(f"原因：{self._summarize_failure_reason(reason)}")
+        if status != "delivery_unconfirmed":
+            lines.append(f"原因：{self._summarize_failure_reason(reason)}")
         try:
             return await self._require_stream_service().send_text_with_fallback(
                 text="\n".join(lines),

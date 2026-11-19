@@ -5,7 +5,7 @@ import inspect
 from ..chat import ImageDeliveryError, ImageDeliveryUnconfirmedError
 from ...infrastructure.storage.retention import CacheCapacityError
 from ...domain.errors import ProviderError
-from ...domain.task_errors import TaskRequestError, provider_task_error, task_error
+from ...domain.task_errors import TaskRequestError, delivery_unconfirmed_message, provider_task_error, task_error
 from ..references.service import ReferencePreparation
 from .admission import update_task_owned
 
@@ -295,7 +295,9 @@ class ImageExecutionMixin:
             if settled is not None and settled.status in {"completed", "failed", "rejected"}:
                 # An owned terminal write can win the cancellation race. Preserve
                 # the recorded outcome and settle according to that outcome.
-                if settled.status == "completed":
+                if settled.status == "completed" and settled.delivery_unconfirmed and not settled.sent_count:
+                    await _notify_task_successful("delivery_unconfirmed", settled.message)
+                elif settled.status == "completed":
                     await _notify_task_successful(settled.status, settled.message)
                 else:
                     await _notify_task_unsuccessful(settled.status, settled.message)
@@ -328,17 +330,13 @@ class ImageExecutionMixin:
             await _notify_task_unsuccessful(status, message)
             self.ctx.logger.warning("绘图请求已终止: task_id=%s status=%s reason=%s", task_id, status, message)
         except ImageDeliveryUnconfirmedError as exc:
-            # 本地终态保留已生成结果；独立记录投递未知，已确认发送的部分不代表全部送达。
-            status = "completed" if exc.sent_count > 0 else "failed"
+            message = delivery_unconfirmed_message(exc.sent_count)
             await _update_terminal(
-                status=status, message=str(exc), sent_count=exc.sent_count,
+                status="completed", message=message + cache_message, sent_count=exc.sent_count,
                 delivery_unconfirmed=True,
                 error=task_error("DELIVERY_UNCONFIRMED", str(exc)),
             )
-            if exc.sent_count > 0:
-                await _notify_task_successful(status, str(exc))
-            else:
-                await _notify_task_unsuccessful(status, str(exc))
+            await _notify_task_successful("completed" if exc.sent_count else "delivery_unconfirmed", message)
             self.ctx.logger.warning("绘图任务投递结果待确认: task_id=%s sent_count=%s", task_id, exc.sent_count)
         except ImageDeliveryError as exc:
             if exc.sent_count <= 0:

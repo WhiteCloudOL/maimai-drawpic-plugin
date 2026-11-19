@@ -73,7 +73,8 @@ def test_client_capacity_failure_preserves_accepted_result(make_plugin, monkeypa
 
 
 @pytest.mark.parametrize("sent_before_unknown", [0, 1])
-def test_api_delivery_unknown_overrides_confirmed_partial_count(make_plugin, monkeypatch, sent_before_unknown):
+@pytest.mark.parametrize("cache_available", [True, False])
+def test_api_delivery_unknown_overrides_confirmed_partial_count(make_plugin, monkeypatch, sent_before_unknown, cache_available):
     async def run():
         plugin = make_plugin()
         await plugin.on_load()
@@ -94,29 +95,32 @@ def test_api_delivery_unknown_overrides_confirmed_partial_count(make_plugin, mon
             monkeypatch.setattr(service, "_run_image_request_attempt", generate)
             monkeypatch.setattr(service.stream_service, "resolve_live_stream_id", target)
             monkeypatch.setattr(plugin.ctx.send, "image", send)
+            if not cache_available:
+                plugin._result_store.retention.RESULT_MAX_BYTES = 1
             receipt = await service.start_background_image_request(
                 prompt="cat", stream_id="fixture-stream", resolved_model=service.resolve_model_name(),
                 resolved_openai_mode="", provider_name="openai",
             )
             await asyncio.gather(*tuple(service.background_tasks))
             state = await plugin.drawpic_task(receipt["task_id"])
-            assert state["generation_completed"] and state["results_readable"]
+            assert state["generation_completed"] and state["results_readable"] == cache_available
             assert state["delivery"] == {
                 "requested": True, "status": "unconfirmed", "sent_count": sent_before_unknown,
             }
             assert len(sends) == sent_before_unknown + 1
-            expected_local_status = "completed" if sent_before_unknown else "failed"
-            assert (await plugin.drawpic_task(receipt["task_id"]))["status"] == expected_local_status
+            assert state["status"] == "completed" and "送达状态未确认" in state["message"]
             client_result = await DrawingClient(LocalAPI(plugin)).wait(
-                receipt["task_id"], wait_seconds=0.5, read_images=False,
+                receipt["task_id"], wait_seconds=1, read_images=True,
             )
-            assert not client_result.wait_expired and client_result.status == expected_local_status
+            assert not client_result.wait_expired and client_result.status == "completed"
+            assert bool(client_result.images) == cache_available
             assert client_result.delivery["status"] == "unconfirmed"
             assert client_result.error.code == "DELIVERY_UNCONFIRMED"
             saved = module("infrastructure.storage.tasks").DrawTaskStore(plugin._task_store.path)
             saved.load()
             record = saved.get_task(receipt["task_id"])
             assert record.delivery_unconfirmed and record.sent_count == sent_before_unknown
+            assert record.status == "completed" and "送达状态未确认" in service.build_task_status_message(record)
         finally:
             await plugin.on_unload()
 
