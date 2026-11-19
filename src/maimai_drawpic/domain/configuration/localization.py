@@ -511,6 +511,11 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "空欄ではギャラリーのタグで1枚を選び、一致しなければ既定画像を使います。外見を固定する場合に画像を選択してください。",
         "비워 두면 갤러리 태그로 한 장을 선택하고 일치하지 않으면 기본 이미지를 사용합니다. 외형을 고정하려면 이미지를 선택하세요.",
     ),
+    "ReferenceConfig.self_reference_prompt": (
+        "Added when a self-reference image is used. Describe the character features to retain and how to compose the image. Leave blank to omit this prompt.",
+        "自身の参照画像を使うときに追加されます。残したい特徴や構図を指定できます。空欄でこの指示を省略します。",
+        "자신의 참조 이미지를 사용할 때 추가됩니다. 유지할 캐릭터 특징과 구도를 지정하세요. 비워 두면 이 프롬프트를 생략합니다.",
+    ),
     "StylePresetConfig.tags": (
         "Keywords for automatic selection, such as watercolor. More matching tags take priority; ties follow list order. With no match, use the default preset. Explicit preset choices ignore tags.",
         "水彩など、自動選択に使うキーワードです。一致数が多い項目を優先し、同数ならリスト順、一致なしなら既定項目を使います。手動選択はタグに依存しません。",
@@ -809,6 +814,7 @@ _FIELD_LABELS.update({
     "self_reference_enabled": ("Enable self references", "自身の参照を有効化", "자신의 참조 활성화"),
     "self_names": ("Bot names and aliases", "ボットの名前と別名", "봇 이름 및 별칭"),
     "self_reference_ids": ("Self reference images", "自身の参照画像", "자신의 참조 이미지"),
+    "self_reference_prompt": ("Self-reference prompt", "自身の参照プロンプト", "자신의 참조 프롬프트"),
     "multi_reference_confirmed": ("Multiple references confirmed", "複数参照を確認済み", "다중 참조 확인됨"),
     "allow_chat_material_search": ("Allow chat materials", "チャット内の素材を許可", "대화 소재 허용"),
     "chat_material_search_limit": ("Chat search limit (messages)", "チャット検索の上限（件）", "대화 검색 상한(메시지 수)"),

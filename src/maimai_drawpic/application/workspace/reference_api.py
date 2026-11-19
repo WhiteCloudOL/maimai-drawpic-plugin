@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .service import WorkspaceService
 
 
-SELF_FIELDS = {"self_reference_enabled", "self_names", "self_keywords", "self_reference_ids"}
+SELF_FIELDS = {"self_reference_enabled", "self_names", "self_keywords", "self_reference_ids", "self_reference_prompt"}
 STYLE_FIELDS = {"image_edit_presets_enabled", "default_style", "default_image_edit_preset"}
 
 

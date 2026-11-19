@@ -535,6 +535,7 @@ async def copy_reference_image(ctx, asset_id, destination):
 | settings 字段 | 作用 |
 | --- | --- |
 | self_reference_enabled | 是否允许使用自身图库，默认 false |
+| self_reference_prompt | 使用自身参考图时附加一次的通用提示词，空字符串停用 |
 | self_names | 机器人名称及别称，用于自身指向识别 |
 | self_keywords | planner 已决定回复时使用的绘图触发关键词，不直接认定人物，不唤醒回复 |
 | self_reference_ids | 固定使用的自身图片 ID；留空时按 tag/默认图选一张 |

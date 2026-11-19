@@ -7,8 +7,27 @@ from typing import List, Literal
 from .styles import ReferenceBindingsSchema
 
 
+DEFAULT_SELF_REFERENCE_PROMPT = (
+    "请参考图片保持图中人物的身份和辨识度，例如五官、发色、耳朵和尾巴。"
+    "按本次绘图要求重新设计构图、姿势、镜头和场景，用户指定的服装或外观变化优先。"
+    "没有明确版式要求时，生成一幅完整的新插画，"
+    "仅在用户明确要求时使用三视图、设定稿或拼图布局。"
+)
+
+
 class ReferenceConfig(PluginConfigBase):
     self_reference_enabled: bool = Field(default=False, description="允许识别并描绘机器人自身", json_schema_extra={"label": "启用自我参考"})
+    self_reference_prompt: str = Field(
+        default=DEFAULT_SELF_REFERENCE_PROMPT,
+        max_length=16000,
+        description="实际使用自我参考图时加入绘图请求的通用提示词",
+        json_schema_extra={
+            "label": "自我参考提示词",
+            "input_type": "textarea",
+            "rows": 5,
+            "hint": "使用自我参考图时加入，可指定需要保留的角色特征和构图要求。留空停用这段提示词。",
+        },
+    )
     self_names: List[str] = Field(default=["麦麦"], max_length=32, description="当前机器人的名称和别称，用于原始请求中的自身指向识别", json_schema_extra={"label": "机器人称呼"})
     self_keywords: List[str] = Field(default=["自拍", "画", "绘图"], max_length=32, description="宿主进入本轮规划后用于绘图提醒的关键词；不直接触发回复、绘图或自我参考", json_schema_extra={"label": "触发关键词", "hint": "例如：自拍、画、绘图。命中后提醒判断是否绘图，自身形象仍按语义识别。回车或逗号添加，留空关闭提醒。"})
     self_reference_ids: List[str] = Field(default=[], max_length=8, description="明确选择的相容自我图片；留空时按 tag 选一张", json_schema_extra={"label": "自我参考图片", "hint": "留空时按图库 tag 选择一张，未命中则使用默认图；需要固定形象时再选择图片。"})

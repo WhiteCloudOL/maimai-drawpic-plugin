@@ -39,6 +39,7 @@ class SimpleDrawingRequest(TypedDict, total=False):
 
 class DrawingReferenceSettings(TypedDict, total=False):
     self_reference_enabled: bool
+    self_reference_prompt: str
     self_names: List[str]
     self_keywords: List[str]
     self_reference_ids: List[str]

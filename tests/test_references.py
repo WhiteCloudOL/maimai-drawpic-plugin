@@ -219,6 +219,7 @@ def test_disabled_self_reference_never_reads_gallery_or_recognizes_self(monkeypa
         assert web.await_count == int(kind == "character")
         assert result.task_type == ("edit_image" if kind == "character" else "draw")
         assert "identity: bot" not in result.prompt
+        assert "Self-reference guidance:" not in result.prompt
     asyncio.run(run())
 
 
@@ -604,11 +605,14 @@ def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, m
             client = DrawingClient(LocalAPI(plugin), poll_interval=0.001)
             assert (await client.generate("cat", request_id="plain-refs-001", wait_seconds=5)).status == "completed"
             assert calls[-1]["task_type"] == "draw"
+            assert "Self-reference guidance:" not in calls[-1]["prompt"]
             options = {"self_reference": "required", "self_reference_tags": ["冬装"]}
             result = await client.generate("麦麦", task_type="edit_image", request_id="self-refs-001", reference_options=options, wait_seconds=5)
             assert result.status == "completed" and calls[-1]["source_image_bytes_list"] == [image_bytes() + b"winter"]
             assert "identity: bot" in calls[-1]["prompt"]
             assert "保留白色长发" in calls[-1]["prompt"]
+            default_self_prompt = module("domain.configuration.references").DEFAULT_SELF_REFERENCE_PROMPT
+            assert calls[-1]["prompt"].count(default_self_prompt) == 1
             identifier = selected["assets"][1]["id"]
             await asyncio.to_thread(store.update, revision=2, operation="save", asset_id=identifier, name="新版", tags=[], raw=image_bytes() + b"changed")
             repeat = await client.submit("麦麦", task_type="edit_image", request_id="self-refs-001", reference_options=options)
@@ -620,12 +624,17 @@ def test_public_self_reference_opt_in_and_idempotent_frozen_asset(make_plugin, m
             assert directory["assets"][0]["default"]
             conflict = await plugin.drawpic_submit("麦麦", reference_options=options)
             assert conflict["accepted"] is False and conflict["error"]["code"] == "TASK_MODE_CONFLICT"
+            settings = await client.reference_settings()
+            await client.set_reference_settings(revision=settings["revision"], self_reference_prompt="把本次画面画成单幅插画")
+            monkeypatch.setattr(plugin._require_draw_service(), "_run_image_request_attempt", generate)
             recognize = AsyncMock(return_value={"content": '{"subject":"self"}'})
             monkeypatch.setattr(plugin.ctx.llm, "generate", recognize)
             auto = await client.generate("肖像", task_type="edit_image", request_id="self-refs-auto",
                                          reference_options={"self_reference": "auto", "user_request": "给麦麦画一张肖像"},
                                          wait_seconds=5)
             assert auto.status == "completed" and calls[-1]["source_image_bytes_list"] == [image_bytes()]
+            assert calls[-1]["prompt"].count("把本次画面画成单幅插画") == 1
+            assert default_self_prompt not in calls[-1]["prompt"]
             recognize.assert_awaited_once()
             assert "给麦麦画一张肖像" in recognize.await_args.args[0]
         finally:

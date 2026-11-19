@@ -188,6 +188,8 @@ class ReferencePreparation:
         resolved = resolver.resolve(style_name=preset.name if preset is not None else "none", user_prompt=self.prompt,
                                     user_negative_prompt=self.negative, task_type=mode)
         prompt = resolved.positive_prompt
+        if self.self_reference_used and refs.self_reference_prompt.strip():
+            prompt += "\nSelf-reference guidance:\n" + refs.self_reference_prompt.strip()
         if unique:
             mapping = "\n".join(f"Image {index}: {', '.join(uses[digest])}" for index, digest in enumerate(unique, 1))
             prompt += "\nReference image uses (apply only the listed features):\n" + mapping

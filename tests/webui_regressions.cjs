@@ -239,7 +239,7 @@ async function settings(view = 'settings') {
     bootstrap: async () => {}, render: async () => {},
     submitForm: form => form.onsubmit(event),
   });
-  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, allow_web_material_search: {}, web_search_provider: {}, deepseek_api_key: {} },
+  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_prompt: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, allow_web_material_search: {}, web_search_provider: {}, deepseek_api_key: {} },
     schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {}, integration_api_enabled: {}, group_access_ids: {}, private_access_mode: {}, admin_user_ids: {}, group_default_quota: {} } }, style: { fields: { presets: {} } } } },
     settings: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } },
     defaults: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } } };
@@ -289,6 +289,7 @@ test('creative: preset, self-reference and material drafts merge without overwri
   const h = await settings('library');
   h.panel('style').values.presets.push({ name: 'draft' });
   h.panel('references').values.self_reference_enabled = true;
+  h.panel('references').values.self_reference_prompt = '保留角色外观并重新构图';
   h.panel('materials').values.allow_web_material_search = true;
   h.panel('materials').values.chat_material_search_limit = 80;
   h.panel('materials').values.material_model = 'fast-vision';
@@ -300,6 +301,7 @@ test('creative: preset, self-reference and material drafts merge without overwri
   const submitted = JSON.parse(h.calls[0].args.config_json);
   assert.equal(submitted.style.presets[0].name, 'draft');
   assert.equal(submitted.general.references.self_reference_enabled, true);
+  assert.equal(submitted.general.references.self_reference_prompt, '保留角色外观并重新构图');
   assert.equal(submitted.general.references.allow_web_material_search, true);
   assert.equal(submitted.general.references.chat_material_search_limit, 80);
   assert.equal(submitted.general.references.material_model, 'fast-vision');
