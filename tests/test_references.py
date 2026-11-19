@@ -182,6 +182,58 @@ def test_chat_edit_requires_an_effective_image_source_before_submission(make_plu
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("selection", [{"self_reference": "required"}, {"self_reference": "required", "material_sources": []}])
+def test_chat_self_portrait_uses_only_gallery_with_sources_enabled(make_plugin, monkeypatch, selection):
+    from test_api_settings import provide_streams
+
+    async def run():
+        plugin = make_plugin()
+        config = plugin.get_plugin_config_data()
+        config["general"]["references"].update(
+            self_reference_enabled=True, allow_chat_material_search=True, allow_web_material_search=True,
+        )
+        plugin.set_plugin_config(config)
+        await plugin.on_load()
+        try:
+            provide_streams(plugin, monkeypatch)
+            await asyncio.to_thread(plugin._workspace().tasks.references.update,
+                                    revision=0, operation="save", name="默认自我图", tags=[], raw=image_bytes())
+            service = plugin._require_draw_service()
+            generate = AsyncMock(return_value=[image_bytes()])
+            recognize = AsyncMock(side_effect=AssertionError("独立的自画像不需要调用素材识别模型"))
+            monkeypatch.setattr(service, "_run_image_request_attempt", generate)
+            monkeypatch.setattr(plugin.ctx.llm, "generate", recognize)
+            monkeypatch.setattr(plugin._require_stream_service(), "send_generated_images_with_fallback", AsyncMock(return_value=1))
+            receipt = await plugin.handle_edit_image(
+                "汀芽的自画像", reference_options=selection, stream_id="actual-stream",
+                user_id="A" * 32, group_id="B" * 32, platform="qq",
+                message={"raw_message": [
+                    {"type": "at", "data": {"target_user_nickname": "汀芽"}},
+                    {"type": "text", "data": " 自画像"},
+                ]},
+            )
+            assert receipt["success"]
+            await asyncio.gather(*tuple(service.background_tasks))
+            assert plugin._task_store.get_task(receipt["task_id"]).status == "completed"
+            generate.assert_awaited_once()
+            assert generate.await_args.kwargs["source_image_bytes_list"] == [image_bytes()]
+            recognize.assert_not_awaited()
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
+
+
+def test_chat_self_reference_preserves_explicit_material_search(make_plugin):
+    plugin = make_plugin(False)
+    plugin.config.general.references.self_reference_enabled = True
+    options = plugin._drawing_reference_options(
+        {"message": {"raw_message": [{"type": "text", "data": "画你和甘雨合照"}]}},
+        {"self_reference": "required", "material_sources": ["web"]},
+    )
+    assert options["self_reference"] == "required" and options["material_sources"] == ["web"]
+
+
 @pytest.mark.parametrize("selection", ["off", "auto"])
 @pytest.mark.parametrize("kind", ["bot", "character"])
 def test_disabled_self_reference_never_reads_gallery_or_recognizes_self(monkeypatch, selection, kind):
