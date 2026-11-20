@@ -108,6 +108,7 @@ def test_current_message_fills_auto_request_without_llm_input(make_plugin):
 
 @pytest.mark.parametrize("selection", [
     {}, {"self_reference": "auto"}, {"self_reference": True}, {"self_reference": "required"},
+    {"self_reference": "auto", "user_request": "画你的自拍"},
     {"self_reference": "auto", "user_request": "画你的自拍", "self_reference_ids": ["missing"], "material_sources": []},
 ])
 def test_chat_without_original_request_still_generates_without_optional_recognition(make_plugin, monkeypatch, selection):

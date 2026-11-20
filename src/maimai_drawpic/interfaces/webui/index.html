@@ -5116,11 +5116,11 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
     clearTimeout(pollTimer);
     resultVersion++;
     if (!state.data.models.length) {
+      const configured = state.data.providers.length > 0;
       $("#workspace-content").innerHTML = U.empty(
-        "先添加一个绘图平台",
-        state.data.default_model_error ||
-          "平台和模型准备好之后，就可以在这里开始第一幅作品。",
-        `<button id="first-platform" class="button">${icon("plus")}添加绘图平台</button>`,
+        configured ? "暂无可用绘图模型" : "先添加一个绘图平台",
+        configured ? "请在绘图平台中启用一个实例，并填写可用的模型 ID。" : "添加平台并选择模型后即可绘图。",
+        `<button id="first-platform" class="button">${configured ? "管理绘图平台" : icon("plus") + "添加绘图平台"}</button>`,
       );
       $("#first-platform").onclick = () => U.navigate("platforms");
       return;
@@ -5172,7 +5172,7 @@ dialog[open]::backdrop { animation: backdrop-enter 180ms ease-out; }
     for (const [id, value] of Object.entries(draft)) {
       const input = $("#" + id);
       if (
-        input &&
+        input && !input.disabled &&
         (!input.options ||
           Array.from(input.options).some((option) => option.value === value))
       )

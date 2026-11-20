@@ -661,6 +661,19 @@ const taskSnapshot = (id, extra = {}) => ({ task_id: id, images: [], status: 'ru
   message: id, model: 'model', ...extra });
 const taskList = active => ({ counts: { pending: 0, running: active, completed: 0, failed: 0, rejected: 0 },
   items: [], total: 0, page_size: 20 });
+test('studio: disabled reference controls do not recover stale draft selections', async () => {
+  const h = fifoController();
+  await h.U.views.studio();
+  const web = h.get('#reference-web'), self = h.get('#reference-self');
+  Object.assign(web, { type: 'checkbox', checked: true });
+  self.value = 'required';
+  h.get('#draw-form').oninput();
+  Object.assign(web, { disabled: true, checked: false });
+  Object.assign(self, { disabled: true, value: 'off' });
+  await h.U.views.studio();
+  assert.equal(web.checked, false);
+  assert.equal(self.value, 'off');
+});
 test('studio: rebuilding a mode retains the loaded conversations and selected destination', async () => {
   const h = fifoController();
   h.get('#chat-platform').value = 'qq';

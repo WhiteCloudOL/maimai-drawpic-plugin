@@ -38,8 +38,7 @@ class DrawingToolMixin:
                 values["user_request"] = text.strip() if isinstance(text, str) else ""
         if values["self_reference"] == "auto" and not host_request:
             values["self_reference"] = "off"
-        request = values.get("user_request", "")
-        if values["self_reference"] == "required" or not isinstance(request, str) or not request.strip():
+        if values["self_reference"] == "required" or not host_request:
             values.setdefault("material_sources", [])
         sources = values.get("material_sources")
         if isinstance(sources, list):
