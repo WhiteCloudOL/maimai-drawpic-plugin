@@ -10,7 +10,8 @@ import base64
 import json
 import re
 
-from ..media.images import detect_image_format, check_image_dimensions
+from ...domain.task_errors import TaskRequestError
+from ..media.images import check_image_dimensions, stored_image_format
 from ..media.collection import validate_result_images
 from .atomic import write_json_atomically
 from .retention import ArtifactRetention
@@ -66,9 +67,7 @@ class ImageResultStore:
         validate_result_images(images)
         prepared = []
         for raw in images:
-            extension = detect_image_format(raw)
-            if extension not in {"png", "jpeg", "jpg", "webp"}:
-                raise ValueError("只保存 PNG、JPEG 或 WebP 图片")
+            extension = stored_image_format(raw)
             prepared.append((extension, raw, self._preview(raw, 320, 15000), self._preview(raw, 1400, 280000)))
         incoming = sum(len(raw) + len(thumb) + len(preview) for _, raw, thumb, preview in prepared) + 2048 * len(images)
         self.retention.prune_results(
@@ -146,11 +145,16 @@ class ImageResultStore:
         path = directory / filename
         if path.is_symlink() or not path.resolve().is_relative_to(directory.resolve()):
             raise ValueError("图片文件不安全")
-        if offset > path.stat().st_size:
+        if path.stat().st_size != record["size"]:
+            raise TaskRequestError("RESULT_UNAVAILABLE", "缓存原图与清单大小不一致")
+        if offset >= record["size"]:
             raise ValueError("图片读取偏移超出文件")
         with path.open("rb") as handle:
             handle.seek(offset)
-            chunk = handle.read(192 * 1024)
+            expected = min(192 * 1024, record["size"] - offset)
+            chunk = handle.read(expected)
+        if len(chunk) != expected:
+            raise TaskRequestError("RESULT_UNAVAILABLE", "缓存原图分块不完整")
         return {
             "data": base64.b64encode(chunk).decode("ascii"),
             "offset": offset,

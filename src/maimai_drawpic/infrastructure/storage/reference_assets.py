@@ -14,7 +14,7 @@ import tempfile
 
 from ...domain.references import ReferenceImage, normalize_tag
 from ...domain.task_errors import TaskRequestError
-from ..media.images import validate_image_bytes
+from ..media.images import stored_image_format, validate_image_bytes
 from .atomic import write_json_atomically
 from .settings import read_json_file
 
@@ -103,6 +103,7 @@ class ReferenceAssetStore:
                     raise ValueError("新增参考图片需要上传真实图片")
                 if raw is not None:
                     validate_image_bytes(raw)
+                    stored_image_format(raw)
                     if len(raw) > 20 * 1024 * 1024:
                         raise ValueError("单张参考图片不能超过 20 MiB")
                     total = sum(self._path(item["id"], item["version"]).stat().st_size for item in current["assets"] if item is not target) + len(raw)

@@ -82,7 +82,11 @@ async def read_chunks(rpc: DrawingRPC, endpoint: str, arguments: Dict[str, Any],
                 raise ValueError("图片格式无效")
             if not isinstance(identity[2], str) or not identity[2]:
                 raise ValueError("图片来源标记无效")
-            raw = base64.b64decode(response["data"], validate=True)
+            encoded = response["data"]
+            limit = min(size - offset, 192 * 1024)
+            if not isinstance(encoded, str) or len(encoded) > 4 * ((limit + 2) // 3):
+                raise ValueError("图片分块编码长度无效")
+            raw = base64.b64decode(encoded, validate=True)
             if type(response["offset"]) is not int or response["offset"] != offset or not 0 < len(raw) <= 192 * 1024:
                 raise ValueError("图片分块偏移或大小无效")
             offset += len(raw)

@@ -68,3 +68,11 @@ def detect_image_format(image_bytes: bytes) -> str:
     if format_name in {"jpg", "jpeg", "png", "webp", "gif"}:
         return format_name
     return "png"
+
+
+def stored_image_format(image_bytes: bytes) -> str:
+    """原图按实际格式保存，文件后缀和分块接口的 MIME 必须一致。"""
+    with PILImage.open(BytesIO(image_bytes)) as image:
+        if image.format not in {"PNG", "JPEG", "WEBP"}:
+            raise ValueError("只支持保存 PNG、JPEG 或 WebP 原图")
+        return image.format.lower()

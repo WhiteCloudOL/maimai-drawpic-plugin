@@ -318,7 +318,7 @@ async def recover_receipt(ctx, saved_request_id):
 | `task_id` | 必填 | 当前实例的任务句柄 |
 | `index` | 0 | 图片索引，从 0 开始，使用任务 images 中的 index |
 | `kind` | `original` | `original`、`preview` 或 `thumbnail` |
-| `offset` | 0 | 原图的字节偏移，必须是非负整数；预览不需要分块偏移 |
+| `offset` | 0 | 原图字节偏移，有效范围为 0 到 size − 1。预览无需分块偏移 |
 
 原图每次最多读取 **192 KiB 原始字节**，返回：
 
@@ -726,7 +726,7 @@ async def resume_drawing(ctx, saved, wait_seconds=120):
 | `MODERATION_REJECTED` | 提示词/图片审核拒绝，停止任务 |
 | `UPSTREAM_UNCONFIRMED` / `RESTART_UNCONFIRMED` | 远端受理结果未知或重启中断；核对提供商/聊天记录，禁止自动重画 |
 | `UPSTREAM_UNREACHABLE` / `UPSTREAM_REJECTED` | 明确连接不可达或提供商拒绝；读取具体 retry 字段 |
-| `RESULT_NOT_READY` / `RESULT_EXPIRED` / `RESULT_UNAVAILABLE` | 暂无结果、已过期或未能缓存；查询/读取错误不证明应重画 |
+| `RESULT_NOT_READY` / `RESULT_EXPIRED` / `RESULT_UNAVAILABLE` | 暂无结果、已过期、未能缓存或原图文件不完整。可查询原任务核对生成状态 |
 | `SUBMISSION_UNKNOWN` | 客户端未取得可信受理回执，保留原键只读恢复 |
 | `RESULT_TOO_LARGE` | 客户端读取预算不足，保留原任务与引用，不重新生成 |
 

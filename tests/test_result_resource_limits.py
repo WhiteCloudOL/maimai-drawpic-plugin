@@ -16,6 +16,28 @@ media = module('infrastructure.media.images')
 errors = module('domain.errors')
 
 
+def test_original_storage_rejects_mislabeled_images_before_writing(tmp_path):
+    results = module('infrastructure.storage.results').ImageResultStore(tmp_path)
+    gallery = module('infrastructure.storage.reference_assets').ReferenceAssetStore(tmp_path)
+    buf = BytesIO()
+    media.PILImage.new("RGB", (4, 4)).save(buf, "BMP")
+    with pytest.raises(ValueError, match="PNG、JPEG 或 WebP"):
+        results.save("a" * 12, [buf.getvalue()])
+    with pytest.raises(ValueError, match="PNG、JPEG 或 WebP"):
+        gallery.update(revision=0, operation="save", name="image", raw=buf.getvalue())
+    assert not gallery.index.exists() and not results.images("a" * 12)
+
+
+def test_original_chunk_reports_truncated_cache(tmp_path):
+    results = module('infrastructure.storage.results').ImageResultStore(tmp_path)
+    identifier = "a" * 12
+    results.save(identifier, [image_bytes()])
+    (results.root / identifier / "0.png").write_bytes(b"truncated")
+    with pytest.raises(module("domain.task_errors").TaskRequestError) as error:
+        results.original_chunk(identifier, 0, 0)
+    assert error.value.code == "RESULT_UNAVAILABLE"
+
+
 def png_header(width, height):
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
