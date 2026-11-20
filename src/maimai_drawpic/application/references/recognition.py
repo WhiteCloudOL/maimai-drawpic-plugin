@@ -7,6 +7,7 @@ import base64
 import json
 import re
 
+from ...domain.configuration.references import DEFAULT_MATERIAL_VISION_ATTEMPTS, DEFAULT_MATERIAL_VISION_TIMEOUT_SECONDS
 from ...domain.references import ReferenceImage
 from ...domain.task_errors import TaskRequestError
 from ...infrastructure.media.images import detect_image_format
@@ -30,9 +31,13 @@ class MaterialNeeds(BaseModel):
 
 
 class ReferenceRecognizer:
-    def __init__(self, ctx: Any, model: str = "vlm") -> None:
+    def __init__(self, ctx: Any, model: str = "vlm", *, vision_timeout_seconds: int = DEFAULT_MATERIAL_VISION_TIMEOUT_SECONDS,
+                 vision_attempts: int = DEFAULT_MATERIAL_VISION_ATTEMPTS, task_id: str = "") -> None:
         self.ctx = ctx
         self.model = model
+        self.vision_timeout_seconds = vision_timeout_seconds
+        self.vision_attempts = vision_attempts
+        self.task_id = task_id
 
     async def _json(self, prompt: str, image: Optional[ReferenceImage] = None) -> Dict[str, Any]:
         messages: Any = prompt
@@ -42,20 +47,34 @@ class ReferenceRecognizer:
                         {"type": "image", "image_format": detect_image_format(image.raw),
                          "image_base64": base64.b64encode(image.raw).decode("ascii")}]}]
             messages = await asyncio.to_thread(encode)
-        try:
-            async with asyncio.timeout(20):
-                task = {"vlm": "vlm", "task:vlm": "vlm", "task:planner": "planner", "task:replyer": "replyer"}.get(self.model)
-                route = {"task_name": task or "vlm"}
-                if task is None:
-                    route["model_name"] = self.model.removeprefix("model:")
-                response = await self.ctx.llm.generate(messages, **route,
-                                                     temperature=0.0, max_tokens=900, rpc_timeout_ms=20000)
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError as exc:
-            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "参考素材识别模型调用超时") from exc
-        except Exception as exc:
-            raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", f"参考素材识别模型调用失败（{type(exc).__name__}）") from exc
+        task = {"vlm": "vlm", "task:vlm": "vlm", "task:planner": "planner", "task:replyer": "replyer"}.get(self.model)
+        route = {"task_name": task or "vlm"}
+        if task is None:
+            route["model_name"] = self.model.removeprefix("model:")
+        timeout = self.vision_timeout_seconds if image is not None else 20
+        attempts = self.vision_attempts if image is not None else 1
+        response = None
+        for attempt in range(1, attempts + 1):
+            try:
+                async with asyncio.timeout(timeout):
+                    response = await self.ctx.llm.generate(
+                        messages, **route, temperature=0.0, max_tokens=900, rpc_timeout_ms=timeout * 1000,
+                    )
+            except (TimeoutError, ConnectionError) as exc:
+                reason = "调用超时" if isinstance(exc, TimeoutError) else "连接中断"
+                if attempt == attempts:
+                    stage = "参考素材识别模型" if image is None else "候选图视觉识别"
+                    retries = f"（已重试 {attempt - 1} 次）" if attempt > 1 else ""
+                    raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", f"{stage}{reason}{retries}") from exc
+                self.ctx.logger.warning(
+                    "候选图视觉识别将重试: task_id=%s model=%s attempt=%s total_attempts=%s timeout_seconds=%s reason=%s",
+                    self.task_id, self.model, attempt, attempts, timeout, reason,
+                )
+                await asyncio.sleep(min(0.25 * attempt, 1.0))
+            except Exception as exc:
+                raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", f"参考素材识别模型调用失败（{type(exc).__name__}）") from exc
+            else:
+                break
 
         if not isinstance(response, dict) or not isinstance(response.get("success"), bool):
             raise TaskRequestError("REFERENCE_RECOGNITION_FAILED", "宿主返回了无效的参考素材识别状态")

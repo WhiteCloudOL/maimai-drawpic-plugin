@@ -3,12 +3,12 @@
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
-from ...domain.references import ReferenceOptions
+from ...domain.references import ChatReferenceOptions
 
 
 _MATERIAL_SOURCE_GUIDANCE = {
     "chat": "接续缺前图用 chat。",
-    "web": "缺指定角色、物件或明确要求的参考图用 web。",
+    "web": "缺指定角色或物件的参考图、用户要求搜索时用 web，并填 web_reference_subject。结合上下文辨认专名和昵称，含义会改变主体且无法确认时先询问。",
 }
 
 
@@ -75,7 +75,7 @@ EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
 for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
     schema["properties"]["style"] = {"type": "string", "description": "绘图预设的精确名称。用 none 跳过预设。"}
     schema["properties"]["reference_options"] = {
-        **ReferenceOptions.model_json_schema(),
+        **ChatReferenceOptions.model_json_schema(),
         "description": "自我参考、预设参考图和取材选项。",
     }
     reference_fields = schema["properties"]["reference_options"]["properties"]
@@ -94,7 +94,7 @@ for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
         ],
     }
     reference_fields["user_request"]["description"] = (
-        "显式取材时照录本轮用户原话，插件优先读取本轮消息。仅用 auto 时省略。"
+        "可选。缺本轮消息时，可简述取材意图，例如继续改上一张。只用自我参考时无需填写。"
     )
     reference_fields["self_reference_ids"]["description"] = "自我图库图片 ID，优先于 tag。"
     reference_fields["self_reference_tags"]["description"] = "选图标签，如冬装。未指定 ID 时按标签或原话选图，未命中用默认图。"
@@ -175,11 +175,14 @@ def restrict_drawing_material_sources(
         if not isinstance(choices, list):
             continue
         allowed = [source for source in enabled if source in choices]
-        if allowed == choices:
+        if allowed == choices and ("web" in allowed or "web_reference_subject" not in fields):
             continue
 
         updated[index] = deepcopy(tool)
-        material = updated[index]["function"]["parameters"]["properties"]["reference_options"]["properties"]["material_sources"]
+        updated_fields = updated[index]["function"]["parameters"]["properties"]["reference_options"]["properties"]
+        if "web" not in allowed:
+            updated_fields.pop("web_reference_subject", None)
+        material = updated_fields["material_sources"]
         material["maxItems"] = min(material.get("maxItems", len(allowed)), len(allowed))
         material["description"] = _material_sources_description(allowed)
         if allowed:

@@ -126,6 +126,7 @@ def test_planner_exposes_only_enabled_material_sources_without_keyword_reminder(
             assert sources["maxItems"] == len(allowed)
             assert ("用 chat" in sources["description"]) is chat
             assert ("用 web" in sources["description"]) is web
+            assert ("web_reference_subject" in fields) is web
             Draft202012Validator.check_schema(params)
             validator = Draft202012Validator(params)
             validator.validate({"prompt": "画猫", "reference_options": {"material_sources": allowed}})

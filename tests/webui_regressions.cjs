@@ -10,7 +10,7 @@ const source = path.join(__dirname, '../src/maimai_drawpic/interfaces/webui/src'
 const read = name => fs.readFileSync(path.join(source, name), 'utf8');
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const event = { preventDefault() {} };
-const referenceDefaults = { self_reference_enabled: false, self_names: ['麦麦'], self_reference_ids: [], multi_reference_confirmed: false, allow_chat_material_search: false, chat_material_search_limit: 50, material_model: "vlm", allow_web_material_search: false, web_search_provider: 'maibot', deepseek_api_key: '' };
+const referenceDefaults = { self_reference_enabled: false, self_names: ['麦麦'], self_reference_ids: [], multi_reference_confirmed: false, allow_chat_material_search: false, chat_material_search_limit: 50, material_model: "vlm", material_vision_timeout_seconds: 60, material_vision_attempts: 3, allow_web_material_search: false, web_search_provider: 'maibot', deepseek_api_key: '' };
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -239,7 +239,7 @@ async function settings(view = 'settings') {
     bootstrap: async () => {}, render: async () => {},
     submitForm: form => form.onsubmit(event),
   });
-  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_prompt: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, allow_web_material_search: {}, allow_material_multi_reference: {}, web_search_provider: {}, deepseek_api_key: {} },
+  h.U.state.data = { revision: 7, reference_fields: { self_reference_enabled: {}, self_reference_prompt: {}, self_reference_ids: {}, multi_reference_confirmed: {}, allow_chat_material_search: {}, chat_material_search_limit: {}, material_model: {}, material_vision_timeout_seconds: {}, material_vision_attempts: {}, allow_web_material_search: {}, allow_material_multi_reference: {}, web_search_provider: {}, deepseek_api_key: {} },
     schema: { sections: { general: { fields: { timeout: {}, prompt_review_enabled: {}, integration_api_enabled: {}, group_access_ids: {}, private_access_mode: {}, admin_user_ids: {}, group_default_quota: {} } }, style: { fields: { presets: {} } } } },
     settings: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } },
     defaults: { general: { references: structuredClone(referenceDefaults), timeout: 150, prompt_review_enabled: false, integration_api_enabled: true, group_access_ids: [], private_access_mode: 'blacklist', admin_user_ids: [], group_default_quota: 10 }, style: { presets: [] } } };
@@ -294,6 +294,8 @@ test('creative: preset, self-reference and material drafts merge without overwri
   h.panel('materials').values.allow_material_multi_reference = true;
   h.panel('materials').values.chat_material_search_limit = 80;
   h.panel('materials').values.material_model = 'fast-vision';
+  h.panel('materials').values.material_vision_timeout_seconds = 35;
+  h.panel('materials').values.material_vision_attempts = 1;
   assert.ok(Object.hasOwn(h.panel('materials').fields, 'chat_material_search_limit'));
   assert.equal(Object.hasOwn(h.panel('references').fields, 'chat_material_search_limit'), false);
   h.tabs[1].onclick(); h.tabs[2].onclick(); h.tabs[0].onclick();
@@ -307,6 +309,8 @@ test('creative: preset, self-reference and material drafts merge without overwri
   assert.equal(submitted.general.references.allow_material_multi_reference, true);
   assert.equal(submitted.general.references.chat_material_search_limit, 80);
   assert.equal(submitted.general.references.material_model, 'fast-vision');
+  assert.equal(submitted.general.references.material_vision_timeout_seconds, 35);
+  assert.equal(submitted.general.references.material_vision_attempts, 1);
   assert.equal(submitted.general.timeout, 150);
   assert.deepEqual(submitted.general.admin_user_ids, []);
   h.calls[0].resolve({ saved: true }); await flush();

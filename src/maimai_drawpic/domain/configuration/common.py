@@ -23,7 +23,7 @@ class PluginSectionConfig(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="2.54.0",
+        default="2.55.0",
         description="配置版本",
         json_schema_extra={
             "hint": "配置版本",

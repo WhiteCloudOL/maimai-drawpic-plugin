@@ -58,6 +58,13 @@ class ReferenceOptions(BaseModel):
         return self
 
 
+class ChatReferenceOptions(ReferenceOptions):
+    web_reference_subject: str = Field(
+        default="", max_length=100,
+        description="根据本轮与对话上下文确定的公开角色、品牌型号或特定物件。需要参考图时填写具体名称，可补作品名；只填对象，例如 DeepSeek 娘。仅适用于网络取材。",
+    )
+
+
 @dataclass(frozen=True)
 class ReferenceImage:
     raw: bytes

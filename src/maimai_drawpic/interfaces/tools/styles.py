@@ -130,7 +130,7 @@ class StyleToolMixin:
                 prompt=prompt,
                 drawing_style=style,
                 use_reference_features=True,
-                reference_options=self._drawing_reference_options(kwargs, kwargs.get("reference_options")),
+                reference_options=self._drawing_reference_options(kwargs, kwargs.get("reference_options"), prompt=prompt),
                 request_negative_prompt=negative_prompt,
                 stream_id=runtime_context["stream_id"],
                 source_image_bytes_list=source_image_bytes_list,

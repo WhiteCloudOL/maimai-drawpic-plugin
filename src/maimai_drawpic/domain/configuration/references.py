@@ -7,6 +7,10 @@ from typing import List, Literal
 from .styles import ReferenceBindingsSchema
 
 
+DEFAULT_MATERIAL_VISION_TIMEOUT_SECONDS = 60
+DEFAULT_MATERIAL_VISION_ATTEMPTS = 3
+
+
 DEFAULT_SELF_REFERENCE_PROMPT = (
     "请参考图片保持图中人物的身份和辨识度，例如五官、发色、耳朵和尾巴。"
     "按本次绘图要求重新设计构图、姿势、镜头和场景，用户指定的服装或外观变化优先。"
@@ -33,6 +37,16 @@ class ReferenceConfig(PluginConfigBase):
     self_reference_ids: List[str] = Field(default=[], max_length=8, description="明确选择的相容自我图片；留空时按 tag 选一张", json_schema_extra={"label": "自我参考图片", "hint": "留空时按图库 tag 选择一张，未命中则使用默认图；需要固定形象时再选择图片。"})
     multi_reference_confirmed: bool = Field(default=False, description="已通过对话框确认当前配置与多图合用方式；切换模型仍需自行核实", json_schema_extra={"label": "已确认多图参考"})
     material_model: str = Field(default="vlm", min_length=1, max_length=206, description="vlm 或 task:planner/task:replyer/task:vlm 使用宿主任务；model:名称严格指定具体模型", json_schema_extra={"label": "识别模型", "hint": "建议选择快速多模态模型。可跟随 planner、replyer、vlm，或填写 MaiBot 中已配置的模型名称。"})
+    material_vision_timeout_seconds: int = Field(
+        default=DEFAULT_MATERIAL_VISION_TIMEOUT_SECONDS, ge=5, le=60, strict=True,
+        description="候选图单次视觉识别的最长等待时间",
+        json_schema_extra={"label": "视觉识别超时（秒）", "hint": "默认 60 秒，可设 5～60 秒。每次素材准备总计最多 90 秒。"},
+    )
+    material_vision_attempts: int = Field(
+        default=DEFAULT_MATERIAL_VISION_ATTEMPTS, ge=1, le=4, strict=True,
+        description="每张候选图视觉识别的总尝试次数，含首次",
+        json_schema_extra={"label": "视觉识别尝试次数", "hint": "默认共 3 次，含首次，可设 1～4 次。识别结果不匹配时直接检查下一张。"},
+    )
     allow_chat_material_search: bool = Field(default=False, description="允许从当前真实聊天流的有限近期记录中查找素材", json_schema_extra={"label": "允许聊天记录取材", "hint": "仅在继续改图、重新生成等明确接续前图的任务中查找。"})
     chat_material_search_limit: int = Field(default=50, ge=1, le=200, strict=True, description="每次任务最多检查的近期聊天消息条数", json_schema_extra={"label": "聊天记录搜索上限（条）", "hint": "推荐 50 条，可设 1～200 条。仅查找当前聊天最近 24 小时内的消息，最多选取 6 张候选图。"})
     allow_web_material_search: bool = Field(default=False, description="允许通过选定搜索服务查找缺少的素材", json_schema_extra={"label": "允许网络素材搜索", "hint": "仅为具体角色、特定物件或明确的参考图请求搜索。"})

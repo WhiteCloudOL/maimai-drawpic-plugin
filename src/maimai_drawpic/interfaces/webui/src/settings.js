@@ -72,7 +72,7 @@
       panel.setAttribute("role", "tabpanel");
       panel.setAttribute("aria-labelledby", `settings-tab-${name}`);
       panel.hidden = name !== selected;
-      const materialField = key => key.startsWith("allow_") || ["chat_material_search_limit", "material_model", "web_search_provider", "deepseek_api_key"].includes(key);
+      const materialField = key => key.startsWith("allow_") || key.startsWith("material_") || ["chat_material_search_limit", "web_search_provider", "deepseek_api_key"].includes(key);
       const fields = ["references", "materials"].includes(name) ? Object.fromEntries(Object.entries(state.data.reference_fields).filter(([key]) => name === "materials" ? materialField(key) : !materialField(key))) : Object.fromEntries(
         Object.entries(state.data.schema.sections[sourceSection(name)].fields)
           .filter(([key]) => belongsToSection(name, key)),

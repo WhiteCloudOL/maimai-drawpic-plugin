@@ -14,9 +14,12 @@ from .schemas import DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCH
 class DrawingToolMixin:
     """tools/drawing.py 对应的插件行为。"""
 
-    def _drawing_reference_options(self, kwargs: Dict[str, Any], reference_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _drawing_reference_options(
+        self, kwargs: Dict[str, Any], reference_options: Optional[Dict[str, Any]], *, prompt: str = "",
+    ) -> Dict[str, Any]:
         """自身识别只读取宿主本轮原话，素材取材沿用独立的请求文本。"""
         values = dict(reference_options or {})
+        provided_request = values.get("user_request", "")
         if "multi_reference_confirmed" in values:
             raise ValueError("多图能力必须由用户确认，不能由聊天模型声明已确认")
         refs = self.config.general.references
@@ -38,12 +41,27 @@ class DrawingToolMixin:
                 values["user_request"] = text.strip() if isinstance(text, str) else ""
         if values["self_reference"] == "auto" and not host_request:
             values["self_reference"] = "off"
-        if values["self_reference"] == "required" or not host_request:
+        subject = values.get("web_reference_subject", "")
+        if isinstance(subject, str) and subject.strip() and refs.allow_web_material_search:
+            values["web_reference_subject"] = subject.strip()
+            values.setdefault("material_sources", ["web"])
+        elif values["self_reference"] == "required" or not host_request:
             values.setdefault("material_sources", [])
         sources = values.get("material_sources")
         if isinstance(sources, list):
             disabled = [source for source in ("chat", "web") if source not in refs.enabled_material_sources]
-            values["material_sources"] = [source for source in sources if source not in disabled]
+            sources = [source for source in sources if source not in disabled]
+            values["material_sources"] = sources
+            if "web" not in sources:
+                values.pop("web_reference_subject", None)
+            request = values.get("user_request", "")
+            if sources and isinstance(request, str) and not request.strip():
+                context = provided_request.strip() if isinstance(provided_request, str) else ""
+                context = context or prompt.strip() or subject
+                if context:
+                    values["user_request"] = context
+        if not refs.allow_web_material_search:
+            values.pop("web_reference_subject", None)
         if values["self_reference"] == "off":
             values.pop("self_reference_ids", None)
             values.pop("self_reference_tags", None)
@@ -83,7 +101,7 @@ class DrawingToolMixin:
                 defer_prompt_review=True,
                 use_reference_features=True,
                 drawing_style=style,
-                reference_options=self._drawing_reference_options(kwargs, reference_options),
+                reference_options=self._drawing_reference_options(kwargs, reference_options, prompt=prompt),
                 prompt=prompt.strip(),
                 stream_id=context["stream_id"],
                 requested_model=model.strip(),
@@ -246,7 +264,7 @@ class DrawingToolMixin:
                 defer_prompt_review=True,
                 use_reference_features=True,
                 drawing_style=style,
-                reference_options=self._drawing_reference_options(kwargs, reference_options),
+                reference_options=self._drawing_reference_options(kwargs, reference_options, prompt=prompt),
                 reference_task_type="edit_image",
                 prompt=prompt.strip(),
                 stream_id=normalized_stream_id,

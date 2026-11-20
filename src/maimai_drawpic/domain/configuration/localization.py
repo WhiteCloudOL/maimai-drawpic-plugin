@@ -491,6 +491,16 @@ _FIELD_HINT_OVERRIDES: Dict[str, Tuple[str, str, str]] = {
         "高速なマルチモーダルモデルを推奨します。planner、replyer、vlm、またはMaiBotに設定済みのモデル名を指定できます。",
         "빠른 멀티모달 모델을 권장합니다. planner, replyer, vlm 또는 MaiBot에 설정된 모델 이름을 사용할 수 있습니다.",
     ),
+    "ReferenceConfig.material_vision_timeout_seconds": (
+        "Default: 60 seconds. Allowed range: 5–60 seconds. Material preparation has a 90-second total limit.",
+        "既定値は60秒、設定範囲は5～60秒です。素材の準備全体は最大90秒です。",
+        "기본값은 60초이며 5~60초로 설정할 수 있습니다. 전체 소재 준비는 최대 90초입니다.",
+    ),
+    "ReferenceConfig.material_vision_attempts": (
+        "Default: 3 attempts, including the first. Allowed range: 1–4. A mismatch moves on to the next image.",
+        "既定値は初回を含めて3回、設定範囲は1～4回です。一致しなければ次の画像を確認します。",
+        "기본값은 첫 시도를 포함해 총 3회이며 1~4회로 설정할 수 있습니다. 일치하지 않으면 다음 이미지를 확인합니다.",
+    ),
     "ReferenceConfig.web_search_provider": (
         "MaiBot uses the host's configured search service. DeepSeek uses a separate API key.",
         "MaiBotはホストの検索設定を使い、DeepSeekは別途入力したAPIキーを使います。",
@@ -811,6 +821,8 @@ _FIELD_LABELS.update({
     "web_search_provider": ("Search service", "検索サービス", "검색 서비스"),
     "deepseek_api_key": ("DeepSeek API Key", "DeepSeek APIキー", "DeepSeek API 키"),
     "material_model": ("Recognition model", "識別モデル", "인식 모델"),
+    "material_vision_timeout_seconds": ("Vision timeout (seconds)", "画像認識タイムアウト（秒）", "이미지 인식 제한 시간(초)"),
+    "material_vision_attempts": ("Vision attempts", "画像認識の試行回数", "이미지 인식 시도 횟수"),
     "self_keywords": ("Trigger keywords", "トリガーキーワード", "트리거 키워드"),
     "references": ("References and materials", "参照と素材", "참조 및 소재"),
     "self_reference_enabled": ("Enable self references", "自身の参照を有効化", "자신의 참조 활성화"),

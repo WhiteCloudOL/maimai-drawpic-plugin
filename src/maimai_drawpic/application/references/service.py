@@ -4,14 +4,14 @@ from hashlib import sha256
 from typing import Any, Callable, Dict, List, Optional
 import asyncio
 
-from ...domain.references import PreparedRequest, ReferenceImage, ReferenceOptions, normalize_tag
+from ...domain.references import ChatReferenceOptions, PreparedRequest, ReferenceImage, ReferenceOptions, normalize_tag
 from ...domain.configuration.models import StylePresetConfig
 from ...domain.styles import StylePromptResolver, merge_prompt_parts
 from ...domain.task_errors import TaskRequestError
 from ...infrastructure.references.materials import MaterialSource
 from ...infrastructure.storage.reference_assets import ReferenceAssetStore
 from ..access import require_chat_access
-from .recognition import ReferenceRecognizer
+from .recognition import MaterialNeed, MaterialNeeds, ReferenceRecognizer
 from .chat import read_chat_materials
 
 
@@ -24,7 +24,6 @@ class ReferencePreparation:
         self.prompt, self.style, self.negative = prompt, style, negative
         self.stream_id, self.required_mode, self.streams = stream_id, required_mode, streams
         self.images, self.frozen, self.self_ids = images, frozen, self_ids
-        self.recognizer = ReferenceRecognizer(ctx, config.general.references.material_model)
         self.sources = MaterialSource(ctx, config)
         self.get_config = get_config
         self.self_reference_used = False
@@ -64,6 +63,10 @@ class ReferencePreparation:
         # 配置仅允许收紧在途请求；任务使用已读取的资产和模板版本。
         refs = self.config.general.references
         live = self.get_config() if self.get_config is not None else self.config
+        recognizer = ReferenceRecognizer(
+            self.ctx, refs.material_model, task_id=task_id, vision_timeout_seconds=refs.material_vision_timeout_seconds,
+            vision_attempts=refs.material_vision_attempts,
+        )
         if self.options.self_reference == "required" and not live.general.references.self_reference_enabled:
             raise TaskRequestError("SELF_REFERENCE_DISABLED", "自我参考已关闭")
         refs.self_reference_enabled = refs.self_reference_enabled and live.general.references.self_reference_enabled
@@ -75,7 +78,7 @@ class ReferencePreparation:
         images = list(self.images)
         images.extend(self.frozen[identifier] for identifier in self.options.reference_ids)
         if self.self_reference_enabled:
-            subject = "self" if self.options.self_reference == "required" else await self.recognizer.self_subject(
+            subject = "self" if self.options.self_reference == "required" else await recognizer.self_subject(
                 self.options.user_request, refs.self_names)
             if subject == "uncertain":
                 raise TaskRequestError("SELF_SUBJECT_UNCERTAIN", "无法确定要描绘谁，请明确是否描绘机器人自身")
@@ -94,7 +97,18 @@ class ReferencePreparation:
         if self.options.material_sources:
             allow_multiple_materials = refs.allow_material_multi_reference and live.general.references.allow_material_multi_reference
             material_selected = False
-            plan = await self.recognizer.needs(self.options.user_request, source_count=len(self.images))
+            subject = self.options.web_reference_subject if isinstance(self.options, ChatReferenceOptions) else ""
+            if subject and "web" in self.options.material_sources:
+                plan = MaterialNeeds(chat_followup=False, needs=[
+                    MaterialNeed(subject=subject, mention=subject, query=subject, role="identity", web_search=True),
+                ])
+                if "chat" in self.options.material_sources:
+                    chat_plan = await recognizer.needs(self.options.user_request, source_count=len(self.images))
+                    plan.chat_followup = chat_plan.chat_followup
+                self.ctx.logger.debug("采用聊天工具指定的检索对象: task_id=%s", task_id)
+            else:
+                self.ctx.logger.debug("开始识别素材需求: task_id=%s sources=%s", task_id, self.options.material_sources)
+                plan = await recognizer.needs(self.options.user_request, source_count=len(self.images))
             chat_images: Optional[List[ReferenceImage]] = None
             if plan.chat_followup and "chat" in self.options.material_sources:
                 context = await self.streams.existing_stream_context(self.stream_id)
@@ -140,6 +154,7 @@ class ReferencePreparation:
                         if need.kind == "user" or need.subject.strip() in {"用户", "我", "本人", "user"}:
                             raise TaskRequestError("MATERIAL_MISSING", "用户本人形象需要明确提供照片，不能使用同名网图")
                         try:
+                            self.ctx.logger.debug("开始搜索网络素材: task_id=%s", task_id)
                             candidates = await self.sources.web(need.query, subject=need.mention)
                         except TaskRequestError:
                             raise
@@ -150,7 +165,8 @@ class ReferencePreparation:
                         if visual_calls >= 12:
                             raise TaskRequestError("MATERIAL_BUDGET_EXCEEDED", "素材识别已达到本次 12 张次上限，请直接补充参考图")
                         visual_calls += 1
-                        if await self.recognizer.matches(candidate, need):
+                        self.ctx.logger.debug("开始核对参考图: task_id=%s source=%s candidate=%s", task_id, source, visual_calls)
+                        if await recognizer.matches(candidate, need):
                             # 同一真实图片可承担多个用途，最终仅发送一次。
                             images.append(ReferenceImage(candidate.raw, candidate.source, need.role, need.subject, candidate.url))
                             if source == "web":

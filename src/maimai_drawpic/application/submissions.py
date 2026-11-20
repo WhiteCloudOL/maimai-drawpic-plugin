@@ -1,6 +1,7 @@
 """runtime/requests.py 的插件组件。"""
 
 from hashlib import sha256
+from pydantic import ValidationError
 from typing import Any, Dict, Optional
 from uuid import uuid4
 import asyncio
@@ -72,17 +73,23 @@ class RequestMixin:
                 raise ValueError("源图 URL 数量必须与源图数量一致")
             # 风格入口已解析的模板（含显式无风格的空串）直接沿用，普通入口只套用一次默认风格。
             if use_reference_features and reference_preparation is None:
-                from ..domain.references import ReferenceOptions
+                from ..domain.references import ChatReferenceOptions, ReferenceOptions
                 from .references.service import freeze_reference_request
 
                 refs = self.config.general.references
                 values = dict(reference_options or {})
                 values.setdefault("self_reference", "auto" if refs.self_reference_enabled else "off")
                 values.setdefault("material_sources", refs.enabled_material_sources)
+                options_model = ReferenceOptions if from_command else ChatReferenceOptions
+                try:
+                    options = options_model.model_validate(values)
+                except ValidationError as exc:
+                    detail = exc.errors(include_input=False, include_url=False, include_context=False)[0]["msg"]
+                    raise TaskRequestError("INVALID_REFERENCE_OPTIONS", f"参考选项无效：{detail.removeprefix('Value error, ')}") from None
                 reference_preparation = await freeze_reference_request(
                     ctx=self.ctx, config=self.config, store=self._workspace().tasks.references,
                     streams=draw_service.stream_service, prompt=prompt, style=drawing_style, negative=request_negative_prompt,
-                    stream_id=resolved_stream_id, options=ReferenceOptions.model_validate(values),
+                    stream_id=resolved_stream_id, options=options,
                     images=normalized_source_images, urls=normalized_source_urls,
                     required_mode=reference_task_type,
                     get_config=lambda: self.config,

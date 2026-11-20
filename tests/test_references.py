@@ -78,6 +78,66 @@ def test_missing_host_message_only_disables_auto_for_explicit_material_search(ma
     parsed = module("domain.references").ReferenceOptions.model_validate(values)
     assert parsed.self_reference == "off" and parsed.self_reference_tags == []
     assert parsed.material_sources == sources and parsed.user_request == "画甘雨"
+    values = plugin._drawing_reference_options({}, options, prompt="画甘雨")
+    parsed = module("domain.references").ChatReferenceOptions.model_validate(values)
+    assert parsed.self_reference == "off" and parsed.material_sources == sources and parsed.user_request == "画甘雨"
+
+
+@pytest.mark.parametrize("web_enabled, choice, expected", [
+    (True, None, True), (True, ["web"], True), (True, [], False), (False, ["web"], False),
+])
+def test_chat_search_uses_resolved_subject_without_original_or_second_text_model(
+    make_plugin, monkeypatch, web_enabled, choice, expected,
+):
+    from test_api_settings import provide_streams
+
+    async def run():
+        plugin = make_plugin()
+        values = plugin.get_plugin_config_data()
+        values["general"]["references"].update(
+            allow_chat_material_search=True, allow_web_material_search=web_enabled, self_reference_enabled=True,
+            material_vision_timeout_seconds=35, material_vision_attempts=2,
+        )
+        plugin.set_plugin_config(values)
+        await plugin.on_load()
+        try:
+            provide_streams(plugin, monkeypatch)
+            recognition = module("application.references.recognition")
+            candidate = module("domain.references").ReferenceImage(image_bytes(), "web")
+            web = AsyncMock(return_value=[candidate])
+            llm = AsyncMock(return_value={"success": True, "response": '{"matches": true}'})
+            generate = AsyncMock(return_value=[image_bytes()])
+            monkeypatch.setattr(plugin.ctx.llm, "generate", llm)
+            monkeypatch.setattr(module("infrastructure.references.materials").MaterialSource, "web", web)
+            service = plugin._require_draw_service()
+            monkeypatch.setattr(service, "_run_image_request_attempt", generate)
+            monkeypatch.setattr(plugin._require_stream_service(), "send_generated_images_with_fallback", AsyncMock(return_value=1))
+            options = {"self_reference": "auto", "web_reference_subject": "DeepSeek 娘"}
+            if choice is not None:
+                options["material_sources"] = choice
+            result = await plugin.handle_draw(
+                "画 DeepSeek 娘", reference_options=options,
+                stream_id="actual-stream", user_id="A" * 32, group_id="B" * 32, platform="qq",
+            )
+            assert result["success"], result
+            await asyncio.gather(*tuple(service.background_tasks))
+            assert plugin._task_store.get_task(result["task_id"]).status == "completed"
+            assert generate.await_args.kwargs["source_image_bytes_list"] == ([candidate.raw] if expected else [])
+            if expected:
+                web.assert_awaited_once_with("DeepSeek 娘", subject="DeepSeek 娘")
+                llm.assert_awaited_once()
+                assert isinstance(llm.await_args.args[0], list)
+                assert llm.await_args.kwargs["rpc_timeout_ms"] == 35000
+            else:
+                web.assert_not_awaited()
+                llm.assert_not_awaited()
+        finally:
+            await plugin.on_unload()
+
+    public_options = module("domain.references").ReferenceOptions
+    with pytest.raises(ValueError, match="web_reference_subject"):
+        public_options.model_validate({"web_reference_subject": "DeepSeek 娘"})
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("message,expected,mode", [
@@ -1240,6 +1300,47 @@ def test_reference_recognizer_rejects_invalid_host_responses(payload, reason):
         asyncio.run(recognizer.self_subject("画你的自拍", ["麦麦"]))
     assert failure.value.code == "REFERENCE_RECOGNITION_FAILED"
     generate.assert_awaited_once()
+
+
+@pytest.mark.parametrize("result,attempts,expected_calls", [
+    ("success", 3, 2), ("timeout", 3, 3), ("timeout", 1, 1),
+    ("mismatch", 3, 1), ("invalid", 3, 1), ("cancelled", 3, 1),
+])
+def test_visual_recognition_retries_only_transient_failures(monkeypatch, result, attempts, expected_calls):
+    recognition = module("application.references.recognition")
+    timeout = TimeoutError()
+    generate = AsyncMock(side_effect={
+        "success": [timeout, {"success": True, "response": '{"matches":true}'}],
+        "timeout": [timeout] * 3,
+        "mismatch": [{"success": True, "response": '{"matches":false}'}],
+        "invalid": [{"success": True, "response": '{"matches":"true"}'}],
+        "cancelled": [asyncio.CancelledError()],
+    }[result])
+    logger = Mock()
+    backoff = AsyncMock()
+    monkeypatch.setattr(recognition.asyncio, "sleep", backoff)
+    recognizer = recognition.ReferenceRecognizer(
+        SimpleNamespace(llm=SimpleNamespace(generate=generate), logger=logger),
+        vision_timeout_seconds=33, vision_attempts=attempts, task_id="test-task",
+    )
+    image = module("domain.references").ReferenceImage(image_bytes(), "web")
+    need = recognition.MaterialNeed(subject="甘雨", mention="甘雨", web_search=True, role="identity", query="甘雨")
+    if result == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            asyncio.run(recognizer.matches(image, need))
+    elif result in {"timeout", "invalid"}:
+        error_type = module("domain.task_errors").TaskRequestError
+        with pytest.raises(error_type) as failure:
+            asyncio.run(recognizer.matches(image, need))
+        assert failure.value.code == "REFERENCE_RECOGNITION_FAILED"
+        if attempts == 3 and result == "timeout":
+            assert "已重试 2 次" in str(failure.value)
+    else:
+        assert asyncio.run(recognizer.matches(image, need)) is (result == "success")
+    assert generate.await_count == expected_calls
+    assert backoff.await_count == logger.warning.call_count == expected_calls - 1
+    assert all(call.kwargs["rpc_timeout_ms"] == 33000 for call in generate.await_args_list)
+    assert all(call.args[0] is generate.await_args.args[0] for call in generate.await_args_list)
 
 
 @pytest.mark.parametrize("markup_in_fetch", [False, True])
