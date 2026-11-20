@@ -19,7 +19,8 @@ class DrawingToolMixin:
         values = dict(reference_options or {})
         if "multi_reference_confirmed" in values:
             raise ValueError("多图能力必须由用户确认，不能由聊天模型声明已确认")
-        if not self.config.general.references.self_reference_enabled:
+        refs = self.config.general.references
+        if not refs.self_reference_enabled:
             values["self_reference"] = "off"
         else:
             supplied = values.get("self_reference", "off")
@@ -40,6 +41,10 @@ class DrawingToolMixin:
         request = values.get("user_request", "")
         if values["self_reference"] == "required" or not isinstance(request, str) or not request.strip():
             values.setdefault("material_sources", [])
+        sources = values.get("material_sources")
+        if isinstance(sources, list):
+            disabled = [source for source in ("chat", "web") if source not in refs.enabled_material_sources]
+            values["material_sources"] = [source for source in sources if source not in disabled]
         if values["self_reference"] == "off":
             values.pop("self_reference_ids", None)
             values.pop("self_reference_tags", None)

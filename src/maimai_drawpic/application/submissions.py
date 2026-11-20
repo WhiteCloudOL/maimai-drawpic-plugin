@@ -78,8 +78,7 @@ class RequestMixin:
                 refs = self.config.general.references
                 values = dict(reference_options or {})
                 values.setdefault("self_reference", "auto" if refs.self_reference_enabled else "off")
-                values.setdefault("material_sources", [name for name, enabled in (
-                    ("chat", refs.allow_chat_material_search), ("web", refs.allow_web_material_search)) if enabled])
+                values.setdefault("material_sources", refs.enabled_material_sources)
                 reference_preparation = await freeze_reference_request(
                     ctx=self.ctx, config=self.config, store=self._workspace().tasks.references,
                     streams=draw_service.stream_service, prompt=prompt, style=drawing_style, negative=request_negative_prompt,

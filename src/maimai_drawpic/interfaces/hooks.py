@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from ..application.access import ChatAccessDenied, access_restricted, require_chat_access
 from ..application.references.planner import drawing_reminder_items
 from .chat.message_images import cache_source_image_from_message
+from .tools.schemas import restrict_drawing_material_sources
 
 
 class HookMixin:
@@ -15,7 +16,7 @@ class HookMixin:
     @HookHandler(
         "maisaka.planner.before_request",
         name="drawing_keyword_reminder",
-        description="在宿主放行的规划请求中，按触发关键词提醒判断绘图意图",
+        description="按当前配置限制规划请求的取材来源，并在命中关键词时提醒判断绘图意图",
     )
     async def handle_drawing_keyword_reminder(
         self, items: List[Dict[str, Any]], tool_definitions: List[Dict[str, Any]],
@@ -30,16 +31,18 @@ class HookMixin:
         refs = self.config.general.references
         updated = drawing_reminder_items(items, tool_definitions, refs.self_keywords,
                                         self_reference_enabled=refs.self_reference_enabled)
-        if updated is None:
-            return result
-        if access_restricted(self.config.general):
+        if updated is not None and access_restricted(self.config.general):
             context = await self._require_stream_service().existing_stream_context(session_id)
             try:
                 require_chat_access(self.config.general, context, self.ctx.logger)
             except ChatAccessDenied:
-                return result
+                updated = None
+        restricted = restrict_drawing_material_sources(tool_definitions, self.config.general.references.enabled_material_sources)
+        if updated is None and restricted is None:
+            return result
         return {**result, "modified_kwargs": {
-            **kwargs, "items": updated, "tool_definitions": tool_definitions,
+            **kwargs, "items": items if updated is None else updated,
+            "tool_definitions": tool_definitions if restricted is None else restricted,
             "item_schema_version": item_schema_version, "session_id": session_id,
         }}
 

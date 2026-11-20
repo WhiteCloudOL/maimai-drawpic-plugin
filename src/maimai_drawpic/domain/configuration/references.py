@@ -48,6 +48,15 @@ class ReferenceConfig(PluginConfigBase):
     web_search_provider: Literal["maibot", "deepseek"] = Field(default="maibot", description="网络素材检索所用的搜索服务", json_schema_extra={"label": "搜索服务", "hint": "MaiBot 使用宿主已配置的搜索服务；DeepSeek 使用单独填写的 API Key。"})
     deepseek_api_key: str = Field(default="", max_length=512, description="DeepSeek 搜索 API 密钥，仅保存在工作台设置中", json_schema_extra={"label": "DeepSeek API Key", "input_type": "password", "hint": "留空保留已配置的密钥。Search API 返回网页，插件从网页提取候选图片。"})
 
+    @property
+    def enabled_material_sources(self) -> List[str]:
+        return [
+            name for name, enabled in (
+                ("chat", self.allow_chat_material_search),
+                ("web", self.allow_web_material_search),
+            ) if enabled
+        ]
+
     @field_validator("self_names", "self_keywords")
     @classmethod
     def validate_identity_hints(cls, names: List[str]) -> List[str]:

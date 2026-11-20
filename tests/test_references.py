@@ -67,6 +67,8 @@ def test_tool_without_original_request_disables_optional_recognition(make_plugin
 def test_missing_host_message_only_disables_auto_for_explicit_material_search(make_plugin, sources):
     plugin = make_plugin(False)
     plugin.config.general.references.self_reference_enabled = True
+    plugin.config.general.references.allow_chat_material_search = True
+    plugin.config.general.references.allow_web_material_search = True
     options = {"self_reference": "auto", "material_sources": sources, "self_reference_tags": ["冬装"]}
     values = plugin._drawing_reference_options({}, options)
     assert values["self_reference"] == "off" and values["material_sources"] == sources
@@ -227,11 +229,60 @@ def test_chat_self_portrait_uses_only_gallery_with_sources_enabled(make_plugin, 
 def test_chat_self_reference_preserves_explicit_material_search(make_plugin):
     plugin = make_plugin(False)
     plugin.config.general.references.self_reference_enabled = True
+    plugin.config.general.references.allow_web_material_search = True
     options = plugin._drawing_reference_options(
         {"message": {"raw_message": [{"type": "text", "data": "画你和甘雨合照"}]}},
         {"self_reference": "required", "material_sources": ["web"]},
     )
     assert options["self_reference"] == "required" and options["material_sources"] == ["web"]
+
+
+def test_chat_tool_keeps_enabled_sources_and_leaves_invalid_values_for_validation(make_plugin):
+    plugin = make_plugin(False)
+    plugin.config.general.references.allow_web_material_search = True
+    request = {"user_request": "画甘雨", "material_sources": ["chat", "web", "invalid"]}
+    values = plugin._drawing_reference_options({}, request)
+    assert values["material_sources"] == ["web", "invalid"]
+    assert request["material_sources"] == ["chat", "web", "invalid"]
+    with pytest.raises(ValueError, match="material_sources"):
+        module("domain.references").ReferenceOptions.model_validate(values)
+
+
+def test_chat_tool_ignores_disabled_source_and_still_draws(make_plugin, monkeypatch):
+    from test_api_settings import provide_streams
+
+    async def run():
+        plugin = make_plugin()
+        config = plugin.get_plugin_config_data()
+        config["general"]["references"]["allow_web_material_search"] = True
+        plugin.set_plugin_config(config)
+        await plugin.on_load()
+        try:
+            provide_streams(plugin, monkeypatch)
+            service = plugin._require_draw_service()
+            generate = AsyncMock(return_value=[image_bytes()])
+            recognize = AsyncMock(side_effect=AssertionError("关闭的来源不应触发素材识别"))
+            monkeypatch.setattr(service, "_run_image_request_attempt", generate)
+            monkeypatch.setattr(plugin.ctx.llm, "generate", recognize)
+            monkeypatch.setattr(plugin._require_stream_service(), "send_generated_images_with_fallback", AsyncMock(return_value=1))
+            stream = {"stream_id": "actual-stream", "user_id": "A" * 32, "group_id": "B" * 32, "platform": "qq"}
+            reference_options = {"material_sources": ["chat"]}
+            message = {"raw_message": [{"type": "text", "data": "画一只猫"}]}
+            receipt = await plugin.handle_draw("一只猫", reference_options=reference_options, message=message, **stream)
+            assert receipt["success"]
+            await asyncio.gather(*tuple(service.background_tasks))
+            assert plugin._task_store.get_task(receipt["task_id"]).status == "completed"
+            assert generate.await_args.kwargs["source_image_bytes_list"] == []
+            recognize.assert_not_awaited()
+
+            edit = await plugin.handle_edit_image("换背景", reference_options=reference_options, message=message, **stream)
+            assert not edit["success"] and "图生图需要真实源图片" in edit["message"]
+            generate.assert_awaited_once()
+            recognize.assert_not_awaited()
+        finally:
+            await plugin.on_unload()
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("selection", ["off", "auto"])

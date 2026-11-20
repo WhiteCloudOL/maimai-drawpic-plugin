@@ -1,7 +1,26 @@
 """绘图工具的参数声明。"""
 
-from typing import Any
+from copy import deepcopy
+from typing import Any, Dict, List, Optional
+
 from ...domain.references import ReferenceOptions
+
+
+_MATERIAL_SOURCE_GUIDANCE = {
+    "chat": "接续缺前图用 chat。",
+    "web": "缺指定角色、物件或明确要求的参考图用 web。",
+}
+
+
+def _material_sources_description(sources: List[str]) -> str:
+    if not sources:
+        return "自动取材已关闭，填 []。"
+    return (
+        "只画机器人的自画像或自拍时用自我图库，设 self_reference=required。"
+        "仅缺额外素材时取材，其余填 []。"
+        + "".join(_MATERIAL_SOURCE_GUIDANCE[source] for source in sources)
+    )
+
 
 DRAW_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -79,9 +98,8 @@ for schema in (DRAW_TOOL_PARAMETERS_SCHEMA, EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA):
     )
     reference_fields["self_reference_ids"]["description"] = "自我图库图片 ID，优先于 tag。"
     reference_fields["self_reference_tags"]["description"] = "选图标签，如冬装。未指定 ID 时按标签或原话选图，未命中用默认图。"
-    reference_fields["material_sources"]["description"] = (
-        "只画机器人的自画像或自拍时用自我图库，设 self_reference=required。"
-        "仅缺额外素材时选已开启的来源，其余填 []。接续缺前图用 chat，缺指定角色、物件或明确要求的参考图用 web。"
+    reference_fields["material_sources"]["description"] = _material_sources_description(
+        list(_MATERIAL_SOURCE_GUIDANCE)
     )
 
 
@@ -135,3 +153,37 @@ DRAW_STYLES_TOOL_PARAMETERS_SCHEMA: dict[str, Any] = {
 }
 
 STYLED_DRAW_TOOL_PARAMETERS_SCHEMA["properties"]["reference_options"] = DRAW_TOOL_PARAMETERS_SCHEMA["properties"]["reference_options"]
+
+
+def restrict_drawing_material_sources(
+    tool_definitions: List[Dict[str, Any]], enabled: List[str],
+) -> Optional[List[Dict[str, Any]]]:
+    """按当前配置收窄本轮绘图工具声明，保留已注册的完整参数格式。"""
+    if len(enabled) == len(_MATERIAL_SOURCE_GUIDANCE):
+        return None
+    updated = tool_definitions.copy()
+    for index, tool in enumerate(tool_definitions):
+        function = tool.get("function", {})
+        if function.get("name") not in ("draw", "edit_image", "styled_draw"):
+            continue
+        options = function.get("parameters", {}).get("properties", {}).get("reference_options", {})
+        fields = options.get("properties", {})
+        sources = fields.get("material_sources")
+        if not isinstance(sources, dict):
+            continue
+        choices = sources.get("items", {}).get("enum")
+        if not isinstance(choices, list):
+            continue
+        allowed = [source for source in enabled if source in choices]
+        if allowed == choices:
+            continue
+
+        updated[index] = deepcopy(tool)
+        material = updated[index]["function"]["parameters"]["properties"]["reference_options"]["properties"]["material_sources"]
+        material["maxItems"] = min(material.get("maxItems", len(allowed)), len(allowed))
+        material["description"] = _material_sources_description(allowed)
+        if allowed:
+            material["items"]["enum"] = allowed
+        else:
+            material["items"].pop("enum")
+    return updated if updated != tool_definitions else None

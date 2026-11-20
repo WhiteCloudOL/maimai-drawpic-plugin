@@ -86,6 +86,55 @@ def test_planner_hook_preserves_host_fields_without_starting_models_or_tasks(mak
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("chat,web,allowed", [
+    (False, False, []), (True, False, ["chat"]), (False, True, ["web"]), (True, True, ["chat", "web"]),
+])
+def test_planner_exposes_only_enabled_material_sources_without_keyword_reminder(make_plugin, chat, web, allowed):
+    from jsonschema import Draft202012Validator
+
+    async def run():
+        plugin = make_plugin(False)
+        refs = plugin.config.general.references
+        refs.allow_chat_material_search = chat
+        refs.allow_web_material_search = web
+        refs.self_keywords = []
+        schemas = module("interfaces.tools.schemas")
+        tool_definitions = [
+            {"type": "function", "function": {"name": name, "parameters": schema}}
+            for name, schema in (
+                ("draw", schemas.DRAW_TOOL_PARAMETERS_SCHEMA),
+                ("edit_image", schemas.EDIT_IMAGE_TOOL_PARAMETERS_SCHEMA),
+                ("styled_draw", schemas.STYLED_DRAW_TOOL_PARAMETERS_SCHEMA),
+                ("other_tool", schemas.DRAW_TOOL_PARAMETERS_SCHEMA),
+            )
+        ]
+        original = deepcopy(tool_definitions)
+        items = [user("帮我画只猫")]
+        result = await plugin.handle_drawing_keyword_reminder(
+            items=items, tool_definitions=tool_definitions, item_schema_version=1, session_id="real-session",
+        )
+        kwargs = result.get("modified_kwargs", {})
+        assert kwargs.get("items", items) == items
+        tools = kwargs.get("tool_definitions", tool_definitions)
+        assert tools[-1] == original[-1]
+        assert tool_definitions == original
+        for tool in tools[:-1]:
+            params = tool["function"]["parameters"]
+            fields = params["properties"]["reference_options"]["properties"]
+            sources = fields["material_sources"]
+            assert sources["items"].get("enum", []) == allowed
+            assert sources["maxItems"] == len(allowed)
+            assert ("用 chat" in sources["description"]) is chat
+            assert ("用 web" in sources["description"]) is web
+            Draft202012Validator.check_schema(params)
+            validator = Draft202012Validator(params)
+            validator.validate({"prompt": "画猫", "reference_options": {"material_sources": allowed}})
+            for disabled in {"chat", "web"} - set(allowed):
+                assert not validator.is_valid({"prompt": "画猫", "reference_options": {"material_sources": [disabled]}})
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("locale", ["zh-CN", "en-US", "ja-JP"])
 def test_self_reference_reminder_is_only_injected_when_enabled(locale):
     planner = module("application.references.planner")
