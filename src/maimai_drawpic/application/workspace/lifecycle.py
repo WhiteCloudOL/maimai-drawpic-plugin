@@ -112,6 +112,9 @@ async def attach_workspace(plugin: Any) -> None:
         refresh=lambda: refresh_runtime(plugin),
     )
 
+    store = plugin._platform_store
+    for repair in store.identifier_repairs:
+        plugin.ctx.logger.warning("已自动修复旧模型配置：%s。原配置备份位于 %s", repair, store.path.parent / "migration_backups")
     plugin._workspace_cleanup_task = asyncio.create_task(maintain_workspace(plugin), name="drawpic-storage-cleanup")
 
 

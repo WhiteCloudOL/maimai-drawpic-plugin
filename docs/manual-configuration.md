@@ -74,6 +74,8 @@
 
 ComfyUI 工作流文件默认放在 `MaiBot\data\plugins\maimai-drawpic-plugin\workflows`（`MaiBot` 为主程序根目录）。将文生图文件命名为 `t2i.json` 后，`t2i_workflow_path` 填写 `data/workflows/t2i.json`；图生图文件 `i2i.json` 对应 `i2i_workflow_path` 的 `data/workflows/i2i.json`。路径与文件位置对照见 [ComfyUI 平台说明](platforms.md#comfyui-本地工作流)。
 - 模型列表仅填写真实模型 ID，不再使用 `别名=模型ID`；分辨率覆盖也使用真实模型 ID。
+- 重装或升级会自动清理空白模型和缺少真实 ID 的旧映射。同一别名对应多个模型时，原有选择沿用首个有效映射，所有有效模型 ID 均可单独选择。若原先选中的别名没有有效映射，可在工作台重新选择模型。
+- 同一模型有多条冲突的覆盖参数时，直接按真实 ID 设置的值优先，同级采用最后一项。旧 TOML 和工作台平台配置仅模型列表或覆盖项不一致时，采用工作台 JSON。可在启动警告中查看处理位置，原文件保存在插件数据目录的 `migration_backups/`。
 - NovelAI 同样只维护一个 `models` 列表，可混合官方预设与兼容服务自定义 ID；旧 `custom_models` 加载时合并去重，保存后移除此旧字段。
 - 要在通用配置中指定模型，应使用工作台显示的完整名称，例如 `日常创作/gpt-image-2.5`。
 

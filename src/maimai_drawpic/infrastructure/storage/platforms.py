@@ -24,7 +24,7 @@ from ...domain.configuration.models import (
 from ...application.routing import ProviderRouter
 from .atomic import write_json_atomically, write_text_atomically
 from .config_recovery import is_reseeded_defaults, remove_reseeded_defaults
-from .identifiers import migrate_model_identifiers, remap_preferences
+from .identifiers import migrate_model_identifiers, normalize_model_identifiers, remap_preferences
 from .preferences import SessionPreferenceStore
 from .settings import LEGACY_REVIEW_SECTIONS, WorkspaceSettingsStore, read_json_file, workspace_config
 
@@ -156,6 +156,15 @@ def _payload_digest(payload: Dict[str, Any]) -> str:
     return sha256((json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")).hexdigest()
 
 
+def _platform_configs(records: List[Dict[str, Any]], *, omit_models: bool = False) -> List[Tuple[str, str]]:
+    """旧 TOML 缺少持久实例 ID，按平台类型和配置内容比较。"""
+    omitted = {"models", "custom_models", "model_endpoint_overrides", "model_size_overrides"} if omit_models else set()
+    return sorted(
+        (item["kind"], json.dumps({k: v for k, v in item["config"].items() if k not in omitted}, sort_keys=True))
+        for item in records
+    )
+
+
 class WorkspaceConfigStore:
     """拥有平台配置；未添加的平台在运行时明确禁用。"""
 
@@ -169,6 +178,7 @@ class WorkspaceConfigStore:
         self.transaction_path = data_dir / "workspace_config_transaction.json"
         self.recovery_pending = False
         self.pending_model_renames: Dict[str, str] = {}
+        self.identifier_repairs: List[str] = []
         self._lock = RLock()
 
     @staticmethod
@@ -193,25 +203,26 @@ class WorkspaceConfigStore:
         self._recover_transaction(document)
         self.settings.check_legacy_conflicts(document)
         settings_revision = self.settings.read_payload().get("revision", 0) if self.settings.path.exists() else 0
-        if self.path.exists():
+        has_platforms = self.path.exists()
+        repairs: List[str] = []
+        if has_platforms:
             payload = read_json_file(self.path)
             self.providers, self.platform_revision = self._validate_platform_payload(payload)
             self.revision = max(self.platform_revision, settings_revision)
             legacy = WorkspaceConfigStore(self.path.parent, self.config_path)
             legacy._import_legacy_platforms(document)
 
-            def comparable(records):
-                return sorted((item["kind"], json.dumps(item["config"], sort_keys=True)) for item in records)
-
-            if legacy.providers and comparable(legacy.providers) != comparable(self.providers):
-                raise ValueError(
-                    "旧 config.toml 与 platforms.json 存在冲突，已保留原文件。请先备份，确认保留哪份平台配置，再移走另一份后重新加载插件。"
-                )
+            if legacy.providers and _platform_configs(legacy.providers) != _platform_configs(self.providers):
+                if _platform_configs(legacy.providers, omit_models=True) != _platform_configs(self.providers, omit_models=True):
+                    raise ValueError(
+                        "旧 config.toml 与 platforms.json 存在冲突，已保留原文件。请先备份，确认保留哪份平台配置，再移走另一份后重新加载插件。"
+                    )
+                repairs.append("旧 config.toml 和 platforms.json 的模型配置不一致，已采用工作台 JSON")
         else:
             self._import_legacy_platforms(legacy_config)
             self.revision = self.platform_revision = max(1, settings_revision)
-            self._save()
 
+        updated = normalize_model_identifiers(self.providers, PLATFORM_NAMES, PLATFORM_DEFAULT_NAMES, repairs)
         recovery_backup = None
         if reseeded:
             recovery_backup = remove_reseeded_defaults(self.config_path, self.path.parent, original)
@@ -219,6 +230,8 @@ class WorkspaceConfigStore:
             current = self.config_path.read_bytes() if self.config_path.exists() else b""
             if current != original:
                 raise ValueError("config.toml 已在外部修改，已保留原文件，请重新加载插件")
+        if not has_platforms:
+            self._save()
         if self.config_path.exists():
             document = tomlkit.parse(self.config_path.read_text(encoding="utf-8"))
             if any(key in document for key in PLATFORM_NAMES):
@@ -236,7 +249,8 @@ class WorkspaceConfigStore:
 
         self.settings.initialize(legacy_config)
         self.revision = max(self.platform_revision, self.settings.revision)
-        migrate_model_identifiers(self, PLATFORM_NAMES, PLATFORM_DEFAULT_NAMES)
+        migrate_model_identifiers(self, updated)
+        self.identifier_repairs = repairs
         return recovery_backup
 
     def _import_legacy_platforms(self, legacy_config: Dict[str, Any]) -> None:
@@ -257,11 +271,7 @@ class WorkspaceConfigStore:
             for index, instance in enumerate(instances, 1):
                 values = deepcopy(instance)
                 name = values.pop("name") or f"兼容服务 {index}"
-                model_text = values.pop("models")
-                values["models"] = [
-                    f"{display}={upstream}" if display != upstream else upstream
-                    for display, upstream in ProviderRouter._parse_model_routes(model_text)
-                ]
+                values["models"] = ProviderRouter._split_inline_items(values["models"])
                 for field in ("model_size_overrides", "extra_parameters"):
                     values[field] = ProviderRouter._parse_key_value_text(values[field])
                 self.providers.append(self._new_record("openai", name, values))
@@ -386,9 +396,6 @@ class WorkspaceConfigStore:
             legacy._import_legacy_platforms(document)
             providers = transaction["platforms"]["payload"]["providers"]
 
-            def comparable(records):
-                return sorted((item["kind"], json.dumps(item["config"], sort_keys=True)) for item in records)
-
             saved = transaction["settings"]["payload"]["settings"]
             restored = workspace_config(
                 DrawpicConfig.model_validate(migrate_legacy_review_config(document)).model_dump(mode="json")
@@ -396,7 +403,7 @@ class WorkspaceConfigStore:
             sections = set(document) & {"general", "style"}
             if set(document) & set(LEGACY_REVIEW_SECTIONS):
                 sections.add("general")
-            if (legacy.providers and comparable(legacy.providers) != comparable(providers)) or any(
+            if (legacy.providers and _platform_configs(legacy.providers, omit_models=True) != _platform_configs(providers, omit_models=True)) or any(
                 saved[section] != restored[section] for section in sections
             ):
                 raise ValueError("旧 config.toml 与已提交配置事务存在冲突，已保留原文件")
@@ -526,6 +533,11 @@ class WorkspaceConfigStore:
         record = self._validate_record(
             {"id": identifier or uuid4().hex, "kind": kind, "name": payload["name"].strip(), "config": values}
         )
+        if "models" in record["config"]:
+            models = record["config"]["models"]
+            if kind == "openai":
+                models = [model for item in models for model in ProviderRouter._split_inline_items(item)]
+            record["config"]["models"] = list(dict.fromkeys(model.strip() for model in models if model.strip()))
         updated = [record if item["id"] == identifier else item for item in self.providers]
         if previous is None:
             updated.append(record)

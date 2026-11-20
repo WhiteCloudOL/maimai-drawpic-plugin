@@ -136,15 +136,100 @@ def test_identifier_recovery_preserves_external_preference_edit(tmp_path, monkey
     assert [path.read_bytes() for path in paths] == before
 
 
-def test_conflicting_alias_overrides_are_not_silently_dropped(tmp_path):
+@pytest.mark.parametrize("explicit_first", [True, False])
+def test_conflicts_keep_all_models_old_route_and_direct_overrides(tmp_path, explicit_first):
     store = legacy_store(tmp_path)
-    store.providers[0]["config"]["model_size_overrides"].append("gpt-image-2=1024x1536")
+    config = store.providers[0]["config"]
+    config["models"].append("主力=additional-model")
+    config["model_size_overrides"].insert(0 if explicit_first else 1, "gpt-image-2=1024x1536")
+    config["model_size_overrides"].append("gpt-image-2=1536x1024")
     store._save()
     before = store.path.read_bytes()
-    with pytest.raises(ValueError, match="覆盖参数冲突"):
-        restart(store)
-    assert store.path.read_bytes() == before
-    assert not store.transaction_path.exists()
+    converted = restart(store)
+    assert converted.providers[0]["config"]["models"] == ["gpt-image-2", "gpt-image-1", "additional-model"]
+    assert converted.providers[0]["config"]["model_size_overrides"] == ["gpt-image-2=1536x1024"]
+    assert converted.settings.values["general"]["default_model"] == "Main_API_2/gpt-image-2"
+    assert any("覆盖值冲突" in message for message in converted.identifier_repairs)
+    assert any("重复定义别名" in message for message in converted.identifier_repairs)
+    assert before in [p.read_bytes() for p in (store.path.parent / "migration_backups").glob("*.json")]
+    assert not restart(converted).identifier_repairs
+
+
+@pytest.mark.parametrize("platforms_exist", [False, True])
+def test_incomplete_alias_is_backed_up_and_skipped_on_reload(tmp_path, platforms_exist):
+    data_dir = tmp_path / "data"
+    config_path = tmp_path / "config.toml"
+    store = storage.WorkspaceConfigStore(data_dir, config_path)
+    values = {"models": ["gpt-image-2", "portrait= "], "api_key": "fixture-key"}
+    if platforms_exist:
+        store.initialize({})
+        store.providers = [store._new_record("openai", "Local", values)]
+        store._save()
+        legacy = {}
+    else:
+        config_path.write_bytes(b'[openai]\nmodels=["gpt-image-2", "portrait= "]\napi_key="fixture-key"\n')
+        legacy = {"openai": values}
+
+    before = (store.path if platforms_exist else config_path).read_bytes()
+    store.initialize(legacy)
+    assert store.providers[0]["config"]["models"] == ["gpt-image-2"]
+    assert store.providers[0]["config"]["api_key"] == "fixture-key"
+    assert len(store.identifier_repairs) == 1 and "models 第 2 项" in store.identifier_repairs[0]
+    assert "fixture-key" not in store.identifier_repairs[0]
+    assert before in [p.read_bytes() for p in (data_dir / "migration_backups").iterdir()]
+    assert not restart(store).identifier_repairs
+
+
+def test_old_toml_conflicting_only_in_models_keeps_workspace_and_backs_up_toml(tmp_path):
+    store = storage.WorkspaceConfigStore(tmp_path / "data", tmp_path / "config.toml")
+    store.initialize({})
+    store.save_provider({"kind": "openai", "name": "Local", "config": {
+        "api_key": "fixture-key", "models": ["image"],
+    }}, store.revision)
+    original = b'[openai]\napi_key="fixture-key"\nmodels=["portrait="]\n'
+    store.config_path.write_bytes(original)
+    active = store.path.read_bytes()
+    converted = restart(store)
+    assert store.path.read_bytes() == active
+    assert any("已采用工作台 JSON" in message for message in converted.identifier_repairs)
+    assert original in [p.read_bytes() for p in (store.path.parent / "migration_backups").glob("*.toml")]
+    assert not restart(converted).identifier_repairs
+
+
+def test_new_platform_save_omits_blank_model_rows(tmp_path):
+    store = storage.WorkspaceConfigStore(tmp_path / "data", tmp_path / "config.toml")
+    store.initialize({})
+    store.save_provider({"kind": "openai", "name": "Local", "config": {
+        "api_key": "fixture-key", "models": ["gpt-image-2", "", "  ", " gpt-image-2 "],
+    }}, store.revision)
+    assert store.providers[0]["config"]["models"] == ["gpt-image-2"]
+    saved = store.path.read_bytes()
+    assert restart(store).providers == store.providers
+    assert store.path.read_bytes() == saved
+
+
+def test_only_unusable_models_still_allow_load_and_reload(tmp_path, make_plugin):
+    store = storage.WorkspaceConfigStore(tmp_path / "data", tmp_path / "plugin/config.toml")
+    store.initialize({})
+    store.providers = [store._new_record("openai", "Local", {
+        "api_key": "fixture-private-key", "models": ["portrait=", "  "],
+        "model_size_overrides": ["portrait=1024x1024"],
+    })]
+    store._save()
+    async def run():
+        for iteration in range(2):
+            plugin = make_plugin(False)
+            await plugin.on_load()
+            try:
+                assert not plugin._require_router().get_all_models()
+                assert bool(plugin._platform_store.identifier_repairs) == (iteration == 0)
+                assert plugin._platform_store.providers[0]["config"]["model_size_overrides"] == []
+            finally:
+                await plugin.on_unload()
+    asyncio.run(run())
+    logs = (store.path.parent / "logs/drawpic.log").read_text(encoding="utf-8")
+    assert logs.count("models 第 1 项") == 1 and "WARNING" in logs and "migration_backups" in logs
+    assert "fixture-private-key" not in logs
 
 
 @pytest.mark.parametrize("name", ["My API", "平台　名称", "名称\tAPI", " 名称", "名称 "])
@@ -307,7 +392,11 @@ def test_command_selection_requires_complete_name_or_valid_index(make_plugin, mo
 
 
 def test_plugin_startup_migrates_saved_preferences_and_survives_reload(tmp_path, make_plugin):
-    legacy_store(tmp_path)
+    store = legacy_store(tmp_path)
+    store.providers[0]["config"]["models"].extend(["", "  "])
+    store.providers[1]["config"]["models"].append("\t")
+    store._save()
+    original_platforms = store.path.read_bytes()
 
     async def run():
         for _ in range(2):
@@ -315,12 +404,15 @@ def test_plugin_startup_migrates_saved_preferences_and_survives_reload(tmp_path,
             await plugin.on_load()
             try:
                 assert_converted(plugin._platform_store)
+                assert plugin._platform_store.providers[1]["config"]["models"] == ["gemini-image"]
                 assert plugin.config.general.default_model == "Main_API_2/gpt-image-2"
                 assert plugin._session_store.preferences["qq:group:one"]["model"] == "Main_API_2/gpt-image-2"
                 assert plugin._session_store.preferences["qq:user:three"]["model"] == "空_格/qwen-image-3.0"
                 assert plugin._require_router().resolve_default_model() == "Main_API_2/gpt-image-2"
             finally:
                 await plugin.on_unload()
+        backups = (store.path.parent / "migration_backups").glob("identifiers-platforms-*.json")
+        assert original_platforms in [path.read_bytes() for path in backups]
 
     asyncio.run(run())
 
